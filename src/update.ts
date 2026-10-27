@@ -1,4 +1,4 @@
-// 檢查更新 / 一鍵更新:看 GitHub 上最新的 release,更新時在背景重跑安裝程式(install.sh / install.ps1)。
+// 檢查更新 / 一鍵更新:看 GitHub 上最新的 release,更新時在背景重跑安裝程式(install.sh / scripts/install-windows.ps1)。
 // 安裝程式會換掉 ~/.agent-steward/app 並重啟服務,所以要用獨立的程序跑(不能是管家的子程序)。
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
@@ -54,8 +54,8 @@ export async function applyUpdate(tag: string): Promise<void> {
 	const dir = join(DATA_DIR, "update");
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(join(DATA_DIR, "logs"), { recursive: true });
-	const file = join(dir, IS_WIN ? "install.ps1" : "install.sh");
-	const r = await fetch(`https://raw.githubusercontent.com/${REPO}/${tag}/${IS_WIN ? "install.ps1" : "install.sh"}`, { signal: AbortSignal.timeout(30_000) });
+	const file = join(dir, IS_WIN ? "install-windows.ps1" : "install.sh");
+	const r = await fetch(`https://raw.githubusercontent.com/${REPO}/${tag}/${IS_WIN ? "scripts/install-windows.ps1" : "install.sh"}`, { signal: AbortSignal.timeout(30_000) });
 	if (!r.ok) throw new Error(`下載安裝程式失敗(${r.status})`);
 	// Windows PowerShell 5.1 讀沒有 BOM 的 .ps1 會把中文當成亂碼
 	const text = await r.text();

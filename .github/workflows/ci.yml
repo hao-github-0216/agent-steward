@@ -66,7 +66,7 @@ jobs:
       - name: PowerShell syntax
         shell: pwsh
         run: |
-          foreach ($f in "install.ps1", "uninstall.ps1") {
+          foreach ($f in "install.ps1", "scripts/install-windows.ps1", "uninstall.ps1") {
             $errs = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs) | Out-Null
             if ($errs) { $errs; exit 1 }
@@ -78,6 +78,7 @@ jobs:
           STEWARD_NO_SERVICE: "1"
         run: |
           $env:STEWARD_FROM = (Get-Location).Path
+          $env:STEWARD_REF = "${{ github.sha }}"
           irm "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.ps1" | iex
           if (-not (Test-Path "$HOME\.agent-steward\app\src\main.ts")) { throw "安裝沒有完成" }
       - name: Check what got installed
@@ -104,6 +105,13 @@ jobs:
         continue-on-error: true
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoOpen
+      - name: Options reach the real installer (-From . installs this commit)
+        shell: pwsh
+        run: |
+          $rev = (Get-Content "$HOME\.agent-steward\app\REVISION" -Raw).Trim()
+          $want = (git rev-parse --short HEAD).Trim()
+          "installed=$rev expected=$want"
+          if ($rev -ne $want) { throw "-From 沒有傳到安裝程式" }
       - name: Scheduled tasks
         continue-on-error: true
         shell: pwsh
