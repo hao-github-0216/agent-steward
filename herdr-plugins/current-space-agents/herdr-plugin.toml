@@ -1,0 +1,19 @@
+id = "local.current-space-agents"
+name = "Current Space Agents"
+version = "0.2.0"
+min_herdr_version = "0.9.0"
+description = "側邊欄 agents 只顯示目前 space 的 agents(啟動時自動套用)"
+platforms = ["macos", "windows", "linux"]
+
+[[startup]]
+command = ["node", "agent_view.mjs", "current"]
+
+[[actions]]
+id = "current"
+title = "Agents: 只顯示目前 space"
+command = ["node", "agent_view.mjs", "current"]
+
+[[actions]]
+id = "all"
+title = "Agents: 顯示全部 spaces"
+command = ["node", "agent_view.mjs", "all"]

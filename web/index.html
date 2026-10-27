@@ -1,0 +1,1984 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>專案管家</title>
+<style>
+:root {
+	--bg: #f6f5f2; --panel: #ffffff; --ink: #1f2328; --muted: #6b7280; --line: #e3e1dc;
+	--accent: #2f6fdf; --ok: #1f8a4c; --warn: #b7791f; --bad: #c2410c; --chip: #eef2f9;
+	--col: #efede8; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+	:root { --bg: #15171a; --panel: #1d2024; --ink: #e6e6e6; --muted: #9aa1aa; --line: #2c3036;
+		--accent: #6b9cff; --ok: #4cc38a; --warn: #e0b04f; --bad: #f08a5d; --chip: #252a33; --col: #191c20;
+		--shadow: 0 1px 2px rgba(0,0,0,.4); }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; height: 50px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+header h1 { font-size: 16px; margin: 0; }
+.titlebtn { display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--ink); padding: 6px 8px; margin-left: -8px; border-radius: 8px; cursor: pointer; font: inherit; }
+.titlebtn:hover { background: var(--chip); }
+.titlebtn .chev { color: var(--muted); font-size: 12px; }
+.gear { border: 0; background: none; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 8px; cursor: pointer; flex: 0 0 auto; }
+.gear:hover { background: var(--chip); color: var(--ink); }
+@media (max-width: 800px) { .gear { margin-left: auto; } }
+/* ---------- 登入畫面 ---------- */
+.loginwrap { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: grid; place-items: center; padding: 16px; }
+.loginbox { width: min(360px, 100%); display: flex; flex-direction: column; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px; box-shadow: 0 12px 40px rgba(0,0,0,.15); }
+.loginbox h2 { margin: 0; font-size: 18px; }
+.loginbox input { font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.loginbox button { font: inherit; padding: 10px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
+.loginerr { color: var(--bad); font-size: 13px; min-height: 1em; }
+.pwbanner { position: fixed; left: 16px; bottom: 16px; z-index: 58; max-width: min(380px, calc(100vw - 100px)); background: var(--warn); color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+/* ---------- 設定 ---------- */
+.modal.setmodal .box { width: min(860px, 100%); height: min(680px, calc(var(--appH, 100dvh) - 40px)); }
+.modal.setmodal .mbody { flex-direction: row; gap: 0; padding: 0; flex: 1; min-height: 0; }
+.wz-intro { background: var(--bg2, rgba(127,127,127,.12)); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; line-height: 1.5; }
+.upd-log, .upd-notes, .upd-cmd { background: var(--bg2, rgba(127,127,127,.12)); padding: 8px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; margin: 6px 0; }
+.set-tabs { flex: 0 0 150px; border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+.set-tabs button { text-align: left; border: 0; background: none; color: var(--ink); font: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.set-tabs button.on { background: var(--accent); color: #fff; }
+.set-pane { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
+.set-pane h4 { margin: 4px 0 0; font-size: 13px; }
+.set-pane .hint { color: var(--muted); font-size: 12px; }
+.set-pane textarea { font: 13px/1.5 Menlo, monospace; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-height: 70px; resize: vertical; }
+.set-pane .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.set-pane .row > * { flex: 1 1 200px; }
+.set-pane .radios { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; }
+.set-pane .sub { border-left: 3px solid var(--line); padding-left: 12px; display: flex; flex-direction: column; gap: 10px; }
+.set-pane .sub[hidden] { display: none; }
+.set-note { color: var(--warn); font-size: 12px; }
+.prov { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.prov-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prov-test { font-size: 12.5px; }
+.prov .chip.on { background: var(--ok); color: #fff; }
+.prov-test .ok { color: var(--ok); font-weight: 600; }
+.prov-test .bad { color: var(--bad); }
+.route { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.route select { width: 100%; font: inherit; font-size: 13px; padding: 5px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+@media (max-width: 800px) { .route { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 800px) {
+	.modal.setmodal { padding: 0; }
+	.modal.setmodal .box { height: calc(var(--appH, 100dvh)); max-height: none; border-radius: 0; }
+	.modal.setmodal .mbody { flex-direction: column; }
+	.set-tabs { flex: 0 0 auto; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+	.set-tabs button { white-space: nowrap; }
+}
+header .status { margin-left: auto; color: var(--muted); font-size: 12px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: middle; }
+.dot.off { background: var(--bad); }
+main { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); min-height: 0; }
+nav { border-right: 1px solid var(--line); padding: 12px; overflow-y: auto; overscroll-behavior: contain; position: sticky; top: 50px; height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); align-self: start; }
+nav h2 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 4px 6px; letter-spacing: .03em; }
+.projrow { display: flex; align-items: center; border-radius: 8px; }
+.projrow:hover { background: var(--chip); }
+.projrow.sel { background: var(--accent); color: #fff; }
+.projrow .proj { flex: 1; min-width: 0; }
+.projrow.sel .proj, .projrow:hover .proj { background: none; }
+.projrow.sel .proj small { color: rgba(255,255,255,.8); }
+.pmore { flex: 0 0 auto; border: 0; background: none; color: inherit; font-size: 18px; line-height: 1; padding: 6px 10px; border-radius: 6px; cursor: pointer; opacity: 0; }
+.projrow:hover .pmore, .projrow.sel .pmore, .pmore:focus-visible { opacity: .85; }
+.pmore:hover { background: rgba(127,127,127,.18); }
+@media (hover: none) { .pmore { opacity: .7; } }
+.proj { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer; font: inherit; }
+.proj:hover { background: var(--chip); }
+.proj.sel { background: var(--accent); color: #fff; }
+.proj small { display: block; color: var(--muted); font-size: 11px; }
+.proj.sel small { color: rgba(255,255,255,.8); }
+.badge { float: right; font-size: 11px; background: var(--warn); color: #fff; border-radius: 9px; padding: 0 6px; }
+.pending { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 12px; }
+.pending b { display: block; word-break: break-all; }
+.pending .row { display: flex; gap: 6px; margin-top: 6px; }
+button.small { font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.small.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+section.content > .boardwrap, section.content > .lower { flex-shrink: 0; }
+section.content { padding: 16px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; }
+.card-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+.brief h3 { margin: 0 0 4px; font-size: 15px; }
+.brief .path { color: var(--muted); font-size: 12px; word-break: break-all; }
+.brief .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; }
+.brief h4 { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+.brief ul { margin: 0; padding-left: 18px; }
+.brief p { margin: 4px 0; white-space: pre-wrap; }
+.toggles { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; overflow-x: hidden; min-width: 0; }
+.bdots { display: none; }
+/* 收合的欄:變成窄條,標題直排 */
+.col.collapsed { padding: 8px 2px; min-height: 0; cursor: pointer; }
+.col.collapsed h4 { writing-mode: vertical-rl; flex-direction: row; gap: 8px; margin: 2px auto; }
+.col.collapsed .cards { display: none; }
+.col h4 { cursor: pointer; user-select: none; }
+.col h4 .fold { opacity: .5; font-weight: 400; }
+.col h4:hover .fold { opacity: 1; }
+.col:not(:has(.kcard)) { min-height: 60px; }
+.col { background: var(--col); border-radius: 10px; padding: 8px; min-height: 140px; border: 2px solid transparent; }
+.col.over { border-color: var(--accent); }
+.col h4 { margin: 2px 4px 8px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+/* 卡片只佔一行:標題 + 右邊小標記;點一下開資訊卡,按住拖曳換欄 */
+.kcard { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; cursor: pointer; touch-action: pan-y; user-select: none; box-shadow: var(--shadow); }
+.kcard:hover { border-color: var(--accent); }
+.kcard.dragging { opacity: .4; }
+.kcard .t { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kcard .tags { flex: 0 0 auto; display: flex; gap: 5px; align-items: center; font-size: 11px; color: var(--muted); }
+.kcard .dn { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.kcard .pn { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col .more { width: 100%; margin-top: 2px; }
+/* 看板區塊最高約佔視窗 45%,每欄自己捲 */
+.boardwrap { display: flex; flex-direction: column; min-height: 0; min-width: 0; max-height: 45vh; max-height: 45dvh; }
+.board { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.col .cards { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
+/* 資訊卡 */
+.modal.cardpop .box { width: min(560px, 100%); }
+.cardpop .cmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.cardpop .cnote { color: var(--warn); font-size: 13px; white-space: pre-wrap; }
+.cardpop h4 { margin: 0; font-size: 12px; color: var(--muted); }
+.cardpop .ctext { white-space: pre-wrap; word-break: break-word; font: 13px/1.5 Menlo, monospace; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 0; max-height: 40vh; overflow: auto; }
+.cardpop .mfoot .sp { flex: 1; }
+@media (max-width: 800px) {
+	.modal.cardpop { place-items: end stretch; padding: 0; }
+	.modal.cardpop .box { width: 100%; border-radius: 14px 14px 0 0; max-height: 85vh; max-height: 85dvh; }
+}
+.ghost { position: fixed; pointer-events: none; z-index: 50; opacity: .9; transform: rotate(2deg); width: 220px; }
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.chat .log { max-height: 280px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.msg { padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; max-width: 85%; }
+.msg.me { align-self: flex-end; background: var(--accent); color: #fff; }
+.msg.bot { align-self: flex-start; background: var(--chip); }
+.chat form { display: flex; gap: 8px; }
+.chat textarea { flex: 1; resize: vertical; min-height: 40px; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.empty { color: var(--muted); font-size: 13px; }
+/* 專案清單:寬螢幕可以收起,窄螢幕改成滑出 */
+body.nav-collapsed main { grid-template-columns: minmax(0, 1fr); }
+body.nav-collapsed nav { display: none; }
+/* 程式碼/終端機模式本身就是滿版,整頁不捲 */
+/* 整頁永遠不捲:標題列、專案欄固定,右邊內容區自己捲(小視窗也一樣) */
+html, body { height: 100%; overflow: hidden; }
+/* ---------- 看板頁:夠寬又夠高才固定在視窗內,各區塊自己捲;其他尺寸整頁可以捲 ---------- */
+@media (min-width: 1100px) and (min-height: 680px) {
+	html, body { height: 100%; overflow: hidden; }
+	main { height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); min-height: 0; }
+	nav { min-height: 0; }
+	section.content { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); overflow: hidden; min-height: 0; }
+	.lower { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-height: 0; min-width: 0; }
+	.lower .brief { overflow-y: auto; min-height: 0; }
+	.lower .chat { display: flex; flex-direction: column; min-height: 0; }
+	.chat .log { flex: 1; min-height: 0; max-height: none; }
+}
+@media (min-width: 1100px) and (min-height: 680px) {
+	/* 收起看板或對話時,其他區塊吃掉空間 */
+	body.board-collapsed section.content { grid-template-rows: auto minmax(0, 1fr); }
+}
+.lower { display: grid; gap: 16px; }
+body.board-collapsed .board { display: none; }
+.viewtoggles { display: flex; gap: 6px; margin-left: auto; }
+/* 1100 以下:專案清單改成從左邊滑出;簡報和對話上下排 */
+@media (max-width: 1099px) {
+	main { grid-template-columns: minmax(0, 1fr); }
+	nav { display: block; position: fixed; z-index: 30; top: 50px; bottom: 0; left: 0; width: min(300px, 85vw); background: var(--panel); border-right: 1px solid var(--line); box-shadow: 8px 0 24px rgba(0,0,0,.18); transform: translateX(-105%); transition: transform .18s ease; }
+	nav.open { transform: none; }
+	body.nav-collapsed nav { display: block; }
+	.lower { grid-template-columns: minmax(0, 1fr); }
+	.lower .chat .log { max-height: 50vh; }
+}
+/* ---------- 看板/終端機切換 ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 13px; padding: 4px 14px; border: 0; background: var(--panel); color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+.termctl { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+body.term .termctl { display: inline-flex; }
+body.term main, body.code main { display: contents; }
+body.term main > section.content, body.code main > section.content { display: none; }
+body.term nav, body.code nav { display: block; position: fixed; z-index: 40; top: 50px; bottom: 0; left: 0; width: min(300px, 85vw); height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); background: var(--panel); border-right: 1px solid var(--line); box-shadow: 8px 0 24px rgba(0,0,0,.18); transform: translateX(-105%); transition: transform .18s ease; }
+body.term nav.open, body.code nav.open { transform: none; }
+/* 寬螢幕:跟看板頁的專案欄一樣寬 */
+@media (min-width: 1100px) { body.term nav, body.code nav { width: 260px; } }
+#termView { display: flex; height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); background: #1d2021; }
+#termView[hidden] { display: none; }
+.termwrap { position: relative; flex: 1; min-width: 0; }
+#term { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #1d2021; }
+.termhint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #a89984; pointer-events: none; }
+.termhint[hidden] { display: none; }
+.hint { color: var(--muted); font-size: 12px; }
+/* ---------- 程式碼模式:活動列 | 側欄(檔案/Git)| 編輯器 | 管家側欄 ---------- */
+body.code .termctl { display: inline-flex; }
+body.code #fontDown, body.code #fontUp, body.code #fontSize { display: none; }
+#codeView { display: flex; height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); background: var(--panel); }
+#codeView[hidden] { display: none; }
+.cv-act { flex: 0 0 52px; display: flex; flex-direction: column; gap: 4px; padding: 8px 4px; border-right: 1px solid var(--line); background: var(--bg); }
+.cv-act button { position: relative; font: inherit; font-size: 11px; padding: 8px 2px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.cv-act button.on { background: var(--chip); color: var(--ink); font-weight: 600; }
+.cv-act .badge { position: absolute; top: 2px; right: 2px; float: none; font-size: 10px; padding: 0 5px; background: var(--accent); }
+.cv-side { flex: 0 0 290px; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
+.cv-proj { padding: 8px; border-bottom: 1px solid var(--line); }
+.cv-projname { width: 100%; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 6px 8px; color: var(--ink); }
+.cv-projname .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-projname .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+.projrow .unsaved { color: var(--warn); margin-right: 4px; }
+.cv-pane { flex: 1; min-height: 0; overflow: auto; font-size: 13px; }
+.cv-pane[hidden] { display: none; }
+.cv-tools { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
+.cv-tools .t { flex: 1; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.cv-tools button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 1px 7px; cursor: pointer; }
+.tree-row { display: flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer; white-space: nowrap; user-select: none; }
+.tree-row:hover { background: var(--chip); }
+.tree-row.sel { background: var(--accent); color: #fff; }
+.tree-row .tw { width: 12px; flex: 0 0 12px; color: var(--muted); font-size: 10px; text-align: center; }
+.tree-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tree-row.ign { opacity: .5; }
+.tree-row .g { font: 600 11px Menlo, monospace; width: 14px; text-align: center; }
+.g-M { color: var(--warn); } .g-U, .g-A { color: var(--ok); } .g-D { color: var(--bad); } .g-dot { color: var(--warn); }
+.tree-row .more { opacity: 0; border: 0; background: none; color: inherit; cursor: pointer; padding: 0 4px; }
+.tree-row:hover .more, .tree-row.sel .more { opacity: .8; }
+.git-sec { border-bottom: 1px solid var(--line); }
+.git-sec > .h { display: flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .04em; cursor: pointer; }
+.git-sec > .h .acts { margin-left: auto; display: flex; gap: 4px; }
+.git-row { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 14px; cursor: pointer; }
+.git-row:hover { background: var(--chip); }
+.git-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-row .dir { color: var(--muted); font-size: 11px; margin-left: 4px; }
+.git-row .ra { display: none; gap: 2px; }
+.git-row:hover .ra { display: flex; }
+.git-row .ra button, .git-sec .acts button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 5px; font-size: 11px; padding: 0 5px; cursor: pointer; }
+.git-commit { padding: 8px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--line); }
+.git-commit textarea { font: 13px/1.4 inherit; min-height: 54px; resize: vertical; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.git-commit .row { display: flex; gap: 6px; }
+.git-commit .row button { flex: 1; }
+.git-branch { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.git-branch select { flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.cv-main { flex: 1; min-width: 0; display: flex; flex-direction: row; }
+/* 側欄可收合、可拖拉寬度 */
+body.cv-side-collapsed .cv-side, body.cv-side-collapsed #cvSideSash { display: none; }
+.cv-sash-v { flex: 0 0 5px; cursor: col-resize; background: transparent; position: relative; z-index: 3; margin: 0 -2px; }
+.cv-sash-v:hover, .cv-sash-v.drag { background: var(--accent); opacity: .5; }
+.cv-sash-h { flex: 0 0 5px; cursor: row-resize; position: relative; z-index: 3; margin: -2px 0; }
+.cv-sash-h:hover, .cv-sash-h.drag { background: var(--accent); opacity: .5; }
+/* 編輯區:欄(左右)→ 群組(上下) */
+.cv-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1 1 0; }
+.cv-group { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1 1 0; border-left: 1px solid var(--line); }
+.cv-col:first-child .cv-group { border-left: 0; }
+.cv-group + .cv-group, .cv-sash-h + .cv-group { border-top: 1px solid var(--line); }
+.cv-group.active > .cv-tabs { box-shadow: inset 0 2px 0 var(--accent); }
+.cv-tab.dragging { opacity: .4; }
+.cv-tab.drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+.cv-tabs.drop-end { box-shadow: inset -2px 0 0 var(--accent); }
+.cv-drop { position: absolute; background: var(--accent); opacity: .18; pointer-events: none; z-index: 5; border-radius: 4px; transition: all .08s; }
+.cv-drop[hidden] { display: none; }
+/* 從本地上傳 */
+.tree-row.drop-into { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--chip); }
+#cvFiles.drop-root { box-shadow: inset 0 0 0 2px var(--accent); }
+.cv-upload { position: fixed; left: 50%; translate: -50% 0; bottom: 56px; z-index: 60; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: min(420px, calc(100vw - 32px)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.cv-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--bg); min-height: 34px; }
+.cv-tab { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-right: 1px solid var(--line); font-size: 13px; cursor: pointer; white-space: nowrap; color: var(--muted); }
+.cv-tab.on { background: var(--panel); color: var(--ink); }
+.cv-tab .x { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font-size: 13px; }
+.cv-tab.dirty .x::before { content: "●"; }
+.cv-tab.dirty .x span { display: none; }
+.cv-back { display: none; }
+.cv-stage { flex: 1; min-height: 0; position: relative; }
+.cv-surface { position: absolute; inset: 0; }
+.cv-surface[hidden] { display: none; }
+.cv-empty { display: grid; place-items: center; color: var(--muted); }
+.cv-preview { background: var(--bg); }
+/* 每個預覽分頁自己一塊(切走只是藏起來,PDF 不會重新載入) */
+.cv-pv { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; }
+.cv-pv[hidden] { display: none; }
+.cv-pv-pdf iframe { width: 100%; height: 100%; border: 0; display: block; }
+.cv-pv-image, .cv-pv-pdf { touch-action: pan-x pan-y; }
+.cv-pv-image { display: flex; }
+.cv-pv-image .zoomwrap { margin: auto; padding: 8px; }
+.cv-pv-image img { display: block; user-select: none; -webkit-user-select: none; }
+.cv-pv-info { display: grid; place-items: center; }
+.pdfpages { padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; min-width: 100%; box-sizing: border-box; }
+/* 預覽全螢幕 */
+.cv-pv.cv-full { position: fixed; inset: 0; z-index: 95; background: var(--bg); }
+.cv-fullx { position: fixed; top: 10px; right: 10px; z-index: 96; width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 18px; cursor: pointer; }
+.pdfpage { position: relative; flex: 0 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.pdfpage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* PDF 文字層(PDF.js):透明文字疊在圖上,可以長按選字 */
+.cv-pv-pdf { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.textLayer { position: absolute; text-align: initial; inset: 0; overflow: clip; opacity: 1; line-height: 1; -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 0; }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) { z-index: 1; }
+.textLayer span.markedContent { top: 0; height: 0; }
+.textLayer ::selection { background: rgba(0, 100, 255, .3); }
+.textLayer br::selection { background: transparent; }
+.textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; -webkit-user-select: none; user-select: none; }
+.textLayer .endOfContent.active { top: 0; }
+/* Markdown 預覽 */
+.cv-pv.md { display: block; }
+.md-body { max-width: 860px; margin: 0 auto; padding: 20px 28px 60px; font-size: 15px; line-height: 1.7; color: var(--ink); word-wrap: break-word; }
+.md-body h1, .md-body h2 { border-bottom: 1px solid var(--line); padding-bottom: .3em; }
+.md-body h1 { font-size: 1.8em; } .md-body h2 { font-size: 1.4em; } .md-body h3 { font-size: 1.15em; }
+.md-body img { max-width: 100%; max-height: none; }
+.md-body code { font: 13px Menlo, monospace; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.md-body pre { background: var(--chip); padding: 12px 14px; border-radius: 8px; overflow: auto; }
+.md-body pre code { background: none; padding: 0; }
+.md-body blockquote { margin: 0; padding: 0 14px; border-left: 4px solid var(--line); color: var(--muted); }
+.md-body table { border-collapse: collapse; display: block; overflow: auto; }
+.md-body th, .md-body td { border: 1px solid var(--line); padding: 5px 12px; }
+.md-body a { color: var(--accent); }
+.md-body input[type=checkbox] { margin-right: 6px; }
+@media (max-width: 800px) { .md-body { padding: 14px 16px 40px; } }
+.cv-bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--chip); font-size: 12px; flex-wrap: wrap; }
+.cv-bar[hidden] { display: none; }
+.cv-bar .sp { flex: 1; }
+.cv-menu { position: fixed; z-index: 80; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 4px; min-width: 160px; }
+.cv-menu button { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; padding: 6px 10px; border: 0; background: none; color: var(--ink); border-radius: 6px; cursor: pointer; }
+.cv-menu button:hover { background: var(--chip); }
+@media (max-width: 800px) {
+	/* 手機標題列:只留切換按鈕,不換行 */
+	header { gap: 6px; padding: 8px 10px; }
+	header .status { display: none; }
+	header h1 { font-size: 14px; }
+	header button, .seg button { white-space: nowrap; }
+	.seg button { padding: 4px 9px; }
+	/* 手機:一層一層的單欄。側欄 ↔ 編輯器 */
+	.cv-act { flex-direction: row; flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 4px; }
+	.cv-act button { padding: 6px 12px; }
+	#codeView { flex-direction: column; }
+	.cv-side { flex: 1; border-right: 0; }
+	.cv-main { display: none; }
+	#cvSideSash, .cv-main .cv-sash-v, .cv-main .cv-sash-h, .cv-col:not(:has(.cv-group.active)), .cv-group:not(.active) { display: none; }
+	body.cv-editing .cv-side, body.cv-editing .cv-act { display: none; }
+	body.cv-editing .cv-main { display: flex; flex: 1; }
+	.cv-back { display: inline-block; margin: 4px; white-space: nowrap; flex: 0 0 auto; }
+	.tree-row { padding: 6px 10px; }
+	.git-row .ra { display: flex; }
+}
+.navacts { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 2px 4px; }
+.spaceline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.chip { background: var(--chip); border-radius: 99px; padding: 1px 9px; }
+.chip.dim { color: var(--muted); }
+.spaceline .warn { color: var(--warn); }
+.spaceline .hint { color: var(--muted); }
+/* ---------- 對話框 ---------- */
+.modal { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.4); display: grid; place-items: center; padding: 16px; }
+.modal[hidden] { display: none; }
+.modal .box { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; width: min(720px, 100%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.modal .mhead { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.modal .mhead h3 { margin: 0; font-size: 15px; }
+.modal .mbody { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.modal .mfoot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.modal label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.modal input[type=text], .modal select { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.crumb { font-size: 12px; color: var(--muted); word-break: break-all; }
+.dirlist { border: 1px solid var(--line); border-radius: 10px; max-height: 260px; overflow: auto; }
+.dirrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; }
+.dirrow:last-child { border-bottom: 0; }
+.dirrow:hover { background: var(--chip); }
+.dirrow .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dirrow .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 0 6px; }
+.choice { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.msgbox { font-size: 13px; border-radius: 8px; padding: 8px 10px; background: var(--chip); }
+.msgbox.err { color: var(--bad); }
+.tidyrow { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.tidyrow .moves { color: var(--muted); font-size: 12px; }
+.tidyrow b { font-size: 14px; }
+/* 手機:版面已經適應手機,不要點兩下放大、輸入時也不自動放大 */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+html, body { height: var(--appH, 100dvh); }
+@media (pointer: coarse) { input, textarea, select { font-size: 16px; } }
+/* 不顯示系統捲動條(照樣可以捲);會捲的區塊在上下緣還有內容時淡出提示 */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.sfade.fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.sfade.fade-t { -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to top, #000 calc(100% - 28px), transparent); }
+.sfade.fade-t.fade-b { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+#toast { position: fixed; left: 50%; bottom: 18px; translate: -50% 0; z-index: 80; background: #282828; color: #ebdbb2; border: 1px solid #504945; padding: 6px 12px; border-radius: 8px; font-size: 13px; opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s; pointer-events: none; }
+#toast.show { opacity: 1; transform: none; }
+/* ---------- 問管家浮動球 ---------- */
+#stewardBall { position: fixed; z-index: 56; width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-family: inherit; font-size: 18px; font-weight: 700; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.3); cursor: grab; touch-action: none; user-select: none; transition: transform .12s, box-shadow .12s; }
+#stewardBall:hover { transform: scale(1.06); }
+#stewardBall.on { box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--accent); }
+#stewardBall.dragging { cursor: grabbing; transition: none; transform: scale(1.1); opacity: .9; }
+#stewardBall.unread::after { content: ""; position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #e5484d; border: 2px solid var(--panel); }
+#stewardBall.busy { animation: ballPulse 1.2s ease-in-out infinite; }
+@keyframes ballPulse { 50% { box-shadow: 0 0 0 6px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.3); } }
+#ballWrap[data-corner$="r"] #stewardBall { right: 18px; }
+#ballWrap[data-corner$="l"] #stewardBall { left: 18px; }
+#ballWrap[data-corner^="b"] #stewardBall { bottom: 18px; }
+#ballWrap[data-corner^="t"] #stewardBall { top: 62px; }
+#ballPanel { position: fixed; z-index: 57; width: min(400px, calc(100vw - 36px)); height: min(560px, calc(100vh - 150px)); height: min(560px, calc(100dvh - 150px)); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.3); overflow: hidden; }
+#ballPanel[hidden] { display: none; }
+#ballWrap[data-corner$="r"] #ballPanel { right: 18px; }
+#ballWrap[data-corner$="l"] #ballPanel { left: 18px; }
+#ballWrap[data-corner^="b"] #ballPanel { bottom: 80px; }
+#ballWrap[data-corner^="t"] #ballPanel { top: 124px; }
+/* 程式碼頁面左上有檔案/Git 按鈕和專案選單、終端機上方是 herdr 分頁列:上方兩角往下讓開 */
+body.code #ballWrap[data-corner^="t"] #stewardBall { top: 170px; }
+body.code #ballWrap[data-corner^="t"] #ballPanel { top: 232px; height: min(560px, calc(100vh - 260px)); height: min(560px, calc(100dvh - 260px)); }
+body.term #ballWrap[data-corner^="t"] #stewardBall { top: 96px; }
+body.term #ballWrap[data-corner^="t"] #ballPanel { top: 158px; }
+.bp-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.bp-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.bp-log { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.bp-log .bp-more { text-align: center; color: var(--muted); font-size: 12px; padding: 4px; }
+.bp-log .msg.err { color: var(--warn); }
+.bp-log .msg.wait { color: var(--muted); }
+.msg .q { margin-bottom: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,.15); font-size: 12px; }
+.msg .q pre { margin: 4px 0 0; white-space: pre-wrap; max-height: 120px; overflow: auto; font: 12px/1.4 Menlo, monospace; }
+/* 三個建議問題:點一下就送出 */
+.bp-sugg { display: flex; gap: 6px; align-items: flex-start; padding: 8px 12px 0; }
+.bp-sugg .chips { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bp-sugg .chip-q { text-align: left; font: inherit; font-size: 12.5px; line-height: 1.35; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.bp-sugg .chip-q:hover { border-color: var(--accent); }
+.bp-sugg.dim .chip-q { opacity: .45; pointer-events: none; }
+.bp-sugg .sref { flex: 0 0 auto; }
+.msg .cloud { display: inline-block; font-size: 11px; padding: 0 6px; margin-right: 6px; border-radius: 6px; background: var(--chip); color: var(--muted); }
+.msg .retry { display: block; margin-top: 6px; }
+.bp-quote { margin: 0 12px; padding: 6px 8px; border-radius: 8px; background: var(--chip); font-size: 12px; }
+.bp-quote .qh { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.bp-quote .qh span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-quote pre { margin: 4px 0 0; max-height: 90px; overflow: auto; white-space: pre-wrap; font: 12px/1.4 Menlo, monospace; }
+#bpForm { display: flex; gap: 8px; padding: 10px 12px; }
+#bpForm textarea { flex: 1; resize: none; min-height: 44px; max-height: 140px; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+@media (max-width: 800px) {
+	#ballWrap[data-corner] #ballPanel { left: 0; right: 0; top: auto; bottom: 0; width: 100%; height: 75vh; height: 75dvh; border-radius: 14px 14px 0 0; }
+	#ballWrap:has(#ballPanel:not([hidden])) #stewardBall { display: none; }
+}
+#copyDlg { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0,0,0,.35); }
+#copyDlg[hidden] { display: none; }
+#copyDlg .box { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(560px, 92vw); display: flex; flex-direction: column; gap: 8px; }
+#copyDlg span { font-size: 13px; color: var(--muted); }
+#copyDlg textarea { font: 13px Menlo, monospace; min-height: 120px; resize: vertical; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+#copyDlg button { align-self: flex-end; }
+kbd { font: 12px Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+/* 管家側欄:預設從右邊浮出,不擠終端機;超寬螢幕才並排 */
+#drawer { position: absolute; top: 50px; right: 0; bottom: 0; width: 360px; max-width: 92vw; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.25); transform: translateX(100%); transition: transform .18s ease; overflow: auto; z-index: 20; padding: 12px 14px; }
+body.drawer #drawer { transform: none; }
+@media (min-width: 1800px) {
+	#drawer { position: static; transform: none; box-shadow: none; display: none; flex: 0 0 360px; }
+	body.drawer #drawer { display: block; }
+}
+.dhead { display: flex; gap: 8px; margin-bottom: 10px; }
+.dhead .dt { flex: 1; min-width: 0; }
+.dhead .dt b { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dhead .dt small { color: var(--muted); font-size: 12px; }
+#dBody h4 { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+#dBody p, #dBody li { font-size: 13px; }
+#dBody ul { margin: 0; padding-left: 18px; }
+#dBody .kcard { touch-action: auto; }
+@media (max-width: 440px) {
+	body.term #fontDown, body.term #fontUp { display: none; } /* 窄手機:讓出空間給標題和頁籤 */
+}
+@media (max-width: 800px) {
+	.seg button { padding: 4px 10px; }
+	#drawer { top: auto; left: 0; width: auto; max-width: none; height: 60vh; border-left: 0; border-top: 1px solid var(--line); border-radius: 12px 12px 0 0; transform: translateY(100%); }
+	body.term .status, body.term #fontSize { display: none; }
+	.seg { flex-shrink: 0; }
+	body.term header h1 { font-size: 13px; }
+	header { gap: 8px; }
+}
+.tool { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+form.tool { flex-direction: row; }
+.tool input { flex: 1; min-width: 0; font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.subdir { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.subdir span:first-child { word-break: break-all; }
+.split > button { align-self: flex-start; }
+.note-err { color: var(--bad); font-size: 12px; }
+@media (max-width: 800px) {
+	.board { grid-auto-columns: 78vw; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+	.board > .col { scroll-snap-align: start; }
+	.bdots { display: flex; justify-content: center; gap: 8px; margin: 0 0 8px; }
+	.bdots button { width: 8px; height: 8px; padding: 0; border-radius: 50%; border: 0; background: var(--line); }
+	.bdots button.on { background: var(--accent); width: 18px; border-radius: 4px; }
+}
+</style>
+</head>
+<body>
+<header>
+	<button class="titlebtn" id="menu" title="開合專案欄"><h1>專案管家</h1><span class="chev" id="menuChev">◂</span></button>
+	<div class="seg" role="tablist">
+		<button id="modeBoard" class="on" role="tab">看板</button>
+		<button id="modeCode" role="tab">程式碼</button>
+		<button id="modeTerm" role="tab">終端機</button>
+	</div>
+	<div class="termctl" id="termctl">
+		<button class="small" id="fontDown" title="字體縮小">A−</button>
+		<span id="fontSize">15</span>
+		<button class="small" id="fontUp" title="字體放大">A+</button>
+		<button class="small" id="drawerBtn" title="管家側欄">管家 ▸</button>
+	</div>
+	<span class="status" id="status"><span class="dot"></span>連線中…</span>
+	<button class="gear" id="gearBtn" type="button" title="設定" aria-label="設定">⚙</button>
+</header>
+<section id="termView" hidden>
+	<div class="termwrap"><iframe id="term" title="herdr 終端機"></iframe><div class="termhint" id="termHint">連線到 herdr…</div></div>
+	<aside id="drawer" class="sfade">
+		<div class="dhead"><div class="dt" id="dTitle"></div><button class="small" id="drawerClose">收起</button></div>
+		<div id="dBody"></div>
+	</aside>
+</section>
+<section id="codeView" hidden>
+	<div class="cv-act">
+		<button id="cvFilesBtn" class="on" title="檔案">檔案</button>
+		<button id="cvGitBtn" title="版本控制">Git<span class="badge" id="cvGitCount" hidden></span></button>
+	</div>
+	<div class="cv-side">
+		<div class="cv-proj"><div id="cvProject" class="cv-projname"></div></div>
+		<div id="cvFiles" class="cv-pane sfade"></div>
+		<div id="cvGit" class="cv-pane sfade" hidden></div>
+	</div>
+	<div class="cv-sash-v" id="cvSideSash" title="拖拉調整側欄寬度"></div>
+	<div class="cv-main" id="cvGroups"></div>
+</section>
+<main id="boardView">
+	<nav id="nav" class="sfade"></nav>
+	<section class="content sfade">
+		<div class="boardwrap">
+			<div class="toggles" style="margin:0 0 8px">
+				<label><input type="checkbox" id="allCards"> 顯示所有專案的工作卡</label>
+				<span title="提案→已核准:派工;卡住/完成→已核准:重新派工(附上次結果);進行中/卡住→完成:手動標記;任何→提案:退回;「進行中」只能由派工產生">拖到「已核准」= 派工或重新派工 · 拖回「提案」= 退回 · 游標停在這裡看完整規則</span>
+				<span class="viewtoggles"><button class="small" id="toggleBoard">收起看板</button></span>
+			</div>
+			<div class="bdots" id="bdots"></div>
+			<div class="board" id="board"></div>
+		</div>
+		<div class="lower">
+			<div class="card-panel brief sfade" id="brief"></div>
+		</div>
+	</section>
+</main>
+<!-- 問管家:浮動球(三個頁面共用,可拖到四個角落) -->
+<div id="ballWrap" data-corner="br">
+	<div id="ballPanel" hidden role="dialog" aria-label="問管家">
+		<div class="bp-head"><b id="bpTitle">問管家</b><button class="small" id="bpClear" title="清除這個專案畫面上的問答紀錄(管家記得的專案進度不受影響)">清除紀錄</button><button class="small" id="bpClose">關閉</button></div>
+		<div class="bp-log sfade" id="bpLog"></div>
+		<div class="bp-sugg" id="bpSugg" hidden></div>
+		<div class="bp-quote" id="bpQuote" hidden></div>
+		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><button class="small primary">送出</button></form>
+	</div>
+	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家">管</button>
+</div>
+<div class="modal" id="createDlg" hidden>
+	<div class="box" role="dialog" aria-labelledby="createTitle">
+		<div class="mhead"><h3 id="createTitle">建立專案</h3><button class="small" data-close="createDlg">關閉</button></div>
+		<div class="mbody">
+			<div class="choice"><button class="small" id="fsUp">↑ 上一層</button><span class="crumb" id="fsPath"></span></div>
+			<div class="dirlist" id="fsList"></div>
+			<div class="choice"><button class="small primary" id="fsPick">選這個資料夾</button><span class="hint" id="fsHere"></span></div>
+			<div class="choice">
+				<span class="hint">或在這裡新建:</span>
+				<input type="text" id="newFolder" placeholder="新資料夾名稱">
+				<label><input type="checkbox" id="newGit"> 同時建立 git repo</label>
+				<button class="small" id="fsNew">新建</button>
+			</div>
+			<div id="createForm" hidden>
+				<div class="msgbox" id="pickedBox"></div>
+				<label class="field">專案名稱(也是 herdr space 的名稱)<input type="text" id="spaceName"></label>
+				<label class="field">順便啟動 agent
+					<select id="startAgent"><option value="none">不啟動</option><option value="pi">pi</option><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
+				</label>
+			</div>
+			<div class="msgbox" id="createMsg" hidden></div>
+		</div>
+		<div class="mfoot"><button class="small primary" id="createGo" disabled>建立</button></div>
+	</div>
+</div>
+<div class="modal" id="tidyDlg" hidden>
+	<div class="box" role="dialog" aria-labelledby="tidyTitle">
+		<div class="mhead"><h3 id="tidyTitle">整理 spaces(一個專案一個 space)</h3><button class="small" data-close="tidyDlg">關閉</button></div>
+		<div class="mbody"><div class="hint">勾選要執行的項目。搬窗格時裡面的程式不會中斷;管家不會關閉任何 space 或窗格。</div><div id="tidyList"><div class="empty">計算中…</div></div></div>
+		<div class="mfoot"><span class="hint" id="tidyNote"></span><button class="small primary" id="tidyGo" disabled>執行勾選的項目</button></div>
+	</div>
+</div>
+<script>
+// ---------- 登入:/api 回 401/403 時顯示登入畫面 ----------
+{
+	const realFetch = window.fetch.bind(window);
+	window.fetch = async (input, init) => {
+		const r = await realFetch(input, init);
+		const u = typeof input === "string" ? input : input?.url ?? "";
+		if ((r.status === 401 || r.status === 403) && /^\/api\//.test(u) && !u.startsWith("/api/auth/")) {
+			r.clone().json().then((d) => { if (d && "login" in d) showLogin(d); }).catch(() => {});
+		}
+		return r;
+	};
+}
+let loginShown = false;
+function showLogin(d = {}) {
+	if (loginShown) return;
+	loginShown = true;
+	const w = document.createElement("div");
+	w.className = "loginwrap";
+	w.innerHTML = d.login === false
+		? `<div class="loginbox"><h2>專案管家</h2><p>${(d.error || "還沒設定管理密碼").replace(/[&<>]/g, "")}</p></div>`
+		: `<form class="loginbox"><h2>專案管家</h2><p class="hint">請輸入管理密碼</p><input type="password" name="pw" autocomplete="current-password" autofocus placeholder="管理密碼"><button class="primary" type="submit">登入</button><div class="loginerr"></div></form>`;
+	document.body.appendChild(w);
+	w.querySelector("form")?.addEventListener("submit", async (e) => {
+		e.preventDefault();
+		const pw = w.querySelector("input").value;
+		const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: pw }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
+		if (r.ok) location.reload();
+		else w.querySelector(".loginerr").textContent = r.error || "登入失敗";
+	});
+}
+// 從 Tailscale 的 http 網址打開時,轉到設定的 https 網址(瀏覽器只在安全來源開放剪貼簿 API)
+const PUBLIC_URL = "__STEWARD_PUBLIC_URL__";
+if (location.protocol === "http:" && /^100\./.test(location.hostname) && PUBLIC_URL.startsWith("https://")) {
+	location.replace(`${PUBLIC_URL.replace(/\/$/, "")}/${location.hash}`);
+}
+try { fetch("/api/clientlog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "load", proto: location.protocol, secure: isSecureContext, ua: navigator.userAgent }), keepalive: true }); } catch {}
+const COLS = [["proposed", "提案"], ["approved", "已核准"], ["running", "進行中"], ["blocked", "卡住"], ["done", "完成"]];
+let state = { projects: [], cards: [], watcher: {} };
+let sel = null;
+try { sel = localStorage.getItem("steward.sel"); } catch {}
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ago = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : `${Math.round(m / 1440)} 天前`; };
+const post = (url, data) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json());
+
+// ---------- 三個頁面共用的「目前專案」 ----------
+// 在看板、程式碼頁面、herdr(網頁終端機看得到時)選的專案,三邊都顯示同一個;存在伺服器跨裝置同步。
+let selSource = "";
+function selectProject(id, source, { push = true } = {}) {
+	if (!id) return;
+	const changed = id !== sel;
+	sel = id; selSource = source || selSource;
+	try { localStorage.setItem("steward.sel", sel); } catch {}
+	if (push) fetch("/api/current", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: id, source }) }).catch(() => {});
+	if (changed) editing = null;
+	render();
+	if (document.body.classList.contains("code")) window.codeMode?.pick(id);
+	// 在終端機頁換專案(不是 herdr 自己切過去的):herdr 也跟著跳
+	if (changed && push && source !== "herdr" && document.body.classList.contains("term")) enterTerminal();
+}
+/** 其他裝置可能換過:打開網頁、切回分頁時從伺服器拿最後選的(不即時拉走正在看的畫面) */
+async function syncCurrent() {
+	const r = await fetch("/api/current").then((x) => (x.ok ? x.json() : null)).catch(() => null);
+	if (r?.project && state.projects.some((p) => p.id === r.project)) {
+		if (r.project !== sel) selectProject(r.project, r.source, { push: false });
+		else selSource = r.source || selSource;
+	}
+}
+document.addEventListener("visibilitychange", async () => {
+	if (document.hidden) return;
+	await syncCurrent();
+	if (document.body.classList.contains("term")) enterTerminal();
+});
+let firstLoad = true;
+async function load() {
+	try {
+		state = await fetch("/api/board").then((r) => r.json());
+		const w = state.watcher || {};
+		$("status").innerHTML = `<span class="dot ${w.lastError ? "off" : ""}"></span>${w.lastError ? esc(w.lastError) : `監看 ${w.panes?.length ?? 0} 個 agent 窗格`}`;
+	} catch { $("status").innerHTML = `<span class="dot off"></span>連不上管家`; }
+	if (firstLoad) { firstLoad = false; await syncCurrent(); }
+	if (!sel || !state.projects.find((p) => p.id === sel)) sel = (state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity)[0] || state.projects[0])?.id;
+	render();
+}
+const byActivity = (a, b) => (b.lastActivityAt || b.createdAt).localeCompare(a.lastActivityAt || a.createdAt);
+
+let editing = null; // 改名/拆分面板開著的專案:背景更新時不重畫簡報區,避免洗掉輸入
+function render() { renderNav(); if (editing !== sel) { editing = null; renderBrief(); } renderBoard(); renderDrawer(); renderCardPop(); if (typeof syncBall === "function") syncBall(); }
+function closeTool() { editing = null; $("tool").innerHTML = ""; }
+
+function renderNav() {
+	const open = (p) => state.cards.filter((c) => c.projectId === p.id && (c.column === "proposed" || c.column === "blocked")).length;
+	const item = (p) => `<div class="projrow ${p.id === sel ? "sel" : ""}"><button class="proj" data-id="${p.id}">${open(p) ? `<span class="badge">${open(p)}</span>` : ""}${window.codeMode?.hasUnsaved?.(p.id) ? '<span class="unsaved" title="程式碼頁面有還沒存的修改">●</span>' : ""}${p.private ? "🔒 " : ""}${esc(p.name)}<small>${p.lastActivityAt ? ago(p.lastActivityAt) : "尚無紀錄"}</small></button>${p.kind === "project" ? `<button class="pmore" data-pmenu="${p.id}" title="更多動作" aria-label="${esc(p.name)} 的更多動作">⋯</button>` : ""}</div>`;
+	const active = state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity);
+	const special = state.projects.filter((p) => p.kind !== "project");
+	const pending = state.projects.filter((p) => p.status === "pending");
+	// 停止追蹤的專案(資料都還在):只列出有內容的,沒紀錄的「略過」資料夾不列
+	const stopped = state.projects.filter((p) => p.status === "ignored" && p.kind === "project" && (p.state?.updatedAt || state.cards.some((c) => c.projectId === p.id)));
+	$("nav").innerHTML = `<div class="navacts"><button class="small primary" id="newProject">＋ 建立專案</button><button class="small" id="tidySpaces">整理 spaces</button></div>
+		<h2>專案</h2>${active.map(item).join("") || '<div class="empty">還沒有專案</div>'}
+		<h2>其他</h2>${special.map(item).join("")}
+		${pending.length ? `<h2>要登記成專案嗎?</h2>${pending.map((p) => `<div class="pending"><b>${esc(p.root)}</b><div class="row"><button class="small primary" data-reg="${p.id}">登記</button><button class="small" data-ign="${p.id}">略過</button></div></div>`).join("")}` : ""}
+		${stopped.length ? `<details class="stopped"><summary><h2 style="display:inline">已停止追蹤(${stopped.length})</h2></summary>${stopped.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.state?.updatedAt ? ` · 紀錄保留到 ${ago(p.state.updatedAt)}` : ""}</span><div class="row"><button class="small primary" data-reg="${p.id}" title="恢復追蹤:之前的進度、工作卡、管家記憶都會回來">恢復追蹤</button></div></div>`).join("")}</details>` : ""}`;
+}
+
+function renderBrief() {
+	const p = state.projects.find((x) => x.id === sel);
+	if (!p) { $("brief").innerHTML = '<div class="empty">選一個專案</div>'; return; }
+	const s = p.state || {};
+	const list = (t, a) => a?.length ? `<h4>${t}</h4><ul>${a.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
+	const si = state.spaceInfo?.[p.id];
+	const spaceLine = p.kind !== "project" ? "" : si?.label
+		? `<div class="spaceline"><span class="chip">herdr space:${esc(si.label)}</span>
+			${si.nameDiffers ? `<span class="warn">名稱和專案不同</span><button class="small" data-spacename="space">專案改名為「${esc(si.label)}」</button><button class="small" data-spacename="project">space 改回「${esc(p.name)}」</button>` : ""}
+			${si.strays ? `<span class="warn">有 ${si.strays} 個窗格在別的 space</span><button class="small primary" data-strays="1">搬過去</button>` : ""}</div>`
+		: `<div class="spaceline"><span class="chip dim">還沒有綁定 herdr space</span><span class="hint">跳轉或派工時會自動建立,也可以用「整理 spaces」</span></div>`;
+	$("brief").innerHTML = `<h3>${p.private ? "🔒 " : ""}${esc(p.name)}</h3><div class="path">${esc(p.root)}${s.updatedAt ? ` · 更新於 ${ago(s.updatedAt)}` : ""}</div>${spaceLine}
+		${s.goal ? `<h4>目標</h4><p>${esc(s.goal)}</p>` : ""}
+		${s.progress ? `<h4>目前進度</h4><p>${esc(s.progress)}</p>` : `<p class="empty">管家還沒有這個專案的紀錄。agent 收工後會自動整理${p.kind === "project" ? ',或現在就從現有記錄補建。</p><p><button class="small primary" id="bootstrap">從現有記錄補建</button>' : "。"}</p>`}
+		<div class="grid"><div>${list("下一步", s.nextSteps)}</div><div>${list("卡住的地方", s.blockers)}</div></div>
+		${s.decisions?.length ? `<details><summary><b style="font-size:12px;color:var(--muted)">重要決定(${s.decisions.length})</b></summary>${list("", s.decisions)}</details>` : ""}
+		${s.recent?.length ? `<h4>最近的工作</h4><ul>${s.recent.slice(0, 6).map((r) => `<li>${ago(r.at)} · ${esc(r.agent)}:${esc(r.summary)}</li>`).join("")}</ul>` : ""}
+		${p.kind === "project" ? `<div class="toggles"><label><input type="checkbox" id="priv" ${p.private ? "checked" : ""}> 隱私專案(只用「隱私專案」指定的模型)</label><button class="small" id="split">拆出子資料夾</button><span class="hint">改名、在終端機開啟、停止追蹤:左側專案旁的「⋯」</span></div><div id="tool"></div>` : ""}`;
+	const priv = $("priv"); if (priv) priv.onchange = () => post(`/api/projects/${p.id}`, { private: priv.checked }).then(load);
+	const bs = $("bootstrap");
+	if (bs) bs.onclick = async () => {
+		bs.disabled = true; bs.textContent = "整理中…(約 1 分鐘)";
+		const r = await post(`/api/projects/${p.id}/bootstrap`, {});
+		if (r.error) { bs.disabled = false; bs.textContent = `補建失敗:${r.error}`; return; }
+		load();
+	};
+	const sp = $("split"); if (sp) sp.onclick = () => showSplit(p);
+}
+
+async function showSplit(p) {
+	editing = p.id;
+	$("tool").innerHTML = '<div class="tool"><span class="empty">讀取子資料夾…</span></div>';
+	const r = await fetch(`/api/projects/${p.id}/subdirs`).then((x) => x.json());
+	const rows = (r.dirs || []).map((d) => `<div class="subdir"><span>${esc(d.name)}/</span>${d.project ? '<span class="empty">已是專案</span>' : `<button class="small" data-split="${esc(d.root)}">拆成專案</button>`}</div>`).join("");
+	$("tool").innerHTML = `<div class="tool split">
+		<div class="empty">拆出來的子資料夾會變成獨立專案;之後在裡面的工作改記到新專案(已經記在「${esc(p.name)}」的內容不會搬過去)。</div>
+		${rows || '<div class="empty">沒有子資料夾</div>'}
+		<form id="splitForm" class="subdir"><input id="splitPath" placeholder="或輸入完整路徑,例如 ${esc(p.root)}/某個資料夾"><button class="small primary">登記</button></form>
+		<button class="small" type="button" id="cancelTool">關閉</button></div>`;
+	$("cancelTool").onclick = closeTool;
+	const register = async (root) => {
+		const res = await post("/api/projects", { root });
+		if (res.error) { alertInline(res.error); return; }
+		await load(); selectProject(res.id, "看板");
+	};
+	$("tool").querySelectorAll("[data-split]").forEach((b) => (b.onclick = () => register(b.dataset.split)));
+	$("splitForm").onsubmit = (e) => { e.preventDefault(); const v = $("splitPath").value.trim(); if (v) register(v); };
+}
+function alertInline(msg) { const d = document.createElement("div"); d.className = "note-err"; d.textContent = msg; $("tool").prepend(d); setTimeout(() => d.remove(), 4000); }
+// ---------- 專案「⋯」選單 ----------
+function popMenu(x, y, items) {
+	document.querySelector(".cv-menu")?.remove();
+	const m = document.createElement("div");
+	m.className = "cv-menu";
+	m.setAttribute("role", "menu");
+	for (const it of items) {
+		const b = document.createElement("button");
+		b.textContent = it.label;
+		b.setAttribute("role", "menuitem");
+		if (it.danger) b.style.color = "var(--bad)";
+		b.onclick = (e) => { e.stopPropagation(); m.remove(); it.run(); };
+		m.appendChild(b);
+	}
+	document.body.appendChild(m);
+	const r = m.getBoundingClientRect();
+	m.style.left = `${Math.max(8, Math.min(x, innerWidth - r.width - 8))}px`;
+	m.style.top = `${Math.max(8, Math.min(y, innerHeight - r.height - 8))}px`;
+	m.querySelector("button")?.focus();
+	const close = (e) => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("pointerdown", close, true); } };
+	// 選單是在 click 時打開的(pointerdown 已經過去了),所以可以立刻開始監聽「點外面」
+	document.addEventListener("pointerdown", close, true);
+	m.addEventListener("keydown", (e) => { if (e.key === "Escape") m.remove(); });
+}
+function miniDialog({ title, html, okLabel, danger, onOk }) {
+	const w = document.createElement("div");
+	w.className = "modal";
+	w.innerHTML = `<div class="box" role="dialog" style="width:min(460px,100%)"><div class="mhead"><h3>${esc(title)}</h3><button class="small" data-x>取消</button></div><div class="mbody">${html}</div><div class="mfoot"><button class="small ${danger ? "" : "primary"}" data-ok ${danger ? 'style="color:var(--bad);border-color:var(--bad)"' : ""}>${esc(okLabel)}</button></div></div>`;
+	const close = () => w.remove();
+	w.querySelector("[data-x]").onclick = close;
+	w.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); if (e.key === "Enter" && e.target.tagName === "INPUT") w.querySelector("[data-ok]").click(); });
+	w.querySelector("[data-ok]").onclick = async () => { if ((await onOk(w)) !== false) close(); };
+	document.body.appendChild(w);
+	setTimeout(() => (w.querySelector("input") || w.querySelector("[data-ok]")).focus(), 30);
+}
+function projMenu(p, x, y) {
+	popMenu(x, y, [
+		{ label: "在終端機開啟", run: () => { selectProject(p.id, "看板"); setMode("term", { create: true }); } },
+		{ label: "在程式碼模式開啟", run: () => { selectProject(p.id, "看板"); setMode("code"); } },
+		{ label: "改名", run: () => miniDialog({
+			title: "改名", okLabel: "儲存",
+			html: `<label class="field">新名稱(herdr 的 space 也會跟著改)<input type="text" data-n value="${esc(p.name)}" maxlength="60"></label>`,
+			onOk: async (w) => {
+				const name = w.querySelector("[data-n]").value.trim();
+				if (!name || name === p.name) return;
+				const r = await post(`/api/projects/${p.id}`, { name });
+				toast(r.error || `已改名為「${name}」`);
+				load();
+			},
+		}) },
+		{ label: "停止追蹤", danger: true, run: () => miniDialog({
+			title: `停止追蹤「${p.name}」?`, okLabel: "停止追蹤", danger: true,
+			html: `<p>之後在這個資料夾做的事會改記到「雜務」。</p><p class="hint">進度、工作卡、管家記憶都會保留;herdr 的 space 和窗格不會被動到。隨時可以從左側最下面的「已停止追蹤」恢復。</p>`,
+			onOk: async () => {
+				await post(`/api/projects/${p.id}`, { status: "ignored" });
+				if (sel === p.id) sel = null;
+				toast(`已停止追蹤「${p.name}」`);
+				load();
+			},
+		}) },
+	]);
+}
+const DONE_SHOWN = 8;
+let showAllDone = false;
+/** 一行卡片:標題 + 小標記(有備註=橘點、第 2 次以後 ×N、全部專案時標專案名) */
+function cardLine(c, projName = "") {
+	const tags = `${c.note ? '<span class="dn" title="有備註,點開看"></span>' : ""}${(c.attempts ?? 0) > 1 ? `<span title="第 ${c.attempts} 次派工">×${c.attempts}</span>` : ""}${projName ? `<span class="pn">${esc(projName)}</span>` : ""}`;
+	return `<div class="kcard" data-card="${c.id}" title="${esc(c.title)}"><span class="t">${esc(c.title)}</span>${tags ? `<span class="tags">${tags}</span>` : ""}</div>`;
+}
+// ---------- 資訊卡 ----------
+let openCardId = null;
+const COL_LABEL = Object.fromEntries(COLS);
+function openCard(id) { openCardId = id; renderCardPop(); }
+function closeCard() { openCardId = null; $("cardPop")?.remove(); }
+function renderCardPop() {
+	if (!openCardId) return;
+	const c = state.cards.find((x) => x.id === openCardId);
+	if (!c) return closeCard();
+	let wrap = $("cardPop");
+	if (!wrap) {
+		wrap = document.createElement("div");
+		wrap.id = "cardPop";
+		wrap.className = "modal cardpop";
+		wrap.addEventListener("click", (e) => { if (e.target === wrap || e.target.closest("[data-closecard]")) closeCard(); });
+		document.body.appendChild(wrap);
+	}
+	const p = state.projects.find((x) => x.id === c.projectId);
+	const acts = {
+		proposed: '<button class="small" data-move="rejected">不要</button><button class="small primary" data-move="approved">核准派工</button>',
+		blocked: '<button class="small" data-move="done">標成完成</button><button class="small primary" data-move="approved">重新派工</button>',
+		done: '<button class="small" data-move="approved">重做一次</button>',
+	}[c.column] || "";
+	const canJump = (c.terminalId || c.paneId) && ["running", "blocked", "done"].includes(c.column);
+	wrap.innerHTML = `<div class="box" role="dialog" aria-label="${esc(c.title)}" data-card="${c.id}">
+		<div class="mhead"><h3>${esc(c.title)}</h3><button class="small" data-closecard>關閉</button></div>
+		<div class="mbody">
+			<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>· 第 ${c.attempts} 次派工</span>` : ""}<span>· 更新於 ${esc(ago(c.updatedAt))}</span>${c.paneId ? `<span>· 窗格 ${esc(c.paneId)}</span>` : ""}</div>
+			${c.note ? `<div class="cnote">${esc(c.note)}</div>` : ""}
+			<h4>指示</h4><pre class="ctext">${esc(c.instructions || "(沒有)")}</pre>
+			<h4>完成標準</h4><div>${esc(c.doneCriteria || "(沒有)")}</div>
+		</div>
+		<div class="mfoot">${canJump ? '<button class="small" data-jumpcard>在終端機看這個窗格</button>' : ""}<span class="sp"></span>${acts}</div>
+	</div>`;
+}
+async function jumpToCard(id) {
+	const c = state.cards.find((x) => x.id === id);
+	if (!c) return;
+	const r = await post(`/api/cards/${id}/focus`, {}).catch(() => ({ error: "連不上管家" }));
+	if (r.error) return toast(r.error);
+	closeCard();
+	selectProject(c.projectId, "看板");
+	herdrSeen = c.projectId; termCurrent = { project: c.projectId, via: "pane" };
+	setMode("term");
+}
+// 手機:看板上方的小圓點(目前在第幾欄,點了跳過去)
+function syncDots() {
+	const cols = [...$("board").querySelectorAll(".col")];
+	if (innerWidth > 800 || !cols.length) { $("bdots").innerHTML = ""; return; }
+	const left = $("board").scrollLeft;
+	let cur = 0;
+	cols.forEach((c, i) => { if (c.offsetLeft - $("board").offsetLeft <= left + 20) cur = i; });
+	const b = $("board");
+	if (left + b.clientWidth >= b.scrollWidth - 4) cur = cols.length - 1; // 捲到底:最後一欄
+	$("bdots").innerHTML = cols.map((c, i) => `<button type="button" data-dot="${i}" class="${i === cur ? "on" : ""}" aria-label="${esc(c.querySelector("h4 span")?.textContent ?? "")}"></button>`).join("");
+}
+$("bdots").addEventListener("click", (e) => {
+	const i = e.target.closest("[data-dot]")?.dataset.dot;
+	if (i == null) return;
+	const c = $("board").querySelectorAll(".col")[i];
+	$("board").scrollTo({ left: c.offsetLeft - $("board").offsetLeft, behavior: "smooth" });
+});
+$("board").addEventListener("scroll", () => { clearTimeout(syncDots.t); syncDots.t = setTimeout(syncDots, 60); });
+function renderBoard() {
+	const all = $("allCards").checked;
+	const cards = state.cards.filter((c) => c.column !== "rejected" && (all || c.projectId === sel));
+	const pname = (id) => state.projects.find((p) => p.id === id)?.name ?? "?";
+	const folded = foldedCols();
+	$("board").style.gridTemplateColumns = COLS.map(([col]) => (folded.has(col) ? "40px" : innerWidth <= 800 ? "78vw" : "minmax(0, 1fr)")).join(" ");
+	$("board").innerHTML = COLS.map(([col, label]) => {
+		const list = cards.filter((c) => c.column === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		// 完成欄只顯示最近 8 張
+		const shown = col === "done" && !showAllDone ? list.slice(0, DONE_SHOWN) : list;
+		const more = list.length - shown.length;
+		return `<div class="col${folded.has(col) ? " collapsed" : ""}" data-col="${col}"><h4 data-fold="${col}" title="${folded.has(col) ? "展開" : "收合"}這一欄"><span>${label}</span><span>${list.length} <span class="fold">${folded.has(col) ? "▸" : "◂"}</span></span></h4><div class="cards sfade">${shown.map((c) => cardLine(c, all ? pname(c.projectId) : "")).join("")}${more > 0 ? `<button class="small more" data-moredone>顯示更早的 ${more} 張</button>` : col === "done" && showAllDone && list.length > DONE_SHOWN ? '<button class="small more" data-moredone>只顯示最近的</button>' : ""}</div></div>`;
+	}).join("");
+	syncDots();
+}
+
+// ---------- 拖拉(滑鼠與觸控共用 pointer events) ----------
+let drag = null;
+$("board").addEventListener("pointerdown", (e) => {
+	const card = e.target.closest(".kcard");
+	if (!card || e.target.closest("button")) return;
+	drag = { id: card.dataset.card, el: card, startX: e.clientX, startY: e.clientY, ghost: null, touch: e.pointerType === "touch", pid: e.pointerId };
+	// 觸控先不抓住指標:上下滑要留給欄位捲動,左右拖才算換欄
+	if (!drag.touch) card.setPointerCapture(e.pointerId);
+});
+$("board").addEventListener("pointermove", (e) => {
+	if (!drag) return;
+	if (!drag.ghost) {
+		const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+		if (Math.hypot(dx, dy) < 6) return;
+		if (drag.touch) {
+			if (Math.abs(dy) > Math.abs(dx)) { drag = null; return; } // 上下滑 = 捲動
+			try { drag.el.setPointerCapture(drag.pid); } catch {}
+		}
+		drag.ghost = drag.el.cloneNode(true); drag.ghost.classList.add("ghost"); document.body.appendChild(drag.ghost); drag.el.classList.add("dragging");
+	}
+	drag.ghost.style.left = `${e.clientX - 20}px`; drag.ghost.style.top = `${e.clientY - 20}px`;
+	document.querySelectorAll(".col").forEach((c) => c.classList.remove("over"));
+	drag.ghost.style.display = "none"; const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".col"); drag.ghost.style.display = "";
+	if (under) under.classList.add("over");
+});
+const endDrag = (e) => {
+	if (!drag) return;
+	const d = drag; drag = null;
+	document.querySelectorAll(".col").forEach((c) => c.classList.remove("over"));
+	if (!d.ghost) return; // 沒拖動 = 點一下,交給下面的 click 開資訊卡
+	lastDragEnd = Date.now();
+	d.ghost.style.display = "none"; const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".col"); d.ghost.remove(); d.el.classList.remove("dragging");
+	if (under && under.dataset.col) move(d.id, under.dataset.col);
+};
+$("board").addEventListener("pointerup", endDrag);
+// 點一下開資訊卡:用 click(手機在 pointerup 就開的話,緊接著的 click 會落在遮罩上把它關掉);剛拖完的那下不算
+let lastDragEnd = 0;
+$("board").addEventListener("click", (e) => {
+	const card = e.target.closest(".kcard");
+	if (!card || e.target.closest("button") || Date.now() - lastDragEnd < 120) return;
+	openCard(card.dataset.card);
+});
+$("board").addEventListener("pointercancel", endDrag);
+
+async function move(id, col) {
+	const card = state.cards.find((c) => c.id === id);
+	if (!card || card.column === col) return;
+	const from = card.column;
+	card.column = col; renderBoard(); renderDrawer(); // 先樂觀更新
+	const r = await post(`/api/cards/${id}/move`, { column: col }).catch(() => ({ error: "連不上管家" }));
+	if (r.error) {
+		card.column = from; renderBoard(); renderDrawer(); // 彈回原欄位
+		toast(r.error);
+	} else if (col === "approved") {
+		toast(from === "proposed" ? "已核准,派工中…" : "重新派工中…(會附上上次的結果)");
+	} else if (col === "proposed") {
+		toast("已退回提案");
+	}
+	load();
+}
+
+// ---------- 建立專案 ----------
+const create = { path: null, picked: null, isNew: false, git: false, parent: null };
+async function fsGo(path) {
+	const r = await fetch(`/api/fs${path ? `?path=${encodeURIComponent(path)}` : ""}`).then((x) => x.json());
+	if (r.error) { showMsg("createMsg", r.error, true); return; }
+	create.path = r.path;
+	$("fsPath").textContent = r.path.replace(r.home, "~");
+	$("fsUp").disabled = !r.parent;
+	$("fsUp").onclick = () => r.parent && fsGo(r.parent);
+	$("fsHere").textContent = r.project ? `這個資料夾已經是專案「${r.project.name}」` : "";
+	$("fsList").innerHTML = r.dirs.length ? r.dirs.map((d) => `<div class="dirrow" data-dir="${esc(d.path)}"><span class="n">📁 ${esc(d.name)}</span>${d.git ? '<span class="tag">git</span>' : ""}${d.project ? `<span class="tag">專案:${esc(d.project)}</span>` : ""}</div>`).join("") : '<div class="dirrow"><span class="n empty">(沒有子資料夾)</span></div>';
+}
+function showMsg(id, text, err = false) { const m = $(id); m.hidden = !text; m.textContent = text || ""; m.classList.toggle("err", err); }
+function pick(info) {
+	Object.assign(create, info);
+	$("createForm").hidden = false;
+	$("pickedBox").textContent = create.isNew ? `新建:${create.parent.replace(/^\/Users\/[^/]+/, "~")}/${create.picked}${create.git ? "(含 git)" : ""}` : `資料夾:${create.picked.replace(/^\/Users\/[^/]+/, "~")}`;
+	$("spaceName").value = create.isNew ? create.picked : create.picked.split("/").pop();
+	$("createGo").disabled = false;
+	showMsg("createMsg", "");
+}
+function openCreate() {
+	Object.assign(create, { picked: null, isNew: false, git: false, parent: null });
+	$("createForm").hidden = true; $("createGo").disabled = true; $("newFolder").value = ""; $("newGit").checked = false; $("startAgent").value = "none";
+	showMsg("createMsg", "");
+	$("createDlg").hidden = false;
+	fsGo(null);
+}
+$("fsList").addEventListener("click", (e) => { const row = e.target.closest("[data-dir]"); if (row) fsGo(row.dataset.dir); });
+$("fsPick").onclick = () => create.path && pick({ picked: create.path, isNew: false });
+$("fsNew").onclick = () => {
+	const name = $("newFolder").value.trim();
+	if (!name) { showMsg("createMsg", "先輸入新資料夾的名稱", true); return; }
+	pick({ picked: name, parent: create.path, isNew: true, git: $("newGit").checked });
+};
+$("createGo").onclick = async () => {
+	const body = create.isNew ? { parent: create.parent, newName: create.picked, git: create.git } : { path: create.picked };
+	Object.assign(body, { spaceName: $("spaceName").value.trim(), agent: $("startAgent").value });
+	$("createGo").disabled = true;
+	const r = await post("/api/projects/create", body).catch(() => ({ error: "連不上管家" }));
+	$("createGo").disabled = false;
+	if (r.exists) { // 規則 1:已經是專案 → 直接跳過去
+		$("createDlg").hidden = true; toast(r.message); await load(); selectProject(r.project.id, "看板"); return;
+	}
+	if (r.error) {
+		showMsg("createMsg", r.error, true);
+		if (r.suggestion) { // 規則 3:名稱衝突 → 一鍵用建議名稱
+			const b = document.createElement("button"); b.className = "small"; b.textContent = `用「${r.suggestion}」`;
+			b.onclick = () => { $("spaceName").value = r.suggestion; showMsg("createMsg", ""); };
+			$("createMsg").append(" ", b);
+		}
+		return;
+	}
+	selectProject(r.project.id, "看板");
+	if (r.strays) { // 規則 4:子專案的資料夾裡已經有窗格
+		showMsg("createMsg", `${r.message}${r.subProjectOf ? `(從「${r.subProjectOf}」拆出)` : ""}。這個資料夾已經有 ${r.strays} 個窗格開在別的 space,要搬到新的 space 嗎?`);
+		const yes = document.createElement("button"); yes.className = "small primary"; yes.textContent = "搬過去";
+		const no = document.createElement("button"); no.className = "small"; no.textContent = "先不要";
+		yes.onclick = async () => { const m = await post(`/api/projects/${r.project.id}/strays`, {}); toast(m.error || `已搬 ${m.moved} 個窗格到「${m.space}」`); $("createDlg").hidden = true; load(); };
+		no.onclick = () => { $("createDlg").hidden = true; load(); };
+		$("createMsg").append(" ", yes, " ", no);
+		$("createGo").disabled = true;
+		return;
+	}
+	$("createDlg").hidden = true;
+	toast(`${r.message}${r.agent ? `,正在啟動 ${r.agent}` : ""}`);
+	load();
+};
+
+// ---------- 整理 spaces ----------
+let tidyRows = [];
+async function openTidy() {
+	$("tidyDlg").hidden = false; $("tidyGo").disabled = true; $("tidyNote").textContent = "";
+	$("tidyList").innerHTML = '<div class="empty">計算中…</div>';
+	tidyRows = (await fetch("/api/spaces/plan").then((x) => x.json())).rows ?? [];
+	const verb = { bind: "綁定現有 space", create: "新建 space", keep: "已綁定", skip: "不處理" };
+	$("tidyList").innerHTML = tidyRows.map((r, i) => {
+		const actionable = r.action === "bind" || r.action === "create" || r.moves.length > 0;
+		return `<label class="tidyrow"><input type="checkbox" data-tidy="${i}" ${actionable ? "checked" : "disabled"}>
+			<div><b>${esc(r.project)}</b> → ${esc(verb[r.action])}${r.spaceLabel && r.action !== "skip" ? `「${esc(r.spaceLabel)}」` : ""}${r.nameDiffers ? '<span class="hint">(名稱不同,之後可在專案頁同步)</span>' : ""}
+			<div class="hint">${esc(r.reason)}</div>
+			${r.moves.length ? `<div class="moves">${r.moves.map((m) => `搬「${esc(m.tab)}」(從 ${esc(m.from)})`).join("<br>")}</div>` : ""}</div></label>`;
+	}).join("") || '<div class="empty">沒有專案</div>';
+	$("tidyGo").disabled = !tidyRows.length;
+}
+$("tidyGo").onclick = async () => {
+	const accept = [...document.querySelectorAll("[data-tidy]:checked")].map((c) => tidyRows[Number(c.dataset.tidy)].projectId);
+	if (!accept.length) { $("tidyNote").textContent = "沒有勾選任何項目"; return; }
+	$("tidyGo").disabled = true; $("tidyNote").textContent = "執行中…";
+	const r = await post("/api/spaces/tidy", { accept }).catch(() => ({ log: ["連不上管家"] }));
+	$("tidyList").innerHTML = `<div class="msgbox">${(r.log || []).map(esc).join("<br>") || "沒有需要做的事"}</div>`;
+	$("tidyNote").textContent = "完成";
+	load();
+};
+
+document.addEventListener("click", (e) => {
+	const pm = e.target.closest?.("[data-pmenu]");
+	if (pm) {
+		e.stopPropagation();
+		const p = state.projects.find((x) => x.id === pm.dataset.pmenu);
+		const r = pm.getBoundingClientRect();
+		if (p) projMenu(p, r.right - 4, r.bottom + 2);
+		return;
+	}
+	const c = e.target.closest?.("[data-close]");
+	if (c && c.dataset.close && $(c.dataset.close)) { $(c.dataset.close).hidden = true; return; }
+	if (e.target.id === "newProject") { openCreate(); return; }
+	if (e.target.id === "tidySpaces") { openTidy(); return; }
+	if (e.target.dataset?.spacename) { post(`/api/projects/${sel}/space-name`, { use: e.target.dataset.spacename }).then(() => load()); return; }
+	if (e.target.dataset?.strays) { post(`/api/projects/${sel}/strays`, {}).then((m) => { toast(m.error || `已搬 ${m.moved} 個窗格到「${m.space}」`); load(); }); return; }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { for (const id of ["createDlg", "tidyDlg"]) $(id).hidden = true; closeCard(); } });
+document.addEventListener("click", (e) => {
+	const t = e.target;
+	if (t.closest(".proj")) { $("nav").classList.remove("open"); syncMenuLabel(); selectProject(t.closest(".proj").dataset.id, document.body.classList.contains("code") ? "程式碼頁面" : document.body.classList.contains("term") ? "終端機" : "看板"); }
+	if (t.dataset.reg) post(`/api/projects/${t.dataset.reg}`, { status: "active" }).then(load);
+	if (t.dataset.ign) post(`/api/projects/${t.dataset.ign}`, { status: "ignored" }).then(load);
+	if (t.dataset.move) { const id = t.closest("[data-card]")?.dataset.card; if (t.closest("#cardPop")) closeCard(); if (id) move(id, t.dataset.move); }
+	if (t.closest("[data-jumpcard]")) jumpToCard(t.closest("[data-card]").dataset.card);
+	if (t.closest("[data-moredone]")) { showAllDone = !showAllDone; renderBoard(); }
+	if (t.closest("#dBody .kcard")) openCard(t.closest(".kcard").dataset.card);
+});
+function wideNav() { return innerWidth >= 1100; }
+const navOverlay = () => !wideNav() || document.body.classList.contains("code") || document.body.classList.contains("term");
+function syncMenuLabel() {
+	const shown = navOverlay() ? $("nav").classList.contains("open") : !document.body.classList.contains("nav-collapsed");
+	$("menuChev").textContent = shown ? "◂" : "▸";
+	$("menu").title = shown ? "收起專案欄" : "打開專案欄";
+}
+$("menu").onclick = (e) => {
+	e.stopPropagation();
+	// 程式碼/終端機頁、窄螢幕:專案清單從左邊滑出;寬螢幕看板:收合/展開專案欄
+	if (!navOverlay()) {
+		const on = !document.body.classList.contains("nav-collapsed");
+		document.body.classList.toggle("nav-collapsed", on);
+		pref("steward.navCollapsed", on ? "1" : "0");
+		syncMenuLabel();
+	} else { $("nav").classList.toggle("open"); syncMenuLabel(); }
+};
+// 窄螢幕:點清單外面就收起來
+document.addEventListener("pointerdown", (e) => {
+	if (navOverlay() && $("nav").classList.contains("open") && !e.target.closest("nav") && !e.target.closest("#menu")) { $("nav").classList.remove("open"); syncMenuLabel(); }
+}, true);
+function foldedCols() {
+	try { return new Set(JSON.parse(localStorage.getItem("steward.foldedCols") || "[]")); } catch { return new Set(); }
+}
+$("board").addEventListener("click", (e) => {
+	const h = e.target.closest("[data-fold]") || (e.target.closest(".col.collapsed") && { dataset: { fold: e.target.closest(".col").dataset.col } });
+	if (!h) return;
+	const f = foldedCols();
+	f.has(h.dataset.fold) ? f.delete(h.dataset.fold) : f.add(h.dataset.fold);
+	try { localStorage.setItem("steward.foldedCols", JSON.stringify([...f])); } catch {}
+	renderBoard();
+});
+function applyViewToggles() {
+	const b = pref("steward.boardCollapsed") === "1";
+	document.body.classList.toggle("board-collapsed", b);
+	$("toggleBoard").textContent = b ? "展開看板" : "收起看板";
+}
+$("toggleBoard").onclick = () => { pref("steward.boardCollapsed", pref("steward.boardCollapsed") === "1" ? "0" : "1"); applyViewToggles(); };
+// pref 定義在後面:等整段腳本跑完再套用記住的版面設定
+setTimeout(() => {
+	if (pref("steward.navCollapsed") === "1") document.body.classList.add("nav-collapsed");
+	applyViewToggles();
+	syncMenuLabel();
+}, 0);
+let lastWide = wideNav();
+addEventListener("resize", () => { if (wideNav() !== lastWide) { lastWide = wideNav(); $("nav").classList.remove("open"); syncMenuLabel(); } renderBoard(); });
+$("allCards").onchange = renderBoard;
+
+
+// ---------- 終端機模式 ----------
+const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} };
+let fontSize = Number(pref("steward.font")) || (innerWidth < 800 ? 11 : 15); // 手機預設小一點,一次看得到更多欄
+function xterm() { try { return $("term").contentWindow.term; } catch { return undefined; } }
+// ---------- 手機鍵盤:畫面高度跟著「鍵盤上方看得到的高度」走 ----------
+// 鍵盤打開:整個 App 縮到鍵盤上方(終端機最下面的輸入列不會被擋住);收起:高度自動回來。
+// iOS 叫出鍵盤時會把頁面往上推,整頁不能捲所以自己回不來:每次都移回頂端。
+function resetViewport() {
+	if (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop) {
+		window.scrollTo(0, 0);
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
+	}
+}
+let appH = 0;
+function syncAppHeight() {
+	const vv = window.visualViewport;
+	const h = Math.round(vv ? vv.height : innerHeight);
+	resetViewport();
+	if (Math.abs(h - appH) < 2) return;
+	appH = h;
+	document.documentElement.style.setProperty("--appH", `${h}px`);
+	// 終端機跟著重算行數
+	setTimeout(() => { try { $("term").contentWindow.dispatchEvent(new Event("resize")); } catch {} }, 60);
+}
+window.visualViewport?.addEventListener("resize", syncAppHeight);
+window.visualViewport?.addEventListener("scroll", () => setTimeout(resetViewport, 30));
+addEventListener("resize", syncAppHeight);
+syncAppHeight();
+document.addEventListener("focusout", () => setTimeout(() => {
+	const a = document.activeElement;
+	if (!a || a === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) resetViewport();
+}, 120));
+// 手機:不主動把游標放進 herdr(會跳鍵盤);使用者點了終端機畫面才聚焦、跳鍵盤
+const touchDevice = matchMedia("(pointer: coarse)").matches;
+function focusTerm() {
+	if (touchDevice) return;
+	xterm()?.focus();
+}
+/** 終端機載入時會自己聚焦:手機上先移開(不要一進頁面就跳鍵盤) */
+function blurTermOnTouch() {
+	const ta = xterm()?.textarea;
+	if (touchDevice && ta && ta.ownerDocument.activeElement === ta) ta.blur();
+}
+function applyFont() {
+	$("fontSize").textContent = fontSize;
+	const t = xterm();
+	if (!t) return;
+	t.options.fontSize = fontSize;
+	try { $("term").contentWindow.dispatchEvent(new Event("resize")); } catch {}
+}
+// herdr 拖曳選取放開後用 OSC 52 要外層終端機寫剪貼簿;ttyd 的 xterm.js 沒處理 52,這裡補上。
+// ---------- 設定 ----------
+let setState = null; // { s: 目前的設定, detected, tab }
+const SET_TABS = [["general", "一般"], ["ai", "AI 接口"], ["routing", "路由"], ["agents", "Agent"], ["access", "存取"], ["notify", "推播"], ["about", "關於"]];
+let setAgents = null;
+// 第一次設定精靈:[分頁, 標題, 說明]
+const WIZ = [
+	["general", "歡迎", "專案管家會整理你在各個 AI agent(Claude Code、Codex、pi…)的工作進度,並在看板上提案、派工。先花一分鐘設定幾件事,之後都能在右上角 ⚙ 修改。"],
+	["ai", "AI 接口", "管家自己也要用 AI(聊天、整理進度、檢查提案)。至少接上一個:貼上 API 金鑰,或填自架模型的網址;儲存後會自動幫每項工作挑好模型(「路由」分頁可以改)。"],
+	["agents", "Agent", "勾選要接上專案管家的 agent:它們開工時會讀到專案進度,做完會回報給管家。"],
+	["access", "密碼與遠端存取", "只在這台電腦用的話,這一步可以直接按「完成」。要從手機或其他電腦連進來,先設定管理密碼,再開啟 Tailscale 或區網存取。"],
+];
+let setUpdate = null; // GET /api/settings/update 的結果
+async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: "連不上管家" })); }
+function aboutPane() {
+	const u = setUpdate;
+	const win = setState.platform === "win32";
+	const st = !u ? "檢查中…"
+		: u.running ? "正在更新…(完成後管家會自動重啟,這頁重新整理即可)"
+		: u.hasUpdate ? `<b>有新版本 ${esc(u.latest)}</b>${u.url ? `(<a href="${esc(u.url)}" target="_blank" rel="noopener">更新內容</a>)` : ""}`
+		: u.error ? esc(u.error)
+		: u.dev ? `這是開發版,不會自動更新${u.latest ? `(最新發布版 ${esc(u.latest)})` : ""}`
+		: "已經是最新版";
+	return `<label class="field">目前版本<input type="text" readonly value="${esc(u?.current ?? "")}"></label>
+		<div class="hint">${st}</div>
+		${u?.notes && u.hasUpdate ? `<pre class="upd-notes">${esc(u.notes)}</pre>` : ""}
+		<div><button class="small" id="updCheck">檢查更新</button> ${u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">更新到 ${esc(u.latest)}</button>` : ""}</div>
+		<pre class="upd-log" id="updLog" ${u?.running ? "" : "hidden"}></pre>
+		<h4>移除專案管家</h4>
+		<div class="hint">在這台電腦的終端機執行(資料會保留;加 ${win ? "<code>-Purge</code>" : "<code>--purge</code>"} 連資料一起刪除):</div>
+		<pre class="upd-cmd">${win ? "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1" : "sh ~/.agent-steward/app/uninstall.sh"}</pre>`;
+}
+let updTimer = null;
+function pollUpdateLog() {
+	clearInterval(updTimer);
+	updTimer = setInterval(async () => {
+		const box = $("updLog");
+		if (!box || !setState) return clearInterval(updTimer);
+		const r = await fetch("/api/settings/update/log").then((x) => x.json()).catch(() => null);
+		if (r) { box.hidden = false; box.textContent = r.log; box.scrollTop = box.scrollHeight; }
+		if (r && /專案管家已經在跑|錯誤:/.test(r.log.split("=====").pop())) { clearInterval(updTimer); if (/已經在跑/.test(r.log.split("=====").pop())) toast("更新完成,重新整理頁面就是新版"); }
+	}, 2000);
+}
+async function loadSetAgents() { setAgents = (await fetch("/api/settings/agents").then((r) => r.json()).catch(() => null))?.agents ?? []; }
+const PART_LABEL = { brief: "開工簡報", mcp: "MCP 工具", instructions: "工作說明" };
+function agentRow(a) {
+	const parts = Object.keys(a.can).filter((k) => a.can[k]);
+	const badges = [...parts.map((k) => `<span class="chip ${a.on[k] ? "on" : ""}" title="${a.on[k] ? "已接上" : "還沒接上"}">${PART_LABEL[k]}${a.on[k] ? " ✓" : ""}</span>`), a.records ? '<span class="chip" title="管家會自動讀它的對話記錄">自動記錄</span>' : "", a.dispatch ? '<span class="chip" title="看板可以把工作卡派給它(要有 herdr)">可派工</span>' : ""].join("");
+	return `<div class="prov"><div class="prov-h"><b>${esc(a.name)}</b>${badges}<span style="flex:1"></span>
+		${parts.length ? `<button class="small ${a.integrated ? "" : "primary"}" data-agent="${a.id}" data-on="${a.integrated ? 0 : 1}">${a.integrated ? "拿掉" : "接上專案管家"}</button>` : ""}</div>
+		<div class="hint">${a.installed ? esc(a.path) : "這台電腦沒有裝"}</div>
+		${a.manual && a.installed ? `<details><summary class="hint">手動接上 MCP</summary><pre class="ctext">${esc(a.manual)}</pre></details>` : ""}</div>`;
+}
+function agentsPane() {
+	if (!setAgents) return '<div class="empty">偵測中…</div>';
+	const inst = setAgents.filter((a) => a.installed), other = setAgents.filter((a) => !a.installed);
+	return `<div class="hint">這台電腦上偵測到的 AI agent。「接上專案管家」會修改它的設定檔(先備份成 *.bak-steward-日期),之後開工就能讀到專案進度、問管家、回報;「拿掉」只移除專案管家加的部分。</div>
+		${inst.map(agentRow).join("") || '<div class="empty">沒有偵測到支援的 agent</div>'}
+		<details><summary class="hint">其他支援的 agent(這台電腦沒有裝,${other.length} 個)</summary>${other.map((a) => `<div class="hint">· ${esc(a.name)}</div>`).join("")}</details>
+		<div><button class="small" id="agentsRescan">重新偵測</button></div>`;
+}
+const BUILTIN_LABEL = { openai: "OpenAI", anthropic: "Anthropic(Claude)", google: "Google Gemini", openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq", mistral: "Mistral", xai: "xAI(Grok)" };
+const ROLE_ROWS = [["chat", "聊天室問答", "浮動球裡的問答"], ["suggest", "建議問題", "聊天室上方的三個建議問題"], ["digest", "整理 agent 回報", "agent 做完一段工作後整理專案進度(量最大)"], ["judge", "提案檢查", "決定要不要開工作卡給 agent(唯一能開卡的)"], ["commitmsg", "產生提交訊息", "程式碼頁 Git 的「產生提交訊息」"]];
+let setModels = null; // GET /api/settings/models 的結果
+async function loadSetModels() { setModels = await fetch("/api/settings/models").then((r) => r.json()).catch(() => null); }
+function providerCard(c, i) {
+	const kind = c.type === "builtin" ? (c.auth === "pi" ? "沿用 pi 的登入" : "API 金鑰") : c.type === "pi-models" ? "沿用 pi 的模型設定" : "OpenAI 相容網址";
+	const n = setModels?.providers.find((x) => x.id === c.id)?.models.length;
+	return `<div class="prov" data-i="${i}">
+		<div class="prov-h"><b>${esc(c.name || c.id)}</b><span class="chip">${esc(kind)}</span><span class="hint">代號 ${esc(c.id)}${n != null ? ` · ${n} 個模型` : ""}</span><span style="flex:1"></span>
+			<button class="small" data-ptest="${i}">測試連線</button><button class="small" data-pdel="${i}">刪除</button></div>
+		<label class="field">顯示名稱<input type="text" data-p="${i}.name" value="${esc(c.name)}"></label>
+		${c.type === "builtin" && c.auth !== "pi" ? `<label class="field">API 金鑰<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" placeholder="貼上金鑰" autocomplete="off"></label>` : ""}
+		${c.type === "openai-compatible" ? `<label class="field">網址(OpenAI 相容,通常結尾是 /v1)<input type="text" data-p="${i}.baseUrl" value="${esc(c.baseUrl || "")}"></label>
+			<label class="field">API 金鑰(沒有就空白)<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" autocomplete="off"></label>
+			<label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
+		${c.type === "pi-models" ? `<div class="hint">網址、金鑰、模型清單都讀 pi 的設定(~/.pi/agent/models.json 的「${esc(c.piProvider || c.id)}」),pi 改了這裡跟著變。</div><label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
+		<div class="prov-test" id="ptest${i}"></div>
+	</div>`;
+}
+function aiPane(s) {
+	const have = new Set(s.providers.map((p) => p.id));
+	const piAdd = (setModels?.piProviders || []).filter((p) => !have.has(p.id));
+	return `${setState.wizard == null ? '<div class="hint">管家用到的 AI 都從這裡設定。新增或修改後按「儲存」才會生效;「測試連線」會先幫你儲存。</div>' : ""}
+		${s.providers.map(providerCard).join("") || '<div class="empty">還沒有任何 AI 接口,從下面新增一個。</div>'}
+		<h4>新增接口</h4>
+		<div class="row">
+			<label class="field">雲端服務(用 API 金鑰)<select id="addBuiltin"><option value="">選一個…</option>${Object.entries(BUILTIN_LABEL).filter(([k]) => !have.has(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
+			<label class="field">本地或自架(OpenAI 相容)<select id="addCompat"><option value="">選一個…</option><option value="ollama|Ollama|http://localhost:11434/v1">Ollama</option><option value="lmstudio|LM Studio|http://localhost:1234/v1">LM Studio</option><option value="local|自架模型|http://">vLLM / 其他網址</option></select></label>
+			${piAdd.length ? `<label class="field">沿用 pi(這台電腦偵測到的)<select id="addPi"><option value="">選一個…</option>${piAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
+		</div>`;
+}
+function routeOptions(selected, onlyLocal) {
+	const ps = setModels?.providers || [];
+	const opts = ps.map((p) => `<optgroup label="${esc(p.name)}${p.local ? "(本地)" : ""}">${p.models.map((m) => { const v = `${p.id}/${m}`; const dis = onlyLocal && !p.local; return `<option value="${esc(v)}" ${v === selected ? "selected" : ""} ${dis ? "disabled" : ""}>${esc(m)}${dis ? "(雲端,不能用)" : ""}</option>`; }).join("")}</optgroup>`).join("");
+	const known = ps.some((p) => p.models.some((m) => `${p.id}/${m}` === selected));
+	return `<option value="">(不設定)</option>${selected && !known ? `<option value="${esc(selected)}" selected>${esc(selected)}(找不到這個模型)</option>` : ""}${opts}`;
+}
+function routingPane(s) {
+	if (!setModels) return '<div class="empty">讀取模型清單中…</div>';
+	return `<div class="hint">每項工作選一個主要模型;可以再選一個備用。主要的失敗時:背景工作(整理回報、提案檢查、建議問題、提交訊息)自動改用備用;聊天室會讓你按「改用備用模型回答這一題」。剛新增的接口要先儲存才會出現在選單裡。</div>
+		${ROLE_ROWS.map(([k, l, d]) => `<div class="route"><div><b>${l}</b><div class="hint">${d}</div></div>
+			<label class="field">主要<select data-route="${k}.primary">${routeOptions(s.routing[k].primary)}</select></label>
+			<label class="field">備用<select data-route="${k}.fallback">${routeOptions(s.routing[k].fallback)}</select></label></div>`).join("")}
+		<div class="route"><div><b>隱私專案</b><div class="hint">隱私專案的所有工作都只用這個模型,不會用備用、也不會送到雲端。只能選本地模型。</div></div>
+			<label class="field">模型<select data-route="privacy">${routeOptions(s.routing.privacy, true)}</select></label></div>`;
+}
+async function openSettings(tab = "general", wizard = false) {
+	const r = await fetch("/api/settings").then((x) => x.json().then((d) => ({ ok: x.ok, d }))).catch(() => ({ ok: false, d: { error: "連不上管家" } }));
+	if (!r.ok) return toast(r.d.error || "沒有權限打開設定");
+	setState = { s: r.d.settings, detected: r.d.detected, platform: r.d.platform, tab, auth: await fetch("/api/auth/status").then((x) => x.json()).catch(() => null) };
+	setModels = null; setAgents = null; setUpdate = null;
+	if (wizard) { setState.wizard = 0; setState.tab = WIZ[0][0]; }
+	let m = $("setModal");
+	if (!m) {
+		m = document.createElement("div");
+		m.id = "setModal"; m.className = "modal setmodal";
+		m.addEventListener("click", (e) => { if (e.target === m) closeSettings(); });
+		document.body.appendChild(m);
+	}
+	m.hidden = false;
+	renderSettings();
+}
+function closeSettings() { $("setModal")?.remove(); setState = null; }
+const lines = (v) => String(v || "").split("\n").map((x) => x.trim()).filter(Boolean);
+function renderSettings() {
+	const { s, detected, tab } = setState;
+	const m = $("setModal");
+	const pane = {
+		general: `
+			<label class="field">管家怎麼稱呼你<input type="text" data-k="user.name" value="${esc(s.user.name)}" placeholder="例如:小明(空白就叫「使用者」)"></label>
+			<label class="field">「建立專案」瀏覽資料夾的起點<input type="text" data-k="paths.createRoot" value="${esc(s.paths.createRoot)}" placeholder="~ 代表家目錄,例如 ~/Projects"></label>
+			<h4>隱私路徑</h4>
+			<div class="hint">這些資料夾底下的專案只會用「隱私專案」指定的模型(通常是本地模型),內容不會送到雲端。一行一個,可以用 ~ 開頭。</div>
+			<textarea data-k="paths.privacy" data-lines>${esc(s.paths.privacy.join("\n"))}</textarea>
+			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> 同時沿用 pi 的隱私清單${detected.piPrivacy ? "" : "(這台電腦沒有 pi 的清單)"}</label>`,
+		access: `
+			<h4>管理密碼</h4>
+			<div class="hint">${setState.auth?.hasPassword ? "已設定。" : "<b>還沒設定</b>:目前只有這台電腦本身能使用專案管家。"}從別的裝置、瀏覽器登入時要輸入這組密碼(Tailscale 本人的裝置免密碼)。</div>
+			<div class="row">
+				${setState.auth?.hasPassword ? '<label class="field">目前的密碼<input type="password" id="pwCur" autocomplete="current-password"></label>' : ""}
+				<label class="field">新密碼(至少 8 個字)<input type="password" id="pwNew" autocomplete="new-password"></label>
+				<label class="field">再輸入一次<input type="password" id="pwNew2" autocomplete="new-password"></label>
+			</div>
+			<div><button class="small" id="pwSet">${setState.auth?.hasPassword ? "修改密碼" : "設定密碼"}</button>${setState.auth?.how === "password" ? ' <button class="small" id="logoutBtn">登出這個瀏覽器</button>' : ""}</div>
+			<h4>Tailscale 遠端存取</h4>
+			<div class="hint">${detected.tailscale ? "從任何地方經 Tailscale 連進來,有 https 網址(手機複製貼上才能用)。下面這些帳號的個人裝置(手機、筆電)免密碼;其他人要用管理密碼登入。" : "這台電腦沒有偵測到 Tailscale。裝好並登入 Tailscale 後,這裡就能開啟。"}</div>
+			<label><input type="checkbox" id="tsToggle" ${s.access.tailscale.enabled ? "checked" : ""} ${detected.tailscale ? "" : "disabled"}> 開啟 Tailscale 遠端存取${s.access.tailscale.enabled && s.server.publicUrl ? `:<a href="${esc(s.server.publicUrl)}" target="_blank">${esc(s.server.publicUrl)}</a>` : ""}</label>
+			<label class="field">免密碼的 Tailscale 帳號(一行一個)<textarea data-k="access.tailscaleUsers" data-lines>${esc(s.access.tailscaleUsers.join("\n"))}</textarea></label>
+			<h4>區網存取</h4>
+			<div class="hint">同一個 Wi-Fi 的裝置可以打開專案管家,要用管理密碼登入${detected.lanIps?.length ? `,網址:${detected.lanIps.map((ip) => `http://${ip}:${detected.port}/`).join("、")}` : ""}。改了要重新啟動管家才生效。</div>
+			<label><input type="checkbox" data-k="access.lan.enabled" ${s.access.lan.enabled ? "checked" : ""} ${setState.auth?.hasPassword ? "" : "disabled"}> 開啟區網存取${setState.auth?.hasPassword ? "" : "(先設定管理密碼)"}</label>
+			<details><summary class="hint">進階</summary>
+				<label class="field">對外網址(推播訊息裡的連結;從 http 打開時會轉到這個 https 網址)<input type="text" data-k="server.publicUrl" value="${esc(s.server.publicUrl)}" placeholder="空白 = http://127.0.0.1:${s.server.port}/"></label>
+				<div class="row">
+					<label class="field">埠號<input type="text" data-k="server.port" data-num value="${s.server.port}"></label>
+					<label class="field">網頁終端機埠號<input type="text" data-k="server.terminalPort" data-num value="${s.server.terminalPort}"></label>
+				</div>
+				<label class="field">聽哪些位址(一行一個;127.0.0.1 一定會有)<textarea data-k="server.hosts" data-lines>${esc(s.server.hosts.join("\n"))}</textarea></label>
+				<div class="set-note">埠號和位址改了要重新啟動管家才會生效。</div>
+			</details>`,
+		notify: `
+			<div class="hint">工作卡提案、卡住、每日提醒時推播給你。</div>
+			<div class="radios">${[["none", "不推播"], ["telegram", "Telegram 機器人"], ["webhook", "通用 webhook"], ["hermes", "Hermes"]].map(([k, l]) => `<label><input type="radio" name="nk" data-k="notify.kind" value="${k}" ${s.notify.kind === k ? "checked" : ""}> ${l}</label>`).join("")}</div>
+			<div class="sub" data-show="telegram" ${s.notify.kind === "telegram" ? "" : "hidden"}>
+				<div class="hint">在 Telegram 找 @BotFather 建一個機器人拿到 token;先傳一句話給你的機器人,再打開 https://api.telegram.org/bot&lt;token&gt;/getUpdates 找到 chat 的 id。</div>
+				<label class="field">Bot token<input type="text" data-k="notify.telegram.botToken" value="${esc(s.notify.telegram.botToken)}" placeholder="123456:ABC..." autocomplete="off"></label>
+				<label class="field">Chat ID<input type="text" data-k="notify.telegram.chatId" value="${esc(s.notify.telegram.chatId)}"></label>
+			</div>
+			<div class="sub" data-show="webhook" ${s.notify.kind === "webhook" ? "" : "hidden"}>
+				<div class="hint">會用 POST 送出 JSON:{"text": …, "content": …, "message": …}。Slack、Discord、ntfy 之類的服務都能接。</div>
+				<label class="field">Webhook 網址<input type="text" data-k="notify.webhook.url" value="${esc(s.notify.webhook.url)}" placeholder="https://..."></label>
+			</div>
+			<div class="sub" data-show="hermes" ${s.notify.kind === "hermes" ? "" : "hidden"}>
+				<div class="hint">${detected.hermes ? "已找到 Hermes 的推播路由。" : "還沒找到 Hermes 的推播路由(~/.hermes/webhook_subscriptions.json)。"}</div>
+				<label class="field">Webhook 網址<input type="text" data-k="notify.hermes.url" value="${esc(s.notify.hermes.url)}" placeholder="例如 http://127.0.0.1:8644/p/&lt;profile&gt;/webhooks/steward"></label>
+				<label class="field">路由名稱<input type="text" data-k="notify.hermes.route" value="${esc(s.notify.hermes.route)}"></label>
+			</div>
+			<div><button class="small" id="setTestNotify">儲存並發一則測試推播</button></div>`,
+		ai: aiPane(s),
+		agents: agentsPane(),
+		routing: routingPane(s),
+		about: aboutPane(),
+	}[tab];
+	const wz = setState.wizard;
+	m.innerHTML = wz == null ? `<div class="box" role="dialog" aria-label="設定">
+		<div class="mhead"><h3>設定</h3><button class="small" data-x>關閉</button></div>
+		<div class="mbody"><div class="set-tabs">${SET_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div><div class="set-pane">${pane}</div></div>
+		<div class="mfoot"><span class="set-note" id="setMsg"></span><span style="flex:1"></span><button class="small" data-x>取消</button><button class="small primary" id="setSave">儲存</button></div>
+	</div>` : `<div class="box" role="dialog" aria-label="第一次設定">
+		<div class="mhead"><h3>第一次設定 · ${wz + 1}/${WIZ.length} ${WIZ[wz][1]}</h3><button class="small" id="wzSkip">之後再說</button></div>
+		<div class="mbody"><div class="set-pane"><div class="wz-intro">${WIZ[wz][2]}</div>${pane}</div></div>
+		<div class="mfoot"><span class="set-note" id="setMsg"></span><span style="flex:1"></span>${wz > 0 ? '<button class="small" id="wzPrev">上一步</button>' : ""}<button class="small primary" id="setSave">${wz === WIZ.length - 1 ? "完成" : "下一步"}</button></div>
+	</div>`;
+	m.querySelectorAll("[data-x]").forEach((b) => (b.onclick = closeSettings));
+	if (wz != null) {
+		const go = async (d) => {
+			if (!(await saveSettings(false, true))) return;
+			setState.wizard = wz + d; setState.tab = WIZ[wz + d][0]; renderSettings();
+		};
+		$("wzPrev")?.addEventListener("click", () => go(-1));
+		$("wzSkip").onclick = async () => { setState.s.setupDone = true; if (await saveSettings(true, true)) toast("之後可以從右上角 ⚙ 打開設定"); };
+		$("setSave").onclick = async () => {
+			if (wz < WIZ.length - 1) return go(1);
+			setState.s.setupDone = true;
+			if (await saveSettings(true, true)) { toast("設定完成"); syncPwBanner(); }
+		};
+	}
+	m.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { collectSettings(); setState.tab = b.dataset.tab; renderSettings(); }));
+	m.querySelectorAll('input[name="nk"]').forEach((r) => (r.onchange = () => m.querySelectorAll("[data-show]").forEach((d) => (d.hidden = d.dataset.show !== r.value))));
+	if (wz == null) $("setSave").onclick = () => saveSettings();
+	// ---- 存取 ----
+	$("pwSet")?.addEventListener("click", async () => {
+		const next = $("pwNew").value, next2 = $("pwNew2").value;
+		if (next !== next2) return toast("兩次輸入的新密碼不一樣");
+		const r = await post("/api/auth/password", { current: $("pwCur")?.value ?? "", next }).catch(() => ({ error: "連不上管家" }));
+		if (!r.ok) return toast(r.error || "設定失敗");
+		toast("管理密碼已設定");
+		collectSettings();
+		setState.auth = await fetch("/api/auth/status").then((x) => x.json()).catch(() => setState.auth);
+		renderSettings(); syncPwBanner();
+	});
+	$("logoutBtn")?.addEventListener("click", async () => { await post("/api/auth/logout", {}); location.reload(); });
+	$("tsToggle")?.addEventListener("change", async (e) => {
+		const box = e.target; box.disabled = true;
+		const r = await post("/api/settings/tailscale", { enable: box.checked }).catch(() => ({ error: "連不上管家" }));
+		box.disabled = false;
+		if (!r.ok) { box.checked = !box.checked; return toast(r.error || "設定失敗"); }
+		collectSettings();
+		setState.s.access.tailscale = r.settings.access.tailscale;
+		setState.s.access.tailscaleUsers = r.settings.access.tailscaleUsers;
+		setState.s.server.publicUrl = r.settings.server.publicUrl;
+		toast(box.checked ? `已開啟:${r.url}` : "已關閉 Tailscale 遠端存取");
+		renderSettings();
+	});
+	// ---- AI 接口 ----
+	const add = (c) => { collectSettings(); setState.s.providers.push(c); renderSettings(); };
+	$("addBuiltin")?.addEventListener("change", (e) => { const k = e.target.value; if (k) add({ id: k, type: "builtin", builtin: k, auth: "apiKey", name: BUILTIN_LABEL[k], apiKey: "" }); });
+	$("addCompat")?.addEventListener("change", (e) => {
+		if (!e.target.value) return;
+		const [id0, name, url] = e.target.value.split("|");
+		let id = id0, n = 2;
+		while (setState.s.providers.some((p) => p.id === id)) id = `${id0}${n++}`;
+		add({ id, type: "openai-compatible", name, baseUrl: url, apiKey: "", local: true, models: [] });
+	});
+	$("addPi")?.addEventListener("change", (e) => { const p = (setModels?.piProviders || []).filter((x) => !setState.s.providers.some((y) => y.id === x.id))[e.target.value]; if (p) add({ ...p }); });
+	m.querySelectorAll("[data-pdel]").forEach((b) => (b.onclick = () => { collectSettings(); setState.s.providers.splice(Number(b.dataset.pdel), 1); renderSettings(); }));
+	m.querySelectorAll("[data-ptest]").forEach((b) => (b.onclick = async () => {
+		const i = Number(b.dataset.ptest), id = setState.s.providers[i]?.id;
+		const box = $(`ptest${i}`);
+		box.textContent = "儲存並測試中…";
+		if (!(await saveSettings(false))) { box.textContent = ""; return; }
+		await loadSetModels();
+		const r = await post("/api/settings/test-provider", { id }).catch(() => ({ ok: false, error: "連不上管家" }));
+		await loadSetModels();
+		const j = setState.s.providers.findIndex((p) => p.id === id);
+		renderSettings();
+		const box2 = $(`ptest${j}`);
+		if (box2) box2.innerHTML = r.ok ? `<span class="ok">✓ 連線成功</span>:${esc(r.model)} 回覆「${esc(r.reply)}」,${r.latencyMs} 毫秒;共 ${r.models.length} 個模型` : `<span class="bad">✗ ${esc(r.error || "失敗")}</span>`;
+	}));
+	if (tab === "about" && !setUpdate) loadSetUpdate().then(() => setState && setState.tab === "about" && renderSettings());
+	if (tab === "about" && setUpdate?.running) pollUpdateLog();
+	$("updCheck")?.addEventListener("click", () => { setUpdate = null; renderSettings(); loadSetUpdate(true).then(() => setState && renderSettings()); });
+	$("updApply")?.addEventListener("click", async () => {
+		$("updApply").disabled = true;
+		const r = await post("/api/settings/update", {}).catch(() => ({ error: "連不上管家" }));
+		if (r.error) return toast(r.error);
+		setUpdate = { ...setUpdate, running: true }; renderSettings();
+	});
+	if (tab === "agents" && !setAgents) loadSetAgents().then(() => setState && setState.tab === "agents" && renderSettings());
+	$("agentsRescan")?.addEventListener("click", () => { setAgents = null; renderSettings(); });
+	m.querySelectorAll("[data-agent]").forEach((b) => (b.onclick = async () => {
+		b.disabled = true; b.textContent = "設定中…";
+		const r = await post(`/api/settings/agents/${b.dataset.agent}`, { enable: b.dataset.on === "1" }).catch(() => ({ error: "連不上管家" }));
+		if (r.error) { toast(r.error); } else toast(r.changed.length ? `已更新 ${r.changed.length} 個設定` : "沒有需要改的");
+		await loadSetAgents(); renderSettings();
+	}));
+	if (tab === "routing" && !setModels) loadSetModels().then(() => setState && setState.tab === "routing" && renderSettings());
+	if (tab === "ai" && !setModels) loadSetModels().then(() => setState && setState.tab === "ai" && renderSettings());
+	const t = $("setTestNotify");
+	if (t) t.onclick = async () => { if (await saveSettings(false)) { const r = await post("/api/settings/test-notify", {}).catch(() => ({ error: "連不上管家" })); toast(r.ok ? "已送出測試推播" : r.error); } };
+}
+/** 把畫面上的值收回 setState.s(切換分頁時不會丟掉) */
+function collectSettings() {
+	const m = $("setModal");
+	if (!m || !setState) return;
+	for (const el of m.querySelectorAll("[data-p]")) {
+		const [i, k] = el.dataset.p.split(".");
+		const prov = setState.s.providers[Number(i)];
+		if (prov) prov[k] = el.type === "checkbox" ? el.checked : el.value.trim();
+	}
+	for (const el of m.querySelectorAll("[data-route]")) {
+		const [k, slot] = el.dataset.route.split(".");
+		if (slot) setState.s.routing[k][slot] = el.value; else setState.s.routing[k] = el.value;
+	}
+	for (const el of m.querySelectorAll("[data-k]")) {
+		if (el.type === "radio" && !el.checked) continue;
+		let v = el.type === "checkbox" ? el.checked : el.value;
+		if (el.hasAttribute("data-lines")) v = lines(v);
+		if (el.hasAttribute("data-num")) v = Number(v) || 0;
+		const keys = el.dataset.k.split(".");
+		let o = setState.s;
+		for (const k of keys.slice(0, -1)) o = o[k];
+		o[keys.at(-1)] = v;
+	}
+}
+async function saveSettings(close = true, quiet = false) {
+	collectSettings();
+	const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: setState.s }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
+	if (r.error) { toast(r.error); return false; }
+	setState.s = r.settings;
+	if (r.restartNeeded) toast("已儲存。埠號或位址要重新啟動管家才會生效");
+	else if (!quiet) toast("設定已儲存");
+	if (close) closeSettings();
+	return true;
+}
+$("gearBtn").onclick = () => openSettings();
+async function syncPwBanner() {
+	const a = await fetch("/api/auth/status").then((x) => x.json()).catch(() => null);
+	document.querySelector(".pwbanner")?.remove();
+	if (a?.authed && !a.hasPassword) {
+		const b = document.createElement("div");
+		b.className = "pwbanner";
+		b.textContent = "還沒設定管理密碼:除了這台電腦(和你的 Tailscale 裝置),其他地方都沒辦法登入。點這裡設定 →";
+		b.onclick = () => openSettings("access");
+		document.body.appendChild(b);
+	}
+}
+syncPwBanner();
+// 第一次使用:自動打開設定精靈(只有能改設定的人才會看到)
+fetch("/api/settings").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d && !d.settings.setupDone) openSettings("general", true); }).catch(() => {});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("setModal")) closeSettings(); });
+
+function toast(text) {
+	let t = $("toast");
+	if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
+	t.textContent = text; t.classList.add("show");
+	clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 1400);
+}
+// 診斷:把複製流程的每一步回報給管家(logs/client.log),方便查不同電腦/瀏覽器的問題
+function clog(event, detail = {}) {
+	try { fetch("/api/clientlog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event, ...detail }), keepalive: true }); } catch {}
+}
+// ---------- 卡住偵測(查「畫面整個動不了」用):主執行緒卡超過 1 秒就回報當時的狀況 ----------
+const perf = { wheel: 0, wheelPx: 0, termBytes: 0, longest: 0 };
+const curMode = () => (document.body.classList.contains("term") ? "term" : document.body.classList.contains("code") ? "code" : "board");
+let lastTick = performance.now();
+document.addEventListener("visibilitychange", () => { lastTick = performance.now(); });
+setInterval(() => {
+	const now = performance.now();
+	const lag = now - lastTick - 500;
+	lastTick = now;
+	if (lag > 1000 && !document.hidden) clog("freeze", { lag: Math.round(lag), mode: curMode(), wheel: perf.wheel, wheelPx: Math.round(perf.wheelPx), termBytes: perf.termBytes, heapMB: Math.round((performance.memory?.usedJSHeapSize || 0) / 1e6), plat: navigator.platform, dpr: devicePixelRatio, w: innerWidth });
+	perf.wheel = 0; perf.wheelPx = 0; perf.termBytes = 0;
+}, 500);
+try {
+	new PerformanceObserver((list) => {
+		for (const e of list.getEntries()) if (e.duration > 800) clog("longtask", { ms: Math.round(e.duration), mode: curMode(), src: e.attribution?.[0]?.containerSrc || e.attribution?.[0]?.name || "" });
+	}).observe({ type: "longtask", buffered: false });
+} catch {}
+addEventListener("error", (e) => clog("jserror", { msg: String(e.message).slice(0, 200), at: `${e.filename}:${e.lineno}` }));
+addEventListener("unhandledrejection", (e) => { const m = String(e.reason?.message ?? e.reason); if (m !== "Canceled") clog("jserror", { msg: m.slice(0, 200) }); });
+function copyText(win, text) {
+	// 安全來源(https / localhost)用 Clipboard API(從聚焦中的 iframe 呼叫);否則退回 execCommand
+	const fallback = (why) => {
+		const doc = win.document;
+		const ta = doc.createElement("textarea");
+		ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+		const prev = doc.activeElement;
+		doc.body.appendChild(ta); ta.select();
+		let ok = false, err = "";
+		try { ok = doc.execCommand("copy"); } catch (e) { err = String(e); }
+		ta.remove(); prev?.focus?.();
+		clog("copy-fallback", { ok, why, err, active: navigator.userActivation?.isActive, focus: doc.hasFocus() });
+		return ok;
+	};
+	if (win.isSecureContext && win.navigator.clipboard?.writeText) {
+		return win.navigator.clipboard.writeText(text).then(
+			() => { clog("copy-api-ok", { len: text.length }); return true; },
+			(e) => fallback(`api: ${e?.name}: ${e?.message}`),
+		);
+	}
+	return Promise.resolve(fallback(`not secure (${location.protocol})`));
+}
+// 瀏覽器擋下自動複製時的保底:把文字放進一個已反白的框,按 Ctrl/⌘+C 即可
+function manualCopy(text) {
+	let d = $("copyDlg");
+	if (!d) {
+		d = document.createElement("div"); d.id = "copyDlg";
+		d.innerHTML = '<div class="box"><b>瀏覽器不讓網頁直接寫剪貼簿</b><span>文字已經選好了,按 <kbd>Ctrl</kbd>+<kbd>C</kbd>(Mac 用 <kbd>⌘</kbd>+<kbd>C</kbd>)複製後會自動關閉。</span><textarea id="copyText" readonly></textarea><button class="small" id="copyClose">關閉</button></div>';
+		document.body.appendChild(d);
+		$("copyClose").onclick = () => { d.hidden = true; focusTerm(); };
+		$("copyText").addEventListener("copy", () => setTimeout(() => { d.hidden = true; toast("已複製"); focusTerm(); }, 0));
+		$("copyText").addEventListener("keydown", (e) => { if (e.key === "Escape") $("copyClose").click(); });
+	}
+	d.hidden = false;
+	const ta = $("copyText"); ta.value = text; ta.focus(); ta.select();
+}
+// 看板左側專案清單:右鍵 = 打開「⋯」選單
+document.addEventListener("contextmenu", (e) => {
+	const row = e.target.closest?.(".projrow");
+	const pm = row?.querySelector("[data-pmenu]");
+	if (!pm) return;
+	e.preventDefault();
+	const p = state.projects.find((x) => x.id === pm.dataset.pmenu);
+	if (p) projMenu(p, e.clientX, e.clientY);
+});
+function hookClipboard() {
+	const win = $("term").contentWindow;
+	const t = xterm();
+	if (!t || t._stewardOsc52) return;
+	t._stewardOsc52 = true;
+	clog("hooked", { secure: win.isSecureContext, proto: location.protocol, host: location.host, ua: navigator.userAgent, clip: !!win.navigator.clipboard?.writeText });
+	// 記錄滑鼠放開(對照「有拖曳但 herdr 沒送複製」的情況)
+	try { win.document.addEventListener("mouseup", (e) => clog("mouseup", { button: e.button, shift: e.shiftKey, alt: e.altKey }), true); } catch {}
+	// Windows/Linux 的 Ctrl+V:xterm.js 會先把它當按鍵送出 ^V(\x16),Claude Code 收到 ^V 會改去讀
+	// Mac 主機剪貼簿的圖片,把文字貼上搞亂(pi 不受影響)。在 xterm 看到按鍵前攔下,
+	// 但不 preventDefault,讓瀏覽器照常觸發 paste 事件,由 xterm 以括號貼上送出純文字。
+	const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+	win.document.addEventListener("keydown", (e) => {
+		const v = e.key === "v" || e.key === "V";
+		if ((e.ctrlKey || e.metaKey) && (v || e.key === "c" || e.key === "C")) clog("key", { key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, sel: t.hasSelection?.() });
+		if (!isMac && v && e.ctrlKey && !e.altKey && !e.metaKey) e.stopImmediatePropagation();
+	}, true);
+	// 卡住偵測:觸控板捲動事件數、終端機輸出量
+	win.document.addEventListener("wheel", (e) => { perf.wheel++; perf.wheelPx += Math.abs(e.deltaY); }, { capture: true, passive: true });
+	const origWrite = t.write.bind(t);
+	t.write = (d, cb) => { perf.termBytes += d?.length ?? d?.byteLength ?? 0; return origWrite(d, cb); };
+	win.document.addEventListener("paste", (e) => clog("paste", { len: e.clipboardData?.getData("text/plain")?.length ?? -1 }), true);
+	t.onData((d) => { if (d.includes("\x16")) clog("sent-ctrl-v"); });
+	hookTouchScroll(win, t);
+	blurTermOnTouch();
+	win.document.addEventListener("focusout", () => setTimeout(resetViewport, 120)); // 終端機裡打完字收鍵盤:畫面移回來
+	// 右鍵交給 herdr(它有自己的右鍵選單),不要再跳出瀏覽器的選單蓋住;按住 Shift 右鍵才用瀏覽器的
+	win.document.addEventListener("contextmenu", (e) => { if (!e.shiftKey) e.preventDefault(); }, true);
+	t.parser.registerOscHandler(52, (data) => {
+		const i = data.indexOf(";");
+		const b64 = i >= 0 ? data.slice(i + 1) : data;
+		if (!b64 || b64 === "?") return true; // 讀剪貼簿的請求不支援
+		let text = "";
+		try { text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch { clog("osc52-bad"); return true; }
+		clog("osc52", { len: text.length });
+		copyText(win, text).then((ok) => (ok ? toast(`已複製 ${text.length} 字`) : manualCopy(text)));
+		return true;
+	});
+}
+// 手機:手指上下滑動換算成滾輪事件。herdr 會接管滑鼠,捲動要靠滾輪回報;
+// 觸控滑動本身不會產生滾輪事件,所以要自己轉。往上滑=往下看(和一般手機捲動方向一致)。
+function hookTouchScroll(win, t) {
+	const el = t.element;
+	const screen = el?.querySelector(".xterm-screen");
+	if (!el || !screen || el._stewardTouch) return;
+	el._stewardTouch = true;
+	let lastY = null, startX = 0, startY = 0, acc = 0, vertical = null, x = 0, y = 0, velocity = 0, lastT = 0, fling = 0;
+	const lineH = () => t._core?._renderService?.dimensions?.css?.cell?.height || 18;
+	const wheel = (dir) => screen.dispatchEvent(new win.WheelEvent("wheel", { deltaY: dir * lineH() * 3, deltaMode: 0, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+	const step = (dy) => {
+		acc += dy;
+		const unit = lineH() * 3; // 每 3 行送一次滾輪(與桌面滾輪一格相近)
+		while (Math.abs(acc) >= unit) { const dir = Math.sign(acc); acc -= dir * unit; wheel(dir); }
+	};
+	el.addEventListener("touchstart", (e) => {
+		if (e.touches.length !== 1) { lastY = null; return; }
+		cancelAnimationFrame(fling);
+		const p = e.touches[0];
+		lastY = startY = y = p.clientY; startX = x = p.clientX; acc = 0; vertical = null; velocity = 0; lastT = performance.now();
+	}, { passive: true, capture: true });
+	el.addEventListener("touchmove", (e) => {
+		if (lastY === null || e.touches.length !== 1) return;
+		const p = e.touches[0];
+		if (vertical === null) {
+			const dx = Math.abs(p.clientX - startX), dy = Math.abs(p.clientY - startY);
+			if (dx < 6 && dy < 6) return;
+			vertical = dy > dx; // 只處理上下滑,左右滑交給原本的行為
+		}
+		if (!vertical) return;
+		e.preventDefault(); e.stopPropagation();
+		const now = performance.now();
+		const dy = lastY - p.clientY;
+		velocity = dy / Math.max(1, now - lastT);
+		lastY = p.clientY; lastT = now; x = p.clientX; y = p.clientY;
+		step(dy);
+	}, { passive: false, capture: true });
+	el.addEventListener("touchend", () => {
+		if (!vertical || lastY === null) { lastY = null; return; }
+		lastY = null;
+		// 放手後依速度慣性滑一小段
+		let v = velocity * 16;
+		const run = () => { if (Math.abs(v) < 0.5) return; step(v); v *= 0.92; fling = requestAnimationFrame(run); };
+		if (Math.abs(v) > 2) fling = requestAnimationFrame(run);
+	}, { passive: true, capture: true });
+	clog("touch-hooked", { touch: "ontouchstart" in win });
+}
+// ttyd 斷線重連時可能換一個新的終端機物件:定期檢查,新的就重新掛上
+setInterval(() => { if ($("term").src) hookClipboard(); }, 2000);
+async function jumpTo(projectId) {
+	const r = await post("/api/terminal/focus", { project: projectId }).catch(() => ({ ok: false, reason: "連不上管家" }));
+	if (r.ok) { termCurrent = { project: projectId, via: "pane" }; herdrSeen = projectId; termNeedCreate = null; renderDrawer(); }
+	toast(r.ok ? `已跳到 ${r.where}` : r.reason || "跳轉失敗");
+	focusTerm();
+}
+function setMode(mode, opts = {}) {
+	const term = mode === "term", code = mode === "code";
+	const wasTerm = document.body.classList.contains("term");
+	document.body.classList.toggle("term", term);
+	document.body.classList.toggle("code", code);
+	$("termView").hidden = !term;
+	$("codeView").hidden = !code;
+	$("modeBoard").classList.toggle("on", !term && !code);
+	$("modeCode").classList.toggle("on", code);
+	$("modeTerm").classList.toggle("on", term);
+	// 管家側欄搬到目前的模式裡(終端機與程式碼共用)
+	if (term && $("drawer").parentElement !== $("termView")) $("termView").appendChild($("drawer"));
+	if (code && $("drawer").parentElement !== $("codeView")) $("codeView").appendChild($("drawer"));
+	if (code) window.codeMode?.show();
+	if (term && !$("term").src) {
+		// 第一次切過去才連線,每個瀏覽器分頁只開一個 herdr 畫面
+		$("term").src = "/terminal/";
+		$("term").onload = () => { $("termHint").hidden = true; let n = 0; const iv = setInterval(() => { if (xterm() || ++n > 40) { clearInterval(iv); applyFont(); hookClipboard(); focusTerm(); } }, 250); };
+	}
+	if (term) setTimeout(() => { try { $("term").contentWindow.dispatchEvent(new Event("resize")); focusTerm(); } catch {} }, 50);
+	const hash = term ? "#terminal" : code ? "#code" : "";
+	if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
+	if ((term || code) && window.innerWidth >= 1800 && pref("steward.drawer") !== "0") document.body.classList.add("drawer");
+	renderDrawer();
+	$("nav").classList.remove("open"); syncMenuLabel();
+	if (term && (!wasTerm || opts.create)) enterTerminal({ create: !!opts.create });
+}
+function toggleDrawer(open) {
+	const on = open ?? !document.body.classList.contains("drawer");
+	document.body.classList.toggle("drawer", on);
+	pref("steward.drawer", on ? "1" : "0");
+	$("drawerBtn").textContent = on ? "管家 ◂" : "管家 ▸";
+	setTimeout(() => { try { $("term").contentWindow.dispatchEvent(new Event("resize")); } catch {} }, 220);
+	if (!on) focusTerm();
+}
+let termCurrent = { project: null }; // herdr 目前停在哪(/api/terminal/current)
+let herdrSeen = null; // 上次看到的 herdr 位置:只有「變了」才算使用者在 herdr 選了專案
+let termEntering = false, termNeedCreate = null, termAgain = false;
+const fetchTermCurrent = () => fetch("/api/terminal/current").then((x) => (x.ok ? x.json() : null)).catch(() => null);
+/** 切進終端機頁面(或切回這個分頁):herdr 不在目前專案就跳一次;沒有 space 也沒有窗格就不新建,只提示 */
+async function enterTerminal({ create = false } = {}) {
+	if (!sel) return;
+	if (termEntering) { termAgain = true; return; } // 跳轉中又換了專案:跳完再跳一次
+	termEntering = true;
+	try {
+		const now = await fetchTermCurrent();
+		termNeedCreate = null;
+		if (now?.project !== sel || create) {
+			const r = await post("/api/terminal/focus", { project: sel, create }).catch(() => ({ ok: false }));
+			if (r.needCreate) { termNeedCreate = sel; toast("這個專案還沒有 herdr space:打開右邊的管家側欄可以「建立並跳過去」"); }
+			else if (r.ok) toast(`herdr 已跳到 ${r.where}`);
+		}
+		termCurrent = (await fetchTermCurrent()) || termCurrent;
+		herdrSeen = termCurrent.project ?? null;
+	} finally {
+		termEntering = false;
+		if (termAgain) { termAgain = false; setTimeout(() => enterTerminal(), 0); }
+	}
+	renderDrawer();
+}
+async function pollTerminalCurrent() {
+	if (!document.body.classList.contains("term") || document.hidden || termEntering) return;
+	const r = await fetchTermCurrent();
+	if (!r || termEntering) return;
+	const moved = (r.project ?? null) !== herdrSeen;
+	termCurrent = r;
+	if (moved) {
+		herdrSeen = r.project ?? null;
+		// 停在不屬於任何專案的地方不算選擇,保留上一個
+		if (r.project && r.project !== sel) { termNeedCreate = null; selectProject(r.project, "herdr"); return; }
+	}
+	renderDrawer();
+}
+setInterval(pollTerminalCurrent, 2000);
+const SOURCE_LABEL = { "看板": "最後在看板選的", "程式碼頁面": "最後在程式碼頁面選的", herdr: "最後在 herdr 切到的" };
+function renderDrawer() {
+	const term = document.body.classList.contains("term");
+	if (!term && !document.body.classList.contains("code")) return;
+	const p = state.projects.find((x) => x.id === sel);
+	const why = SOURCE_LABEL[selSource] || (selSource ? `最後在${selSource}選的` : "目前的專案");
+	$("dTitle").innerHTML = p ? `<b>${esc(p.name)}</b><small>${esc(why)}</small>` : `<b>管家</b><small></small>`;
+	if (!p) { $("dBody").innerHTML = '<div class="empty">在看板、程式碼頁面或 herdr 選一個專案</div>'; return; }
+	// 終端機:herdr 不在這個專案時提示(例如還沒有 space、或停在家目錄)
+	const off = term && !termEntering && termCurrent.project !== p.id;
+	const herdrNote = off ? `<div class="note" style="margin-bottom:10px">${termNeedCreate === p.id ? "這個專案還沒有 herdr space" : `herdr 目前在${termCurrent.space ? `「${esc(termCurrent.space)}」` : "別的地方"},不在這個專案`}<div class="acts" style="margin-top:6px"><button class="small primary" id="dJump">${termNeedCreate === p.id ? "建立並跳過去" : "herdr 跳到這個專案"}</button></div></div>` : "";
+	const s = p.state || {};
+	const cards = state.cards.filter((c) => c.projectId === p.id && ["proposed", "running", "blocked"].includes(c.column));
+	const col = { proposed: "待核准", running: "進行中", blocked: "卡住" };
+	const list = (t, a) => a?.length ? `<h4>${t}</h4><ul>${a.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
+	$("dBody").innerHTML = `
+		${herdrNote}${cards.length ? ["proposed", "running", "blocked"].map((k) => { const l = cards.filter((c) => c.column === k); return l.length ? `<h4>${col[k]} ${l.length}</h4>${l.map((c) => cardLine(c)).join("")}` : ""; }).join("") : ""}
+		${s.progress ? `<h4>目前進度 · ${ago(s.updatedAt)}</h4><p>${esc(s.progress)}</p>` : '<p class="empty">還沒有紀錄</p>'}
+		${list("下一步", s.nextSteps)}${list("卡住的地方", s.blockers)}
+		${document.body.classList.contains("code") ? '<p><button class="small" id="dFocus">herdr 跳到這個專案</button></p>' : ""}`;
+	const f = $("dFocus"); if (f) f.onclick = () => jumpTo(p.id);
+	const j = $("dJump"); if (j) j.onclick = () => enterTerminal({ create: true });
+}
+$("modeBoard").onclick = () => setMode("board");
+$("modeTerm").onclick = () => setMode("term");
+$("modeCode").onclick = () => setMode("code");
+$("fontUp").onclick = () => { fontSize = Math.min(24, fontSize + 1); pref("steward.font", fontSize); applyFont(); };
+$("fontDown").onclick = () => { fontSize = Math.max(10, fontSize - 1); pref("steward.font", fontSize); applyFont(); };
+$("drawerBtn").onclick = () => toggleDrawer();
+$("drawerClose").onclick = () => toggleDrawer(false);
+$("fontSize").textContent = fontSize;
+
+// ---------- 即時更新 ----------
+let timer;
+function connect() {
+	const es = new EventSource("/api/events");
+	es.onmessage = () => { clearTimeout(timer); timer = setTimeout(() => { if (!drag) load(); }, 300); };
+	es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+}
+// ---------- 捲動漸層提示 ----------
+function updateFade(el) {
+	const top = el.scrollTop > 2, bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+	if (el.classList.contains("fade-t") !== top) el.classList.toggle("fade-t", top);
+	if (el.classList.contains("fade-b") !== bottom) el.classList.toggle("fade-b", bottom);
+}
+document.addEventListener("scroll", (e) => { if (e.target.classList?.contains("sfade")) updateFade(e.target); }, true);
+setInterval(() => { if (!document.hidden) document.querySelectorAll(".sfade").forEach(updateFade); }, 800);
+
+// ---------- 問管家浮動球 ----------
+// 三個頁面共用;問的永遠是「目前專案」。紀錄存在伺服器(全部保留),先載最近的,往上捲再載更早的。
+const ball = { open: false, pid: null, items: [], more: false, loading: false, pending: new Map(), quote: null, clearArmed: 0 };
+function setBallCorner(c) {
+	if (c) pref("steward.ballCorner", c);
+	const v = pref("steward.ballCorner");
+	$("ballWrap").dataset.corner = ["br", "bl", "tr", "tl"].includes(v) ? v : "br";
+}
+setBallCorner();
+(() => {
+	const el = $("stewardBall");
+	let d = null;
+	el.addEventListener("pointerdown", (e) => { d = { x: e.clientX, y: e.clientY, moved: false }; el.setPointerCapture(e.pointerId); });
+	el.addEventListener("pointermove", (e) => {
+		if (!d) return;
+		if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) return;
+		d.moved = true;
+		el.classList.add("dragging");
+		Object.assign(el.style, { left: `${e.clientX - 26}px`, top: `${e.clientY - 26}px`, right: "auto", bottom: "auto" });
+	});
+	const end = (e) => {
+		if (!d) return;
+		const moved = d.moved; d = null;
+		el.classList.remove("dragging");
+		if (!moved) { if (e.type === "pointerup") toggleBall(); return; }
+		el.style.left = el.style.top = el.style.right = el.style.bottom = "";
+		// 放開:吸到最近的角落
+		setBallCorner(`${e.clientY < innerHeight / 2 ? "t" : "b"}${e.clientX < innerWidth / 2 ? "l" : "r"}`);
+	};
+	el.addEventListener("pointerup", end);
+	el.addEventListener("pointercancel", end);
+})();
+function toggleBall(open = !ball.open) {
+	ball.open = open;
+	$("ballPanel").hidden = !open;
+	$("stewardBall").classList.toggle("on", open);
+	if (open) {
+		$("stewardBall").classList.remove("unread");
+		ball.pid = null; // 每次打開都重新載入(別的裝置可能問過)
+		syncBall();
+		// 觸控裝置不自動聚焦(會跳出鍵盤蓋住半個畫面)
+		if (!matchMedia("(pointer: coarse)").matches) setTimeout(() => $("bpInput").focus(), 30);
+	} else if (document.body.classList.contains("term")) focusTerm();
+}
+/** 目前專案變了 → 面板換成那個專案的紀錄 */
+function syncBall() {
+	const p = state.projects.find((x) => x.id === sel);
+	$("bpTitle").textContent = p ? `問管家 · ${p.name}` : "問管家";
+	if (!ball.open || !sel || ball.pid === sel) return;
+	ball.pid = sel; ball.items = []; ball.more = false;
+	loadBall(false);
+	loadSuggest(sel);
+}
+async function loadBall(older) {
+	if (ball.loading || !ball.pid) return;
+	ball.loading = true;
+	const pid = ball.pid, before = older ? ball.items[0]?.id : "";
+	const r = await fetch(`/api/chat/${encodeURIComponent(pid)}?limit=30${before ? `&before=${encodeURIComponent(before)}` : ""}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+	ball.loading = false;
+	if (!r || pid !== ball.pid) return;
+	const log = $("bpLog"), prevH = log.scrollHeight, prevTop = log.scrollTop;
+	ball.items = older ? [...r.items, ...ball.items] : r.items;
+	ball.more = r.more;
+	renderBall();
+	log.scrollTop = older ? log.scrollHeight - prevH + prevTop : 1e9;
+}
+const quoteLabel = (q) => `${q.path ?? ""}${q.from ? ` 第 ${q.from}${q.to && q.to !== q.from ? `–${q.to}` : ""} 行` : ""}`;
+function msgHtml(e) {
+	const q = e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "";
+	const cloud = e.alt ? `<span class="cloud" title="這一則用備用模型回答:${esc(e.alt)}">備用 · ${esc(e.alt)}</span>` : e.cloud ? '<span class="cloud" title="這一則用雲端模型回答">雲端</span>' : "";
+	const retry = e.retryable ? `<button class="small retry" data-retry="${esc(e.id)}">改用備用模型回答這一題</button>` : "";
+	return `<div class="msg ${e.role}${e.error ? " err" : ""}">${q}${cloud}${esc(e.text)}${retry}</div>`;
+}
+function renderBall() {
+	const waiting = ball.pending.get(ball.pid) || 0;
+	$("bpLog").innerHTML = (ball.more ? '<div class="bp-more">往上捲載入更早的…</div>' : "")
+		+ (ball.items.length || waiting ? ball.items.map(msgHtml).join("") : '<div class="empty">問管家關於這個專案的事:進度、下一步、卡在哪裡,或貼一段程式碼問它。</div>')
+		+ (waiting ? '<div class="msg bot wait">思考中…</div>' : "");
+	$("stewardBall").classList.toggle("busy", [...ball.pending.values()].some(Boolean));
+}
+function renderQuote() {
+	const q = ball.quote, box = $("bpQuote");
+	box.hidden = !q;
+	box.innerHTML = q ? `<div class="qh"><span>引用 ${esc(quoteLabel(q))}</span><button class="small" data-unquote title="拿掉引用">×</button></div><pre>${esc(q.text)}</pre>` : "";
+}
+$("bpLog").addEventListener("scroll", () => { if ($("bpLog").scrollTop < 40 && ball.more && !ball.loading) loadBall(true); });
+$("bpQuote").addEventListener("click", (e) => { if (e.target.closest("[data-unquote]")) { ball.quote = null; renderQuote(); } });
+$("bpClose").onclick = () => toggleBall(false);
+$("bpClear").onclick = async () => {
+	if (Date.now() - ball.clearArmed > 3000) { ball.clearArmed = Date.now(); $("bpClear").textContent = "再按一次清除"; setTimeout(() => { $("bpClear").textContent = "清除紀錄"; }, 3000); return; }
+	ball.clearArmed = 0; $("bpClear").textContent = "清除紀錄";
+	await fetch(`/api/chat/${encodeURIComponent(ball.pid)}`, { method: "DELETE" }).catch(() => {});
+	ball.items = []; ball.more = false; renderBall();
+	toast("已清除這個專案的問答紀錄");
+};
+$("bpInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("bpForm").requestSubmit(); });
+async function askBall(text, quote, opts = {}) {
+	const pid = sel;
+	if ((!text && !quote) || !pid) return;
+	let temp = null;
+	if (!opts.retry) {
+		temp = { id: `tmp-${Date.now()}`, role: "me", text, quote };
+		if (ball.pid === pid) ball.items.push(temp);
+	}
+	ball.pending.set(pid, (ball.pending.get(pid) || 0) + 1);
+	renderBall(); renderSugg(); $("bpLog").scrollTop = 1e9;
+	const prevAt = ball.sugg.pid === pid ? ball.sugg.at : null;
+	const r = await post("/api/chat", { project: pid, message: text, quote, ...(opts.cloud ? { fallback: true, retry: !!opts.retry } : {}) }).catch((err) => ({ error: `連不上管家:${err}` }));
+	ball.pending.set(pid, Math.max(0, (ball.pending.get(pid) || 1) - 1));
+	if (ball.pid === pid) {
+		const i = temp ? ball.items.indexOf(temp) : -1;
+		if (i >= 0 && r.me) ball.items[i] = r.me;
+		ball.items.push(r.bot || { id: `tmp-${Date.now()}`, role: "bot", text: r.answer || r.error || "沒有回應", error: !r.answer });
+		renderBall(); $("bpLog").scrollTop = 1e9;
+	}
+	// 面板沒開、或已經換到別的專案:球上亮小紅點
+	if (!ball.open || ball.pid !== pid) $("stewardBall").classList.add("unread");
+	renderSugg();
+	if (r.answer) waitSuggest(pid, prevAt); // 回答完,伺服器會在背景產生下一組建議問題
+	load();
+}
+$("bpForm").onsubmit = (e) => {
+	e.preventDefault();
+	const text = $("bpInput").value.trim(), quote = ball.quote;
+	if (!text && !quote) return;
+	$("bpInput").value = ""; ball.quote = null; renderQuote();
+	askBall(text, quote);
+};
+// 失敗的回答:「改用雲端回答這一題」→ 用前一則問題重問
+$("bpLog").addEventListener("click", (e) => {
+	const id = e.target.closest("[data-retry]")?.dataset.retry;
+	if (!id) return;
+	const i = ball.items.findIndex((x) => x.id === id);
+	const me = ball.items.slice(0, i).reverse().find((x) => x.role === "me");
+	if (!me) return toast("找不到原本的問題");
+	ball.items[i] = { ...ball.items[i], retryable: false };
+	askBall(me.text, me.quote, { cloud: true, retry: true });
+});
+// ---------- 三個建議問題 ----------
+ball.sugg = { pid: null, items: [], at: null, loading: false };
+async function loadSuggest(pid, { ensure = true, regen = false } = {}) {
+	if (ball.sugg.pid !== pid) ball.sugg = { pid, items: [], at: null, loading: false };
+	ball.sugg.loading = true; renderSugg();
+	const r = await fetch(`/api/chat/${encodeURIComponent(pid)}/suggest${regen ? "" : ensure ? "?ensure=1" : ""}`, { method: regen ? "POST" : "GET" }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+	if (ball.sugg.pid !== pid) return;
+	ball.sugg.loading = false;
+	if (r) { ball.sugg.items = r.items || []; ball.sugg.at = r.at; }
+	renderSugg();
+	return r;
+}
+/** 等伺服器換上新一組(最多約 60 秒) */
+async function waitSuggest(pid, prevAt) {
+	for (let n = 0; n < 30; n++) {
+		await new Promise((ok) => setTimeout(ok, 2000));
+		if (ball.sugg.pid !== pid) return;
+		const r = await fetch(`/api/chat/${encodeURIComponent(pid)}/suggest`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+		if (r && r.at && r.at !== prevAt) { ball.sugg.items = r.items || []; ball.sugg.at = r.at; renderSugg(); return; }
+		if (r && !r.pending && n > 3) return; // 背景產生失敗就算了(不顯示錯誤)
+	}
+}
+function renderSugg() {
+	const box = $("bpSugg");
+	const busy = (ball.pending.get(ball.pid) || 0) > 0;
+	const items = ball.sugg.pid === ball.pid ? ball.sugg.items : [];
+	box.hidden = !items.length && !ball.sugg.loading;
+	box.classList.toggle("dim", busy || ball.sugg.loading);
+	box.innerHTML = items.length
+		? `<div class="chips">${items.map((q) => `<button type="button" class="chip-q" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div><button type="button" class="small sref" data-sref title="換一組建議問題">↻</button>`
+		: `<div class="chips"><span class="hint">建議問題產生中…</span></div>`;
+}
+$("bpSugg").addEventListener("click", (e) => {
+	const q = e.target.closest("[data-q]")?.dataset.q;
+	if (q) return askBall(q, null);
+	if (e.target.closest("[data-sref]") && ball.pid) loadSuggest(ball.pid, { regen: true });
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ball.open && !document.querySelector(".modal:not([hidden]):not(#cardPop)") && !$("cardPop")) toggleBall(false); });
+/** 給程式碼頁面用:帶著選取的程式打開面板 */
+window.openStewardChat = ({ quote } = {}) => {
+	if (quote) { ball.quote = quote; renderQuote(); }
+	if (!ball.open) toggleBall(true); else setTimeout(() => $("bpInput").focus(), 30);
+};
+
+load().then(() => { if (location.hash === "#terminal") setMode("term"); if (location.hash === "#code") setMode("code"); }); connect();
+</script>
+<script src="/web/code.js"></script>
+</body>
+</html>

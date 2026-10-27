@@ -1,0 +1,20 @@
+{
+  "name": "agent-steward",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "跨 session、跨 agent 的專案管家:自動記錄進度、看板派工、網頁上的程式碼與終端機",
+  "dependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hao-github-0216/agent-steward.git"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

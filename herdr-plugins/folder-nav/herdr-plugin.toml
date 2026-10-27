@@ -1,0 +1,15 @@
+id = "local.folder-nav"
+name = "Folder Nav"
+version = "0.2.0"
+min_herdr_version = "0.9.0"
+description = "資料夾導覽 popup:點資料夾進入、每列「開啟」按鈕在 terminal 開啟(閒置 shell 就 cd,否則開新 tab),手機觸控可用"
+platforms = ["macos", "windows", "linux"]
+
+[[panes]]
+id = "nav"
+title = "Folders"
+platforms = ["macos", "windows", "linux"]
+placement = "popup"
+width = "85%"
+height = "85%"
+command = ["node", "folder_nav.mjs"]

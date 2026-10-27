@@ -1,0 +1,63 @@
+name: CI
+
+# 每次推送:在 macOS 和 Windows 上實際跑一次「安裝 → 啟動 → 健康檢查 → 移除」。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Shell syntax
+        run: sh -n install.sh && sh -n uninstall.sh
+      - name: Install (from this checkout)
+        run: sh install.sh --from . --no-service --skip-herdr
+      - name: Start and health check
+        run: |
+          cd ~/.agent-steward/app
+          node --experimental-strip-types --no-warnings src/main.ts > ~/steward.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8791/api/health && exit 0; sleep 1; done
+          cat ~/steward.log; exit 1
+      - name: Uninstall
+        run: sh ~/.agent-steward/app/uninstall.sh --purge && test ! -e ~/.agent-steward
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($f in "install.ps1", "uninstall.ps1") {
+            $errs = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs) | Out-Null
+            if ($errs) { $errs; exit 1 }
+          }
+      - name: Install with Windows PowerShell 5.1 (from this checkout)
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -SkipHerdr -NoService
+      - name: Start and health check
+        shell: pwsh
+        run: |
+          $app = Join-Path $HOME ".agent-steward\app"
+          $p = Start-Process node -ArgumentList "--experimental-strip-types", "--no-warnings", "src\main.ts" -WorkingDirectory $app -RedirectStandardError "$HOME\steward.err.log" -RedirectStandardOutput "$HOME\steward.log" -PassThru
+          for ($i = 0; $i -lt 40; $i++) {
+            try { Invoke-RestMethod http://127.0.0.1:8791/api/health; Stop-Process -Id $p.Id -Force; exit 0 } catch { Start-Sleep 1 }
+          }
+          Get-Content "$HOME\steward.err.log"; exit 1
+      - name: Uninstall
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File %USERPROFILE%\.agent-steward\app\uninstall.ps1 -Purge
