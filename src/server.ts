@@ -12,7 +12,7 @@ import { expandHome, findTailscale, publicSettings, settings, stripMasked, updat
 import { hermesSecret, notify } from "./notify.ts";
 import { listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
-import { compatInfo, fillEmptyRouting, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
+import { compatInfo, fillEmptyRouting, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileStamps, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
@@ -358,7 +358,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 							return send(res, 200, { ok: false, error: (e as Error).message });
 						}
 					}
-					const model = b.model && list.includes(b.model) ? b.model : list[0];
+					const model = b.model && list.includes(b.model) ? b.model : (testModelFor(c) ?? list[0]);
 					if (!model) return send(res, 200, { ok: false, models: list, error: "這個接口沒有可用的模型" });
 					const t0 = Date.now();
 					try {

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createModels, createProvider, type MutableModels } from "@earendil-works/pi-ai/models";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
 import { BUILTINS, type Builtin, defaultRouting, detectPiProviders, type ProviderConfig, type RouteRole, settings, updateSettings } from "./settings.ts";
 
 const PI_DIR = join(homedir(), ".pi", "agent");
@@ -119,10 +120,19 @@ export async function syncProviders(): Promise<void> {
 	registered = want;
 }
 
+/** pi 存的登入是不是訂閱(oauth);ChatGPT 訂閱只能用部分模型 */
+function piLoginType(id: string): string | undefined {
+	try { return JSON.parse(readFileSync(join(PI_DIR, "auth.json"), "utf8"))[id]?.type; } catch { return undefined; }
+}
+/** ChatGPT 訂閱登入能用的模型(pi-ai 的 openai-codex 清單);API 金鑰不受限 */
+const CHATGPT_MODELS = new Set(Object.values(OPENAI_CODEX_MODELS as Record<string, { id: string }>).map((m) => m.id));
+
 /** 某個接口的模型清單 */
 export function modelIds(c: ProviderConfig): string[] {
 	if (c.type !== "builtin") return compatInfo(c)?.models ?? [];
-	return models?.getModels(c.id).map((m) => m.id) ?? [];
+	const ids = models?.getModels(c.id).map((m) => m.id) ?? [];
+	if (c.builtin === "openai" && c.auth === "pi" && piLoginType("openai") === "oauth") return ids.filter((id) => CHATGPT_MODELS.has(id));
+	return ids;
 }
 
 /** 預設路由用的模型:該家主力系列裡版本最新的(清單是照字母排,第一個常是舊模型) */
@@ -131,7 +141,7 @@ const NOT_MAIN = /(^|[-/:])(preview|mini|nano|lite|research|computer|audio|realt
 function versionKey(id: string): number[] {
 	return (id.match(/\d+(\.\d+)?/g) ?? []).map(Number);
 }
-function pickModel(p: ProviderConfig): string | undefined {
+export function pickModel(p: ProviderConfig): string | undefined {
 	const ids = modelIds(p);
 	const fam = p.builtin ? MAIN_FAMILY[p.builtin] : undefined;
 	if (!fam) return ids[0];
@@ -143,6 +153,18 @@ function pickModel(p: ProviderConfig): string | undefined {
 		return a.length - b.length;
 	})[0];
 }
+/** 測試連線用的模型:路由裡這個接口用到的模型優先,沒有就挑主力模型 */
+export function testModelFor(c: ProviderConfig): string | undefined {
+	const ids = modelIds(c);
+	const r = settings().routing;
+	const refs = [r.chat, r.suggest, r.digest, r.judge, r.commitmsg].flatMap((x) => [x.primary, x.fallback]).concat(r.privacy);
+	for (const ref of refs) {
+		const p = parseRef(ref);
+		if (p?.provider === c.id && ids.includes(p.modelId)) return p.modelId;
+	}
+	return pickModel(c);
+}
+
 /** 還沒指定模型的工作,用現有接口自動填上(已經設好的不動);回傳有沒有改 */
 export function fillEmptyRouting(): boolean {
 	const s = settings();
