@@ -19,11 +19,12 @@ jobs:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
-      # 乾淨的家目錄,PATH 裡沒有 Node、沒有 Homebrew
-      FRESH_HOME: ${{ runner.temp }}/fresh-home
+      # PATH 裡沒有 Node、沒有 Homebrew
       FRESH_PATH: /usr/bin:/bin:/usr/sbin:/sbin
     steps:
       - uses: actions/checkout@v4
+      - name: Fresh home directory
+        run: echo "FRESH_HOME=$RUNNER_TEMP/fresh-home" >> "$GITHUB_ENV"
       - name: Shell syntax
         run: sh -n install.sh && sh -n uninstall.sh
       - name: Install on a "fresh machine"
