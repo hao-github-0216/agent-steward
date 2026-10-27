@@ -1,6 +1,7 @@
 name: CI
 
-# 每次推送:在 macOS 和 Windows 上實際跑一次「安裝 → 啟動 → 健康檢查 → 移除」。
+# 每次推送:在 macOS、Linux、Windows 上模擬「全新電腦」實際跑一次
+# 安裝(自己下載 Node、從 fork 下載 herdr、ttyd)→ 啟動 → 健康檢查 → 再裝一次(更新)→ 移除。
 on:
   push:
     branches: [main]
@@ -11,33 +12,55 @@ permissions:
   contents: read
 
 jobs:
-  macos:
-    runs-on: macos-latest
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # 乾淨的家目錄,PATH 裡沒有 Node、沒有 Homebrew
+      FRESH_HOME: ${{ runner.temp }}/fresh-home
+      FRESH_PATH: /usr/bin:/bin:/usr/sbin:/sbin
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Shell syntax
         run: sh -n install.sh && sh -n uninstall.sh
-      - name: Install (from this checkout)
-        run: sh install.sh --from . --no-service --skip-herdr
+      - name: Install on a "fresh machine"
+        run: |
+          mkdir -p "$FRESH_HOME"
+          env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 STEWARD_FORCE_NODE_DOWNLOAD=1 \
+            sh install.sh --from . --no-service 2>&1 | tee install.log
+      - name: Check what got installed
+        run: |
+          set -x
+          test -x "$FRESH_HOME/.agent-steward/node/bin/node"
+          "$FRESH_HOME/.agent-steward/node/bin/node" -v
+          "$FRESH_HOME/.local/bin/herdr" --version
+          test -x "$FRESH_HOME/.local/bin/steward"
+          ls "$FRESH_HOME/.config/herdr/plugins-local"
+          env -i HOME="$FRESH_HOME" "$FRESH_HOME/.local/bin/herdr" plugin list
+          # macOS 沒有 Homebrew → 要看到補裝網頁終端機的說明;Linux 要下載到 ttyd
+          if [ "$RUNNER_OS" = macOS ]; then grep -q "Homebrew" install.log; else test -x "$FRESH_HOME/.agent-steward/bin/ttyd"; fi
       - name: Start and health check
         run: |
-          cd ~/.agent-steward/app
-          node --experimental-strip-types --no-warnings src/main.ts > ~/steward.log 2>&1 &
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8791/api/health && exit 0; sleep 1; done
-          cat ~/steward.log; exit 1
+          cd "$FRESH_HOME/.agent-steward/app"
+          env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" "$FRESH_HOME/.agent-steward/node/bin/node" --experimental-strip-types --no-warnings src/main.ts > "$RUNNER_TEMP/steward.log" 2>&1 &
+          PID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8791/api/health && kill $PID && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/steward.log"; exit 1
+      - name: Install again (update path)
+        run: env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 sh install.sh --from . --no-service
       - name: Uninstall
-        run: sh ~/.agent-steward/app/uninstall.sh --purge && test ! -e ~/.agent-steward
+        run: |
+          env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" sh "$FRESH_HOME/.agent-steward/app/uninstall.sh" --purge
+          test ! -e "$FRESH_HOME/.agent-steward"
+          test ! -e "$FRESH_HOME/.local/bin/steward"
 
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: PowerShell syntax
         shell: pwsh
         run: |
@@ -46,18 +69,44 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs) | Out-Null
             if ($errs) { $errs; exit 1 }
           }
-      - name: Install with Windows PowerShell 5.1 (from this checkout)
+      - name: Install with Windows PowerShell 5.1 on a "fresh machine"
         shell: cmd
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -SkipHerdr -NoService
+        env:
+          STEWARD_FORCE_NODE_DOWNLOAD: "1"
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoService
+      - name: Check what got installed
+        shell: pwsh
+        run: |
+          $r = Join-Path $HOME ".agent-steward"
+          & "$r\node\node.exe" -v
+          & "$r\bin\herdr\herdr.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Test-Path "$r\bin\ttyd.exe")) { throw "沒有 ttyd.exe" }
+          if (-not (Test-Path "$HOME\.local\bin\steward.cmd")) { throw "沒有 steward.cmd" }
+          Get-ChildItem "$env:APPDATA\herdr\plugins-local"
+          & "$r\bin\herdr\herdr.exe" plugin list
       - name: Start and health check
         shell: pwsh
         run: |
-          $app = Join-Path $HOME ".agent-steward\app"
-          $p = Start-Process node -ArgumentList "--experimental-strip-types", "--no-warnings", "src\main.ts" -WorkingDirectory $app -RedirectStandardError "$HOME\steward.err.log" -RedirectStandardOutput "$HOME\steward.log" -PassThru
+          $r = Join-Path $HOME ".agent-steward"
+          $p = Start-Process "$r\node\node.exe" -ArgumentList "--experimental-strip-types", "--no-warnings", "src\main.ts" -WorkingDirectory "$r\app" -RedirectStandardError "$HOME\steward.err.log" -RedirectStandardOutput "$HOME\steward.log" -PassThru
           for ($i = 0; $i -lt 40; $i++) {
             try { Invoke-RestMethod http://127.0.0.1:8791/api/health; Stop-Process -Id $p.Id -Force; exit 0 } catch { Start-Sleep 1 }
           }
           Get-Content "$HOME\steward.err.log"; exit 1
+      - name: Install again with start-on-login (best effort; CI has no interactive logon)
+        continue-on-error: true
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoOpen
+      - name: Scheduled tasks
+        continue-on-error: true
+        shell: pwsh
+        run: Get-ScheduledTask -TaskName "agent-steward*" | Format-Table TaskName, State
       - name: Uninstall
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File %USERPROFILE%\.agent-steward\app\uninstall.ps1 -Purge
+      - name: Check uninstall
+        shell: pwsh
+        run: |
+          if (Test-Path "$HOME\.agent-steward") { throw "還有 .agent-steward" }
+          if (Get-ScheduledTask -TaskName "agent-steward*" -ErrorAction SilentlyContinue) { throw "排程工作還在" }
