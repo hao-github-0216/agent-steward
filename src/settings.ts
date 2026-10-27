@@ -13,7 +13,7 @@ export const SETTINGS_PATH = join(DATA_DIR, "settings.json");
 export type NotifyKind = "none" | "hermes" | "telegram" | "webhook";
 
 /** pi-ai 內建的雲端服務(provider id 固定等於這個名字) */
-export const BUILTINS = ["openai", "anthropic", "google", "openrouter", "deepseek", "groq", "mistral", "xai"] as const;
+export const BUILTINS = ["openai", "anthropic", "google", "openrouter", "deepseek", "groq", "mistral", "xai", "github-copilot", "kimi-coding", "meta"] as const;
 export type Builtin = (typeof BUILTINS)[number];
 
 /**

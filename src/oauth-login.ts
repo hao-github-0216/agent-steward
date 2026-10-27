@@ -38,6 +38,8 @@ export function startLogin(provider: string, onFinish?: (ok: boolean) => void): 
 		prompt(p: { type: string; message: string; signal?: AbortSignal; options?: readonly { id: string }[] }): Promise<string> {
 			// 選擇題(例如 Claude 的登入方式):用預設的第一個(瀏覽器登入)
 			if (p.type === "select") return Promise.resolve(p.options?.[0]?.id ?? "");
+			// 文字題(例如 GitHub Copilot 問企業版網域):留空 = 預設(github.com)
+			if (p.type === "text") return Promise.resolve("");
 			// 其他就是「貼上登入後的網址」(和本機回呼同時進行,回呼先到就取消這個問題)
 			return new Promise((resolve, reject) => {
 				s.needCode = true;

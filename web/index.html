@@ -38,6 +38,7 @@ header h1 { font-size: 16px; margin: 0; }
 .modal.setmodal .mbody { flex-direction: row; gap: 0; padding: 0; flex: 1; min-height: 0; }
 .wz-intro { background: var(--bg2, rgba(127,127,127,.12)); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; line-height: 1.5; }
 .login-box { border: 1px solid var(--line, rgba(127,127,127,.3)); border-radius: 8px; padding: 10px 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.login-code { font: 600 26px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 3px; padding: 6px 0; user-select: all; }
 .login-box .row { display: flex; gap: 6px; align-items: center; }
 .login-box .row input { flex: 1; min-width: 0; }
 .login-box .row button { flex: 0 0 auto; }
@@ -1218,12 +1219,18 @@ async function startProviderLogin(provider) {
 	if (r.error) { win?.close(); return toast(r.error); }
 	const sid = r.session;
 	const box = () => $("loginBox");
+	if (box()) { delete box().dataset.url; delete box().dataset.code; }
 	let opened = false;
 	const render = (st) => {
 		const b = box(); if (!b) return;
 		b.hidden = false;
-		const name = provider === "openai" ? "ChatGPT" : "Claude";
+		const name = LOGIN_NAME[provider] || provider;
 		b.innerHTML = st.status === "error" ? `<span class="bad">✗ 登入失敗:${esc(st.message || "")}</span> <button class="small" data-lx>關閉</button>`
+			: st.userCode ? `<b>正在登入 ${name}</b>
+			<div class="hint">已經打開 ${name} 的登入頁面(沒看到的話<a href="${esc(st.url)}" target="_blank" rel="noopener">點這裡打開</a>,手機或別台電腦也可以開這個網址),在頁面上輸入這組代碼:</div>
+			<div class="login-code">${esc(st.userCode)}</div>
+			<div class="hint">輸入並同意後,這裡會自動完成。</div>
+			<div><button class="small" data-lx>取消</button></div>`
 			: `<b>正在登入 ${name}</b>
 			<div class="hint">${st.url ? `已經打開 ${name} 的登入頁面(沒看到的話<a href="${esc(st.url)}" target="_blank" rel="noopener">點這裡打開</a>)。` : "準備中…"}</div>
 			<div class="hint">在<b>這台電腦</b>登入的話,完成後會自動接上。用<b>手機或別台電腦</b>時,登入後的頁面會打不開(網址開頭是 http://127.0.0.1 或 http://localhost),把那一頁的<b>整段網址</b>貼到這裡:</div>
@@ -1253,8 +1260,11 @@ async function startProviderLogin(provider) {
 		}
 		if (st.status === "error") { clearInterval(loginTimer); win?.close(); }
 		const keep = $("loginCode")?.value;
-		if (!$("loginCode") || st.status !== "waiting") render(st);
-		else if (st.url && !box().dataset.url) { box().dataset.url = "1"; render(st); if (keep) $("loginCode").value = keep; }
+		const b = box(); if (!b) return;
+		if (st.status !== "waiting") render(st);
+		else if (st.userCode) { if (!b.dataset.code) { b.dataset.code = "1"; render(st); } }
+		else if (!$("loginCode")) render(st);
+		else if (st.url && !b.dataset.url) { b.dataset.url = "1"; render(st); if (keep) $("loginCode").value = keep; }
 	}, 1500);
 }
 let updTimer = null;
@@ -1286,7 +1296,9 @@ function agentsPane() {
 		<details><summary class="hint">其他支援的 agent(這台電腦沒有裝,${other.length} 個)</summary>${other.map((a) => `<div class="hint">· ${esc(a.name)}</div>`).join("")}</details>
 		<div><button class="small" id="agentsRescan">重新偵測</button></div>`;
 }
-const BUILTIN_LABEL = { openai: "OpenAI", anthropic: "Anthropic(Claude)", google: "Google Gemini", openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq", mistral: "Mistral", xai: "xAI(Grok)" };
+const BUILTIN_LABEL = { openai: "OpenAI", anthropic: "Anthropic(Claude)", google: "Google Gemini", openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq", mistral: "Mistral", xai: "xAI(Grok)", "kimi-coding": "Kimi Code" };
+// 訂閱登入按鈕上的名稱
+const LOGIN_NAME = { openai: "ChatGPT", anthropic: "Claude", "github-copilot": "GitHub Copilot", xai: "Grok", "kimi-coding": "Kimi Code", meta: "Meta", openrouter: "OpenRouter" };
 const ROLE_ROWS = [["chat", "聊天室問答", "浮動球裡的問答"], ["suggest", "建議問題", "聊天室上方的三個建議問題"], ["digest", "整理 agent 回報", "agent 做完一段工作後整理專案進度(量最大)"], ["judge", "提案檢查", "決定要不要開工作卡給 agent(唯一能開卡的)"], ["commitmsg", "產生提交訊息", "程式碼頁 Git 的「產生提交訊息」"]];
 let setModels = null; // GET /api/settings/models 的結果
 async function loadSetModels() { setModels = await fetch("/api/settings/models").then((r) => r.json()).catch(() => null); }
@@ -1301,6 +1313,7 @@ function providerCard(c, i) {
 		${c.auth === "login" ? `<div class="hint">${info?.signedIn ? '<span class="ok">✓ 已登入</span>' : '<span class="bad">還沒登入</span>'} · 登入資料存在這台電腦的 ~/.agent-steward/auth.json</div>
 			<div><button class="small" data-login="${esc(c.id)}">${info?.signedIn ? "重新登入" : "登入"}</button>${info?.signedIn ? ` <button class="small" data-logout="${esc(c.id)}">登出</button>` : ""}</div>` : ""}
 		${c.type === "builtin" && c.auth !== "pi" && c.auth !== "login" ? `<label class="field">API 金鑰<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" placeholder="貼上金鑰" autocomplete="off"></label>` : ""}
+		${c.builtin === "google" && c.auth !== "pi" ? '<div class="hint">沒有金鑰?到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 用 Google 帳號登入就能免費建立(有免費額度)。</div>' : ""}
 		${c.type === "openai-compatible" ? `<label class="field">網址(OpenAI 相容,通常結尾是 /v1)<input type="text" data-p="${i}.baseUrl" value="${esc(c.baseUrl || "")}"></label>
 			<label class="field">API 金鑰(沒有就空白)<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" autocomplete="off"></label>
 			<label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
@@ -1314,8 +1327,8 @@ function aiPane(s) {
 	return `${setState.wizard == null ? '<div class="hint">管家用到的 AI 都從這裡設定。新增或修改後按「儲存」才會生效;「測試連線」會先幫你儲存。</div>' : ""}
 		${s.providers.map(providerCard).join("") || '<div class="empty">還沒有任何 AI 接口,從下面新增一個。</div>'}
 		<h4>用訂閱登入(不需要 API 金鑰)</h4>
-		<div class="hint">用你的 ChatGPT 或 Claude(Pro / Max)訂閱,不另外付 API 費用。</div>
-		<div>${Object.entries(setModels?.loginProviders || {}).filter(([k]) => !s.providers.some((p) => p.id === k && p.auth === "login")).map(([k, l]) => `<button class="small" data-login="${k}">用${k === "openai" ? " ChatGPT " : " Claude "}登入</button>`).join(" ") || '<span class="hint">都已經接上了</span>'}
+		<div class="hint">用你已經有的訂閱(ChatGPT、Claude Pro / Max、GitHub Copilot、SuperGrok / X Premium、Kimi Code、Meta),不另外付 API 費用;OpenRouter 用登入代替貼金鑰。</div>
+		<div>${Object.entries(setModels?.loginProviders || {}).filter(([k]) => !s.providers.some((p) => p.id === k && p.auth === "login")).map(([k, l]) => `<button class="small" data-login="${k}" title="${esc(l)}">用 ${LOGIN_NAME[k] || k} 登入</button>`).join(" ") || '<span class="hint">都已經接上了</span>'}
 			${s.providers.some((p) => (setModels?.loginProviders || {})[p.id] && p.auth !== "login") ? '<div class="hint">已經有同一家的接口時,登入後會改用訂閱(原本的 API 金鑰或 pi 登入不再使用)。</div>' : ""}</div>
 		<div id="loginBox" class="login-box" hidden></div>
 		<h4>新增接口</h4>

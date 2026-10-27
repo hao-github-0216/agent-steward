@@ -67,6 +67,9 @@ const builtinFactory: Record<Builtin, () => Promise<any>> = {
 	groq: async () => (await import("@earendil-works/pi-ai/providers/groq")).groqProvider(),
 	mistral: async () => (await import("@earendil-works/pi-ai/providers/mistral")).mistralProvider(),
 	xai: async () => (await import("@earendil-works/pi-ai/providers/xai")).xaiProvider(),
+	"github-copilot": async () => (await import("@earendil-works/pi-ai/providers/github-copilot")).githubCopilotProvider(),
+	"kimi-coding": async () => (await import("@earendil-works/pi-ai/providers/kimi-coding")).kimiCodingProvider(),
+	meta: async () => (await import("@earendil-works/pi-ai/providers/meta")).metaProvider(),
 };
 
 /** OpenAI 相容 / pi 模型設定:網址、金鑰、模型清單 */
@@ -141,7 +144,7 @@ export function modelIds(c: ProviderConfig): string[] {
 }
 
 /** 預設路由用的模型:該家主力系列裡版本最新的(清單是照字母排,第一個常是舊模型) */
-const MAIN_FAMILY: Partial<Record<Builtin, RegExp>> = { openai: /^gpt-\d/, anthropic: /sonnet/, google: /^gemini-.*flash/, openrouter: /sonnet/, deepseek: /flash|chat/, groq: /70b|120b/, mistral: /medium|large/, xai: /^grok/ };
+const MAIN_FAMILY: Partial<Record<Builtin, RegExp>> = { openai: /^gpt-\d/, anthropic: /sonnet/, google: /^gemini-.*flash/, openrouter: /sonnet/, deepseek: /flash|chat/, groq: /70b|120b/, mistral: /medium|large/, xai: /^grok/, "github-copilot": /sonnet|^gpt-\d/, "kimi-coding": /kimi|k\d/ };
 const NOT_MAIN = /(^|[-/:])(preview|mini|nano|lite|research|computer|audio|realtime|image|tts|search|embedding|instruct|codex|batch|live|latest|\d{4,8})(?=[-:]|$)/;
 function versionKey(id: string): number[] {
 	return (id.match(/\d+(\.\d+)?/g) ?? []).map(Number);
@@ -159,7 +162,15 @@ export function pickModel(p: ProviderConfig): string | undefined {
 	})[0];
 }
 /** 能在專案管家裡用訂閱登入的服務 */
-export const LOGIN_PROVIDERS: Partial<Record<Builtin, string>> = { openai: "ChatGPT 訂閱", anthropic: "Claude 訂閱(Pro / Max)" };
+export const LOGIN_PROVIDERS: Partial<Record<Builtin, string>> = {
+	openai: "ChatGPT 訂閱",
+	anthropic: "Claude 訂閱(Pro / Max)",
+	"github-copilot": "GitHub Copilot 訂閱",
+	xai: "Grok 訂閱(SuperGrok / X Premium)",
+	"kimi-coding": "Kimi Code 訂閱",
+	meta: "Meta 訂閱",
+	openrouter: "OpenRouter(登入)",
+};
 /** 跑訂閱登入流程(登入結果經 SettingsCredentials 存進 ~/.agent-steward/auth.json) */
 export async function loginProvider(id: string, interaction: unknown): Promise<void> {
 	if (!models) throw new Error("模型還沒準備好,稍後再試");
