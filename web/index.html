@@ -37,6 +37,10 @@ header h1 { font-size: 16px; margin: 0; }
 .modal.setmodal .box { width: min(860px, 100%); height: min(680px, calc(var(--appH, 100dvh) - 40px)); }
 .modal.setmodal .mbody { flex-direction: row; gap: 0; padding: 0; flex: 1; min-height: 0; }
 .wz-intro { background: var(--bg2, rgba(127,127,127,.12)); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; line-height: 1.5; }
+.login-box { border: 1px solid var(--line, rgba(127,127,127,.3)); border-radius: 8px; padding: 10px 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.login-box .row { display: flex; gap: 6px; align-items: center; }
+.login-box .row input { flex: 1; min-width: 0; }
+.login-box .row button { flex: 0 0 auto; }
 .upd-log, .upd-notes, .upd-cmd { background: var(--bg2, rgba(127,127,127,.12)); padding: 8px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; margin: 6px 0; }
 .set-tabs { flex: 0 0 150px; border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
 .set-tabs button { text-align: left; border: 0; background: none; color: var(--ink); font: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
@@ -1204,6 +1208,55 @@ function aboutPane() {
 		<div class="hint">在這台電腦的終端機執行(資料會保留;加 ${win ? "<code>-Purge</code>" : "<code>--purge</code>"} 連資料一起刪除):</div>
 		<pre class="upd-cmd">${win ? "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1" : "sh ~/.agent-steward/app/uninstall.sh"}</pre>`;
 }
+// ---- 訂閱登入 ----
+let loginTimer = null;
+async function startProviderLogin(provider) {
+	collectSettings();
+	// 先開好視窗(瀏覽器只允許在點擊當下開新視窗),拿到登入網址再導過去
+	const win = window.open("about:blank", "_blank");
+	const r = await post("/api/settings/login", { provider }).catch(() => ({ error: "連不上管家" }));
+	if (r.error) { win?.close(); return toast(r.error); }
+	const sid = r.session;
+	const box = () => $("loginBox");
+	let opened = false;
+	const render = (st) => {
+		const b = box(); if (!b) return;
+		b.hidden = false;
+		const name = provider === "openai" ? "ChatGPT" : "Claude";
+		b.innerHTML = st.status === "error" ? `<span class="bad">✗ 登入失敗:${esc(st.message || "")}</span> <button class="small" data-lx>關閉</button>`
+			: `<b>正在登入 ${name}</b>
+			<div class="hint">${st.url ? `已經打開 ${name} 的登入頁面(沒看到的話<a href="${esc(st.url)}" target="_blank" rel="noopener">點這裡打開</a>)。` : "準備中…"}</div>
+			<div class="hint">在<b>這台電腦</b>登入的話,完成後會自動接上。用<b>手機或別台電腦</b>時,登入後的頁面會打不開(網址開頭是 http://127.0.0.1 或 http://localhost),把那一頁的<b>整段網址</b>貼到這裡:</div>
+			<div class="row"><input type="text" id="loginCode" placeholder="http://127.0.0.1:…/callback?code=…" autocomplete="off"><button class="small primary" id="loginSend">送出</button><button class="small" data-lx>取消</button></div>`;
+		b.querySelectorAll("[data-lx]").forEach((x) => (x.onclick = () => { clearInterval(loginTimer); post(`/api/settings/login/${sid}/cancel`, {}).catch(() => {}); b.hidden = true; }));
+		$("loginSend")?.addEventListener("click", async () => {
+			const code = $("loginCode").value.trim();
+			if (!code) return;
+			const x = await post(`/api/settings/login/${sid}/code`, { code }).catch(() => ({ error: "連不上管家" }));
+			if (x.error) toast(x.error); else toast("驗證中…");
+		});
+	};
+	render({ status: "waiting" });
+	clearInterval(loginTimer);
+	loginTimer = setInterval(async () => {
+		const st = await fetch(`/api/settings/login/${sid}`).then((x) => x.json()).catch(() => null);
+		if (!st || st.error) { clearInterval(loginTimer); return; }
+		if (st.url && !opened) { opened = true; if (win && !win.closed) win.location.href = st.url; }
+		if (st.status === "done") {
+			clearInterval(loginTimer);
+			// 伺服器已經改了接口設定,重新讀進來(避免之後按「儲存」蓋回舊的登入方式)
+			const d = await fetch("/api/settings").then((x) => x.json()).catch(() => null);
+			if (d?.settings && setState) { setState.s.providers = d.settings.providers; setState.s.routing = d.settings.routing; }
+			await loadSetModels();
+			toast("登入完成"); if (setState) renderSettings();
+			return;
+		}
+		if (st.status === "error") { clearInterval(loginTimer); win?.close(); }
+		const keep = $("loginCode")?.value;
+		if (!$("loginCode") || st.status !== "waiting") render(st);
+		else if (st.url && !box().dataset.url) { box().dataset.url = "1"; render(st); if (keep) $("loginCode").value = keep; }
+	}, 1500);
+}
 let updTimer = null;
 function pollUpdateLog() {
 	clearInterval(updTimer);
@@ -1238,13 +1291,16 @@ const ROLE_ROWS = [["chat", "聊天室問答", "浮動球裡的問答"], ["sugge
 let setModels = null; // GET /api/settings/models 的結果
 async function loadSetModels() { setModels = await fetch("/api/settings/models").then((r) => r.json()).catch(() => null); }
 function providerCard(c, i) {
-	const kind = c.type === "builtin" ? (c.auth === "pi" ? "沿用 pi 的登入" : "API 金鑰") : c.type === "pi-models" ? "沿用 pi 的模型設定" : "OpenAI 相容網址";
-	const n = setModels?.providers.find((x) => x.id === c.id)?.models.length;
+	const kind = c.type === "builtin" ? (c.auth === "pi" ? "沿用 pi 的登入" : c.auth === "login" ? "訂閱登入" : "API 金鑰") : c.type === "pi-models" ? "沿用 pi 的模型設定" : "OpenAI 相容網址";
+	const info = setModels?.providers.find((x) => x.id === c.id);
+	const n = info?.models.length;
 	return `<div class="prov" data-i="${i}">
 		<div class="prov-h"><b>${esc(c.name || c.id)}</b><span class="chip">${esc(kind)}</span><span class="hint">代號 ${esc(c.id)}${n != null ? ` · ${n} 個模型` : ""}</span><span style="flex:1"></span>
 			<button class="small" data-ptest="${i}">測試連線</button><button class="small" data-pdel="${i}">刪除</button></div>
 		<label class="field">顯示名稱<input type="text" data-p="${i}.name" value="${esc(c.name)}"></label>
-		${c.type === "builtin" && c.auth !== "pi" ? `<label class="field">API 金鑰<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" placeholder="貼上金鑰" autocomplete="off"></label>` : ""}
+		${c.auth === "login" ? `<div class="hint">${info?.signedIn ? '<span class="ok">✓ 已登入</span>' : '<span class="bad">還沒登入</span>'} · 登入資料存在這台電腦的 ~/.agent-steward/auth.json</div>
+			<div><button class="small" data-login="${esc(c.id)}">${info?.signedIn ? "重新登入" : "登入"}</button>${info?.signedIn ? ` <button class="small" data-logout="${esc(c.id)}">登出</button>` : ""}</div>` : ""}
+		${c.type === "builtin" && c.auth !== "pi" && c.auth !== "login" ? `<label class="field">API 金鑰<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" placeholder="貼上金鑰" autocomplete="off"></label>` : ""}
 		${c.type === "openai-compatible" ? `<label class="field">網址(OpenAI 相容,通常結尾是 /v1)<input type="text" data-p="${i}.baseUrl" value="${esc(c.baseUrl || "")}"></label>
 			<label class="field">API 金鑰(沒有就空白)<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" autocomplete="off"></label>
 			<label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
@@ -1257,6 +1313,11 @@ function aiPane(s) {
 	const piAdd = (setModels?.piProviders || []).filter((p) => !have.has(p.id));
 	return `${setState.wizard == null ? '<div class="hint">管家用到的 AI 都從這裡設定。新增或修改後按「儲存」才會生效;「測試連線」會先幫你儲存。</div>' : ""}
 		${s.providers.map(providerCard).join("") || '<div class="empty">還沒有任何 AI 接口,從下面新增一個。</div>'}
+		<h4>用訂閱登入(不需要 API 金鑰)</h4>
+		<div class="hint">用你的 ChatGPT 或 Claude(Pro / Max)訂閱,不另外付 API 費用。</div>
+		<div>${Object.entries(setModels?.loginProviders || {}).filter(([k]) => !s.providers.some((p) => p.id === k && p.auth === "login")).map(([k, l]) => `<button class="small" data-login="${k}">用${k === "openai" ? " ChatGPT " : " Claude "}登入</button>`).join(" ") || '<span class="hint">都已經接上了</span>'}
+			${s.providers.some((p) => (setModels?.loginProviders || {})[p.id] && p.auth !== "login") ? '<div class="hint">已經有同一家的接口時,登入後會改用訂閱(原本的 API 金鑰或 pi 登入不再使用)。</div>' : ""}</div>
+		<div id="loginBox" class="login-box" hidden></div>
 		<h4>新增接口</h4>
 		<div class="row">
 			<label class="field">雲端服務(用 API 金鑰)<select id="addBuiltin"><option value="">選一個…</option>${Object.entries(BUILTIN_LABEL).filter(([k]) => !have.has(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
@@ -1431,6 +1492,12 @@ function renderSettings() {
 		renderSettings();
 		const box2 = $(`ptest${j}`);
 		if (box2) box2.innerHTML = r.ok ? `<span class="ok">✓ 連線成功</span>:${esc(r.model)} 回覆「${esc(r.reply)}」,${r.latencyMs} 毫秒;共 ${r.models.length} 個模型` : `<span class="bad">✗ ${esc(r.error || "失敗")}</span>`;
+	}));
+	m.querySelectorAll("[data-login]").forEach((b) => (b.onclick = () => startProviderLogin(b.dataset.login)));
+	m.querySelectorAll("[data-logout]").forEach((b) => (b.onclick = async () => {
+		const r = await post("/api/settings/logout-provider", { provider: b.dataset.logout }).catch(() => ({ error: "連不上管家" }));
+		if (r.error) return toast(r.error);
+		toast("已登出"); await loadSetModels(); renderSettings();
 	}));
 	if (tab === "about" && !setUpdate) loadSetUpdate().then(() => setState && setState.tab === "about" && renderSettings());
 	if (tab === "about" && setUpdate?.running) pollUpdateLog();

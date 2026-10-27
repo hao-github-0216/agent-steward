@@ -27,7 +27,8 @@ export interface ProviderConfig {
 	type: "builtin" | "openai-compatible" | "pi-models";
 	name: string;
 	builtin?: Builtin;
-	auth?: "apiKey" | "pi";
+	/** apiKey:API 金鑰;pi:沿用 pi 的登入;login:在專案管家裡用訂閱登入(存 ~/.agent-steward/auth.json) */
+	auth?: "apiKey" | "pi" | "login";
 	apiKey?: string;
 	baseUrl?: string;
 	models?: string[];

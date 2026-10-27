@@ -57,11 +57,12 @@ trap 'rm -rf "$TMP" "$ROOT/update.lock"' EXIT
 # ---------- 1. Node.js(22.6 以上) ----------
 node_ok() { "$1" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=6)?0:1)' 2>/dev/null; }
 NODE=""
-for c in "$(command -v node 2>/dev/null || true)" "$LOCALBIN/node" /opt/homebrew/bin/node /usr/local/bin/node "$ROOT/node/bin/node"; do
+# STEWARD_FORCE_NODE_DOWNLOAD=1:不用這台電腦現有的 Node,一律下載(測試「全新電腦」用,也可以在現有 Node 有問題時用)
+[ -n "${STEWARD_FORCE_NODE_DOWNLOAD:-}" ] || for c in "$(command -v node 2>/dev/null || true)" "$LOCALBIN/node" /opt/homebrew/bin/node /usr/local/bin/node "$ROOT/node/bin/node"; do
 	if [ -n "$c" ] && [ -x "$c" ] && node_ok "$c"; then NODE="$c"; break; fi
 done
 if [ -z "$NODE" ]; then
-	if [ "$PLATFORM" = macos ] && command -v brew >/dev/null 2>&1; then
+	if [ "$PLATFORM" = macos ] && [ -z "${STEWARD_FORCE_NODE_DOWNLOAD:-}" ] && command -v brew >/dev/null 2>&1; then
 		say "安裝 Node.js(Homebrew)"
 		brew install node >/dev/null
 		NODE=$(brew --prefix)/bin/node
@@ -69,9 +70,13 @@ if [ -z "$NODE" ]; then
 		say "下載 Node.js(放在 $ROOT/node,不需要管理員權限)"
 		case "$PLATFORM-$ARCH" in macos-aarch64) NA=darwin-arm64 ;; macos-x86_64) NA=darwin-x64 ;; linux-aarch64) NA=linux-arm64 ;; linux-x86_64) NA=linux-x64 ;; esac
 		BASE="https://nodejs.org/dist/latest-v22.x"
-		FILE=$(curl -fsSL "$BASE/SHASUMS256.txt" | awk -v na="$NA" '$2 ~ "node-v.*-"na".tar.gz$" {print $2; exit}')
+		curl -fsSL "$BASE/SHASUMS256.txt" -o "$TMP/node.sums" || die "連不上 nodejs.org"
+		LINE=$(awk -v na="$NA" '$2 ~ "node-v.*-"na".tar.gz$" {print; exit}' "$TMP/node.sums")
+		FILE=$(echo "$LINE" | awk '{print $2}'); WANT=$(echo "$LINE" | awk '{print $1}')
 		[ -n "$FILE" ] || die "找不到 Node.js 下載檔"
 		curl -fsSL "$BASE/$FILE" -o "$TMP/node.tgz"
+		GOT=$( (shasum -a 256 "$TMP/node.tgz" 2>/dev/null || sha256sum "$TMP/node.tgz") | awk '{print $1}')
+		[ "$WANT" = "$GOT" ] || die "Node.js 檔案驗證失敗(sha256 不符)"
 		rm -rf "$ROOT/node" && mkdir -p "$ROOT/node"
 		tar -xzf "$TMP/node.tgz" -C "$ROOT/node" --strip-components 1
 		NODE="$ROOT/node/bin/node"
@@ -146,7 +151,7 @@ if [ -z "$TTYD" ]; then
 		say "下載 ttyd"
 		curl -fsSL "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.$( [ "$ARCH" = aarch64 ] && echo aarch64 || echo x86_64)" -o "$BINDIR/ttyd" && chmod +x "$BINDIR/ttyd" && TTYD="$BINDIR/ttyd"
 	fi
-	[ -n "$TTYD" ] || warn "沒有 ttyd:網頁終端機無法使用(macOS 請先裝 Homebrew 再跑一次)"
+	[ -n "$TTYD" ] || warn "沒有 ttyd:網頁終端機先無法使用(其他功能照常),裝完最後會說明怎麼補上"
 fi
 
 # ---------- 5. steward 指令 ----------
@@ -179,8 +184,21 @@ done
 # ---------- 7. 已經接上專案管家的 agent:更新路徑(新的 agent 在設定頁「Agent」接上) ----------
 STEWARD_APP_DIR="$APP" "$NODE" --experimental-strip-types --no-warnings "$APP/src/refresh-agents.ts" || warn "更新 agent 整合失敗"
 
+ttyd_note() {
+	if [ -z "$TTYD" ]; then
+		echo
+		if [ "$PLATFORM" = macos ]; then
+			warn "網頁終端機需要 ttyd,而 macOS 上的 ttyd 要用 Homebrew 安裝。要用網頁終端機的話:"
+			echo '    1. 安裝 Homebrew:/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+			echo '    2. 再跑一次專案管家的安裝指令(會自動裝好 ttyd)'
+		else
+			warn "網頁終端機需要 ttyd,下載失敗了;再跑一次安裝指令即可補上"
+		fi
+		echo
+	fi
+}
 # ---------- 8. 開機自動啟動 ----------
-if [ "$SERVICE" = 0 ]; then say "略過開機自動啟動(--no-service)"; exit 0; fi
+if [ "$SERVICE" = 0 ]; then say "略過開機自動啟動(--no-service)"; ttyd_note; exit 0; fi
 PATHS="$LOCALBIN:$BINDIR:$(dirname "$NODE"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 if [ "$PLATFORM" = macos ]; then
 	UID_=$(id -u)
@@ -264,6 +282,7 @@ until curl -fsS "$URL"api/health >/dev/null 2>&1; do
 	sleep 1
 done
 say "專案管家已經在跑:$URL"
+ttyd_note
 if [ "$OPEN" = 1 ]; then
 	if [ "$PLATFORM" = macos ]; then open "$URL"; elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL" >/dev/null 2>&1 || true; fi
 	say "第一次使用:在瀏覽器裡設定管理密碼、AI 接口和要接上的 agent"

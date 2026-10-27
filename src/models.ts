@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import { createModels, createProvider, type MutableModels } from "@earendil-works/pi-ai/models";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
+import { deviceId, stewardAuth } from "./auth-store.ts";
 import { BUILTINS, type Builtin, defaultRouting, detectPiProviders, type ProviderConfig, type RouteRole, settings, updateSettings } from "./settings.ts";
 
 const PI_DIR = join(homedir(), ".pi", "agent");
@@ -36,20 +37,23 @@ class SettingsCredentials {
 		const c = this.cfg(id);
 		if (!c) return undefined;
 		if (c.auth === "pi") return (await piAuthStorage())?.read(id, o);
+		if (c.auth === "login") return stewardAuth.read(id) as Promise<any>;
 		return c.apiKey ? { type: "api_key" as const, key: c.apiKey } : undefined;
 	}
 	async list(o?: unknown) {
 		const out: { providerId: string; type: "api_key" | "oauth" }[] = [];
-		for (const c of settings().providers) if (c.type === "builtin" && (await this.read(c.id, o))) out.push({ providerId: c.id, type: c.auth === "pi" ? "oauth" : "api_key" });
+		for (const c of settings().providers) if (c.type === "builtin" && (await this.read(c.id, o))) out.push({ providerId: c.id, type: c.auth === "pi" || c.auth === "login" ? "oauth" : "api_key" });
 		return out;
 	}
 	async modify(id: string, fn: (cur: any) => Promise<any>, o?: unknown) {
 		const c = this.cfg(id);
 		if (c?.auth === "pi") return (await piAuthStorage())?.modify(id, fn, o); // OAuth 更新 token 寫回 pi
+		if (c?.auth === "login") return stewardAuth.modify(id, fn as any);
 		return fn(await this.read(id, o));
 	}
 	async delete(id: string, o?: unknown) {
 		if (this.cfg(id)?.auth === "pi") return (await piAuthStorage())?.delete(id, o);
+		if (this.cfg(id)?.auth === "login") return stewardAuth.delete(id);
 	}
 }
 
@@ -131,7 +135,8 @@ const CHATGPT_MODELS = new Set(Object.values(OPENAI_CODEX_MODELS as Record<strin
 export function modelIds(c: ProviderConfig): string[] {
 	if (c.type !== "builtin") return compatInfo(c)?.models ?? [];
 	const ids = models?.getModels(c.id).map((m) => m.id) ?? [];
-	if (c.builtin === "openai" && c.auth === "pi" && piLoginType("openai") === "oauth") return ids.filter((id) => CHATGPT_MODELS.has(id));
+	const chatgpt = c.auth === "login" || (c.auth === "pi" && piLoginType("openai") === "oauth");
+	if (c.builtin === "openai" && chatgpt) return ids.filter((id) => CHATGPT_MODELS.has(id));
 	return ids;
 }
 
@@ -153,6 +158,17 @@ export function pickModel(p: ProviderConfig): string | undefined {
 		return a.length - b.length;
 	})[0];
 }
+/** 能在專案管家裡用訂閱登入的服務 */
+export const LOGIN_PROVIDERS: Partial<Record<Builtin, string>> = { openai: "ChatGPT 訂閱", anthropic: "Claude 訂閱(Pro / Max)" };
+/** 跑訂閱登入流程(登入結果經 SettingsCredentials 存進 ~/.agent-steward/auth.json) */
+export async function loginProvider(id: string, interaction: unknown): Promise<void> {
+	if (!models) throw new Error("模型還沒準備好,稍後再試");
+	await (models as any).login(id, "oauth", interaction, { agentName: "agent-steward", getDeviceId: deviceId });
+}
+export function signedIn(c: ProviderConfig): boolean {
+	return c.auth === "login" && stewardAuth.has(c.id);
+}
+
 /** 測試連線用的模型:路由裡這個接口用到的模型優先,沒有就挑主力模型 */
 export function testModelFor(c: ProviderConfig): string | undefined {
 	const ids = modelIds(c);

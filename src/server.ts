@@ -12,7 +12,9 @@ import { expandHome, findTailscale, publicSettings, settings, stripMasked, updat
 import { hermesSecret, notify } from "./notify.ts";
 import { listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
-import { compatInfo, fillEmptyRouting, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
+import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
+import { stewardAuth } from "./auth-store.ts";
+import { compatInfo, fillEmptyRouting, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileStamps, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
@@ -312,6 +314,41 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const restart = JSON.stringify({ port: next.server.port, terminalPort: next.server.terminalPort, hosts: next.server.hosts, lan: next.access.lan.enabled }) !== prevServer;
 					return send(res, 200, { settings: publicSettings(next), restartNeeded: restart });
 				}
+				// 訂閱登入(ChatGPT / Claude):在伺服器跑登入流程,網頁輪詢進度
+				if (req.method === "POST" && path === "/api/settings/login") {
+					const id = String((await body(req)).provider ?? "");
+					const label = (LOGIN_PROVIDERS as Record<string, string>)[id];
+					if (!label) return send(res, 400, { error: "這個服務不支援訂閱登入" });
+					// 先把接口切成「在專案管家登入」;登入失敗或取消就還原
+					const before = settings().providers;
+					const prev = before.find((p) => p.id === id);
+					const next = prev
+						? before.map((p) => (p.id === id ? { ...p, auth: "login" as const, name: label } : p))
+						: [...before, { id, type: "builtin" as const, builtin: id as ProviderConfig["builtin"], auth: "login" as const, name: label }];
+					updateSettings({ providers: [] });
+					updateSettings({ providers: next });
+					await syncProviders();
+					const s = startLogin(id, async (ok) => {
+						if (ok) { fillEmptyRouting(); steward.resetModels(); return; }
+						if (stewardAuth.has(id)) return; // 之前登入過的保留
+						updateSettings({ providers: [] });
+						updateSettings({ providers: before });
+						await syncProviders();
+					});
+					return send(res, 200, { session: s.id });
+				}
+				const ml = path.match(/^\/api\/settings\/login\/([0-9a-f]{24})(\/code|\/cancel)?$/);
+				if (ml) {
+					if (req.method === "GET" && !ml[2]) { const st = loginStatus(ml[1]); return st ? send(res, 200, st) : send(res, 404, { error: "登入流程已經結束,請重新開始" }); }
+					if (req.method === "POST" && ml[2] === "/code") return submitCode(ml[1], String((await body(req)).code ?? "")) ? send(res, 200, { ok: true }) : send(res, 409, { error: "現在不需要貼網址" });
+					if (req.method === "POST" && ml[2] === "/cancel") { cancelLogin(ml[1]); return send(res, 200, { ok: true }); }
+				}
+				if (req.method === "POST" && path === "/api/settings/logout-provider") {
+					const id = String((await body(req)).provider ?? "");
+					await stewardAuth.delete(id);
+					steward.resetModels();
+					return send(res, 200, { ok: true });
+				}
 				// 更新:檢查 GitHub 最新版、一鍵更新、看進度
 				if (req.method === "GET" && path === "/api/settings/update") return send(res, 200, await checkUpdate(url.searchParams.has("force")));
 				if (req.method === "GET" && path === "/api/settings/update/log") return send(res, 200, { log: updateLog() });
@@ -335,7 +372,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				// 路由下拉選單用:每個接口有哪些模型
 				if (req.method === "GET" && path === "/api/settings/models") {
 					return send(res, 200, {
-						providers: settings().providers.map((c) => ({ id: c.id, name: c.name, type: c.type, local: !!c.local || c.type !== "builtin", models: modelIds(c) })),
+						providers: settings().providers.map((c) => ({ id: c.id, name: c.name, type: c.type, local: !!c.local || c.type !== "builtin", models: modelIds(c), signedIn: signedIn(c) })),
+						loginProviders: LOGIN_PROVIDERS,
 						piProviders: detectPiProviders(),
 						builtins: BUILTINS,
 					});

@@ -46,16 +46,21 @@ try {
 		try { return ((& $exe -e "const [a,b]=process.versions.node.split('.').map(Number);console.log(a>22||(a===22&&b>=6)?'ok':'old')") -eq "ok") } catch { return $false }
 	}
 	$Node = $null
-	foreach ($c in @((Get-Command node -ErrorAction SilentlyContinue).Source, (Join-Path $Root "node\node.exe"))) {
-		if (Test-Node $c) { $Node = $c; break }
+	# $env:STEWARD_FORCE_NODE_DOWNLOAD = "1":不用現有的 Node,一律下載(測試「全新電腦」用)
+	if (-not $env:STEWARD_FORCE_NODE_DOWNLOAD) {
+		foreach ($c in @((Get-Command node -ErrorAction SilentlyContinue).Source, (Join-Path $Root "node\node.exe"))) {
+			if (Test-Node $c) { $Node = $c; break }
+		}
 	}
 	if (-not $Node) {
 		Say "下載 Node.js(放在 $Root\node,不需要管理員權限)"
 		$na = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "win-arm64" } else { "win-x64" }
 		$base = "https://nodejs.org/dist/latest-v22.x"
-		$file = ((Invoke-WebRequest -UseBasicParsing "$base/SHASUMS256.txt").Content -split "`n" | ForEach-Object { ($_ -split "\s+")[1] } | Where-Object { $_ -like "node-v*-$na.zip" } | Select-Object -First 1)
-		if (-not $file) { Die "找不到 Node.js 下載檔" }
+		$line = (Invoke-WebRequest -UseBasicParsing "$base/SHASUMS256.txt").Content -split "`n" | Where-Object { ($_ -split "\s+")[1] -like "node-v*-$na.zip" } | Select-Object -First 1
+		if (-not $line) { Die "找不到 Node.js 下載檔" }
+		$want, $file = ($line.Trim() -split "\s+")
 		Invoke-WebRequest -UseBasicParsing "$base/$file" -OutFile "$Tmp\node.zip"
+		if ((Get-FileHash -Algorithm SHA256 "$Tmp\node.zip").Hash.ToLower() -ne $want.ToLower()) { Die "Node.js 檔案驗證失敗(sha256 不符)" }
 		Expand-Archive "$Tmp\node.zip" "$Tmp\node"
 		Remove-Item -Recurse -Force (Join-Path $Root "node") -ErrorAction SilentlyContinue
 		Move-Item (Get-ChildItem "$Tmp\node" | Select-Object -First 1).FullName (Join-Path $Root "node")
