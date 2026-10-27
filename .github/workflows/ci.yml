@@ -27,11 +27,12 @@ jobs:
         run: echo "FRESH_HOME=$RUNNER_TEMP/fresh-home" >> "$GITHUB_ENV"
       - name: Shell syntax
         run: sh -n install.sh && sh -n uninstall.sh
-      - name: Install on a "fresh machine"
+      - name: Install on a "fresh machine" (curl | sh, like the README)
         run: |
           mkdir -p "$FRESH_HOME"
           env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 STEWARD_FORCE_NODE_DOWNLOAD=1 \
-            sh install.sh --from . --no-service 2>&1 | tee install.log
+            sh -c 'curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.sh" | sh -s -- --from "$0" --no-service' "$PWD" 2>&1 | tee install.log
+          grep -q "已安裝到" install.log
       - name: Check what got installed
         run: |
           set -x
@@ -70,11 +71,15 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs) | Out-Null
             if ($errs) { $errs; exit 1 }
           }
-      - name: Install with Windows PowerShell 5.1 on a "fresh machine"
-        shell: cmd
+      - name: Install with Windows PowerShell 5.1 on a "fresh machine" (irm | iex, like the README)
+        shell: powershell
         env:
           STEWARD_FORCE_NODE_DOWNLOAD: "1"
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoService
+          STEWARD_NO_SERVICE: "1"
+        run: |
+          $env:STEWARD_FROM = (Get-Location).Path
+          irm "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.ps1" | iex
+          if (-not (Test-Path "$HOME\.agent-steward\app\src\main.ts")) { throw "安裝沒有完成" }
       - name: Check what got installed
         shell: pwsh
         run: |
@@ -95,7 +100,7 @@ jobs:
             try { Invoke-RestMethod http://127.0.0.1:8791/api/health; Stop-Process -Id $p.Id -Force; exit 0 } catch { Start-Sleep 1 }
           }
           Get-Content "$HOME\steward.err.log"; exit 1
-      - name: Install again with start-on-login (best effort; CI has no interactive logon)
+      - name: Install again with -File (update path, start-on-login is best effort; CI has no interactive logon)
         continue-on-error: true
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoOpen
