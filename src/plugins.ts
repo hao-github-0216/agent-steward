@@ -41,6 +41,12 @@ function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.Pro
 		execFile(cmd, args, { ...opts, timeout: 30 * 60_000, maxBuffer: 50 * 1024 * 1024, windowsHide: true }, (err, out, errOut) => (err ? fail(new Error(String(errOut || out || err.message).trim().split("\n").slice(-6).join(" ").slice(0, 800))) : ok(String(out))));
 	});
 }
+/** 解壓縮用的 tar:Windows 固定用內建的(裝了 Git 的電腦,PATH 裡的 tar 是 Git 的,會把 D:\ 當成遠端主機) */
+function tarExe(): string {
+	if (!IS_WIN) return "tar";
+	const sys = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+	return existsSync(sys) ? sys : "tar";
+}
 async function latestTag(repo: string): Promise<string> {
 	const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { "user-agent": "agent-steward", accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(20_000) });
 	if (!r.ok) throw new Error(`查不到 ${repo} 的最新版本(${r.status})`);
@@ -70,7 +76,9 @@ async function installLatex(log: Log): Promise<void> {
 	mkdirSync(TOOLS, { recursive: true });
 	// Windows 版是自解壓檔(7-Zip),其他是 tar.xz
 	if (process.platform === "win32") await run(file, ["-y", `-o${TOOLS}`]);
-	else await run("tar", ["-xJf", file, "-C", TOOLS]);
+	else await run(tarExe(), ["-xJf", file, "-C", TOOLS]);
+	// Linux 版解壓出來是隱藏資料夾 .TinyTeX
+	if (!existsSync(TINYTEX) && existsSync(join(TOOLS, ".TinyTeX"))) renameSync(join(TOOLS, ".TinyTeX"), TINYTEX);
 	rmSync(file, { force: true });
 	const bin = tinytexBin();
 	if (!bin) {
@@ -112,7 +120,7 @@ async function installNotebook(log: Log): Promise<void> {
 		rmSync(UV_DIR, { recursive: true, force: true });
 		mkdirSync(UV_DIR, { recursive: true });
 		// Windows 10 以上內建 tar(可以解 zip);tar.gz 裡有一層資料夾
-		await run("tar", IS_WIN ? ["-xf", file, "-C", UV_DIR] : ["-xzf", file, "-C", UV_DIR, "--strip-components", "1"]);
+		await run(tarExe(), IS_WIN ? ["-xf", file, "-C", UV_DIR] : ["-xzf", file, "-C", UV_DIR, "--strip-components", "1"]);
 		rmSync(file, { force: true });
 		uv = uvPath();
 		if (!uv) throw new Error("uv 解壓縮後找不到執行檔");
