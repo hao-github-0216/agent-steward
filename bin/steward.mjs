@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // steward:專案管家的指令列工具(純 JS,不需編譯)。
-//   steward brief [--cwd DIR]          目前專案的簡報(預設用 $PWD)
-//   steward ask "問題" [--cwd DIR]      問管家
+//   steward brief [--cwd DIR] [--project 名稱]   目前專案(或指定專案)的簡報
+//   steward ask "問題" [--project 名稱]           問管家;指定別的專案時問答記在目前專案
+//   steward projects                              列出所有專案
 //   steward report "做了什麼" [--agent X] 主動回報
 //   steward board                      開啟看板
 //   steward hook <agent>               給各 agent 的 SessionStart hook 用(失敗安靜略過)
@@ -69,13 +70,20 @@ async function main() {
 	switch (cmd) {
 		case "brief": {
 			const cwd = flag("cwd", process.cwd());
-			process.stdout.write((await api(`/api/brief?cwd=${encodeURIComponent(cwd)}`)) + "\n");
+			const project = flag("project", "");
+			process.stdout.write((await api(`/api/brief?cwd=${encodeURIComponent(cwd)}${project ? `&project=${encodeURIComponent(project)}` : ""}`)) + "\n");
+			break;
+		}
+		case "projects": {
+			const list = JSON.parse(await api("/api/projects")).projects;
+			process.stdout.write(list.map((p) => (p.private ? `${p.name}(隱私專案)` : `${p.name}\t${p.root}${p.progress ? `\n  ${p.progress}` : ""}`)).join("\n") + "\n");
 			break;
 		}
 		case "ask": {
 			const cwd = flag("cwd", process.cwd());
 			const agent = flag("agent", process.env.STEWARD_AGENT ?? "cli");
-			const r = JSON.parse(await post("/api/ask", { cwd, question: args.join(" "), agent }));
+			const project = flag("project", "");
+			const r = JSON.parse(await post("/api/ask", { cwd, question: args.join(" "), agent, ...(project ? { project } : {}) }));
 			process.stdout.write(`[${r.project}] ${r.answer}\n`);
 			break;
 		}

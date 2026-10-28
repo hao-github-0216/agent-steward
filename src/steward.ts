@@ -376,8 +376,8 @@ export class Steward {
 	}
 
 	/** 不經過管家對話回答提問時用的系統提示:管家身分 + 專案簡報 + 最近的問答 */
-	private chatSystem(p: Project): string {
-		const history = recentChat(p.id, 8).slice(0, -1).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");
+	private chatSystem(p: Project, dropLast = true): string {
+		const history = recentChat(p.id, 8).slice(0, dropLast ? -1 : undefined).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");
 		return `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
 	}
 
@@ -414,6 +414,18 @@ export class Steward {
 			if (p.private || !hasFallback("judge")) throw e;
 			return tryRef(true);
 		}
+	}
+
+	/**
+	 * 別的專案的 agent 問這個專案的事:用這個專案的簡報、最近問答單次回答,不寫進這個專案的管家對話。
+	 * askerPrivate = 發問的專案是隱私專案(問題可能帶有隱私內容)→ 用隱私模型。
+	 */
+	async askAbout(target: Project, question: string, askerPrivate: boolean): Promise<string> {
+		const system = `${this.chatSystem(target, false)}\n\n(這個問題是從另一個專案的 agent 問的,只回答「${target.name}」這個專案的事;需要細節時告訴它專案位置(${target.root}),請它自己去讀檔案。)`;
+		const ref = routeFor("chat", { private: askerPrivate });
+		const cli = this.cliOf(ref.provider);
+		if (cli) return runCli(cli, ref.modelId, system, question);
+		return this.oneShotWith(system, question, ref, 4000);
 	}
 
 	/** 有圖片的提問:用看得懂圖片的模型單次回答(不寫進管家的對話) */

@@ -540,6 +540,7 @@ body.term #ballWrap[data-corner^="t"] #ballPanel { top: 158px; }
 .msg.draft input, .msg.draft select, .msg.draft textarea { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; resize: vertical; }
 .msg.draft .dbtns { display: flex; gap: 6px; flex-wrap: wrap; }
 .msg.draft.done { gap: 4px; }
+.msg .via { font-size: 11px; opacity: .75; margin-bottom: 3px; }
 .msg .mfiles { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .msg .mfiles span { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.22); }
 .msg.bot .mfiles span { background: var(--chip); }
@@ -2086,8 +2087,9 @@ function draftHtml(e) {
 function msgHtml(e) {
 	if (e.draft) return draftHtml(e);
 	const files = e.files?.length ? `<div class="mfiles">${e.files.map((f) => `<span title="${esc(f)}">📎 ${esc(f.split("/").pop())}</span>`).join("")}</div>` : "";
+	const via = e.via ? `<div class="via">↪ ${esc(e.via)}</div>` : "";
 	const imgs = e.images?.length ? `<div class="mimgs">${e.images.map((u) => `<img src="${esc(u)}" alt="">`).join("")}</div>` : "";
-	const q = imgs + files + (e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
+	const q = via + imgs + files + (e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
 	const cloud = e.alt?.startsWith("看圖") ? `<span class="cloud" title="這一題有圖片,改用看得懂圖片的模型">${esc(e.alt)}</span>` : e.alt ? `<span class="cloud" title="這一則用備用模型回答:${esc(e.alt)}">備用 · ${esc(e.alt)}</span>` : e.cloud ? '<span class="cloud" title="這一則用雲端模型回答">雲端</span>' : "";
 	const retry = e.retryable ? `<button class="small retry" data-retry="${esc(e.id)}">改用備用模型回答這一題</button>` : "";
 	return `<div class="msg ${e.role}${e.error ? " err" : ""}">${q}${cloud}${esc(e.text)}${retry}</div>`;

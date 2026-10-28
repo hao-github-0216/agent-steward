@@ -6,12 +6,17 @@ const TOOLS = [
 	{
 		name: "steward_brief",
 		description: "取得專案管家對某個專案的進度簡報(目前做到哪、下一步、卡點、決定、最近其他 agent 做了什麼)。開始新工作前先呼叫。",
-		inputSchema: { type: "object", properties: { cwd: { type: "string", description: "專案目錄(預設用目前工作目錄)" } } },
+		inputSchema: { type: "object", properties: { project: { type: "string", description: "要看別的專案時填專案名稱(用 steward_projects 查);不填就是目前資料夾的專案" }, cwd: { type: "string", description: "專案目錄(預設用目前工作目錄)" } } },
 	},
 	{
 		name: "steward_ask",
-		description: "問專案管家關於專案的問題(例如某個決定的來由、別的 agent 做過什麼)。",
-		inputSchema: { type: "object", properties: { question: { type: "string" }, cwd: { type: "string" } }, required: ["question"] },
+		description: "問專案管家關於專案的問題(例如某個決定的來由、別的 agent 做過什麼)。要問別的專案就填 project(問答會記在目前這個專案)。",
+		inputSchema: { type: "object", properties: { question: { type: "string" }, project: { type: "string", description: "要問別的專案時填專案名稱(用 steward_projects 查);不填就是目前資料夾的專案" }, cwd: { type: "string" } }, required: ["question"] },
+	},
+	{
+		name: "steward_projects",
+		description: "列出專案管家追蹤的所有專案(名稱、位置、目前進度)。要問或參考別的專案時先用這個找名稱和位置;需要細節可以直接去讀那個專案的檔案。隱私專案只列名稱、不開放查詢。",
+		inputSchema: { type: "object", properties: {} },
 	},
 	{
 		name: "steward_report",
@@ -50,8 +55,12 @@ export async function runMcp(base) {
 				const a = params?.arguments ?? {};
 				const cwd = a.cwd ?? cwd0;
 				let text;
-				if (params.name === "steward_brief") text = await call(`/api/brief?cwd=${encodeURIComponent(cwd)}`);
-				else if (params.name === "steward_ask") text = JSON.parse(await call("/api/ask", { method: "POST", body: JSON.stringify({ cwd, question: a.question, agent }) })).answer;
+				if (params.name === "steward_brief") text = await call(`/api/brief?cwd=${encodeURIComponent(cwd)}${a.project ? `&project=${encodeURIComponent(a.project)}` : ""}`);
+				else if (params.name === "steward_ask") text = JSON.parse(await call("/api/ask", { method: "POST", body: JSON.stringify({ cwd, question: a.question, agent, ...(a.project ? { project: a.project } : {}) }) })).answer;
+				else if (params.name === "steward_projects") {
+					const list = JSON.parse(await call("/api/projects")).projects;
+					text = list.length ? list.map((p) => (p.private ? `- ${p.name}(隱私專案,不開放查詢)` : `- ${p.name}:${p.root}${p.progress ? `\n  進度:${p.progress}` : ""}`)).join("\n") : "還沒有追蹤任何專案";
+				}
 				else if (params.name === "steward_report") text = JSON.parse(await call("/api/report", { method: "POST", body: JSON.stringify({ cwd, text: a.text, agent }) })).answer;
 				else throw new Error(`unknown tool ${params.name}`);
 				out({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text }] } });

@@ -65,6 +65,7 @@ const INSTRUCTIONS = `
 有一個常駐的「專案管家」在追蹤每個專案的進度(目前做到哪、下一步、卡點、決定、其他 agent 最近做了什麼)。
 - 開新 session 時若 context 裡沒有「專案管家簡報」,先執行 \`steward brief\`(或 MCP 工具 steward_brief)看一下再開工。
 - 想知道別的 session/agent 做過什麼、某個決定的來由:\`steward ask "問題"\`(或 MCP 工具 steward_ask)。
+- 需要參考別的專案:\`steward projects\`(或 steward_projects)看有哪些專案與位置,再用 \`steward ask --project 名稱 "問題"\` / \`steward brief --project 名稱\`(MCP 加 project 參數);問答會記在目前這個專案。細節可以直接去讀那個專案的檔案。
 - 收工不必手動回報,管家會自動整理;真的需要強調的重要決定才用 \`steward report "…"\`(或 steward_report)。
 <!-- steward:end -->
 `;

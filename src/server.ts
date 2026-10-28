@@ -96,6 +96,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		for (const c of clients) c.write(`data: ${JSON.stringify({ what })}\n\n`);
 	});
 
+	/** 用名稱找專案(不分大小寫;名稱的一部分只對到一個也算) */
+	const projectByName = (name: string): { p?: Project; hints: string[] } => {
+		const all = store.projects().filter((x) => x.kind === "project" && x.status === "active");
+		const n = name.trim().toLowerCase();
+		const exact = store.project(name) ?? all.find((x) => x.name.toLowerCase() === n);
+		if (exact) return { p: exact, hints: [] };
+		const part = all.filter((x) => x.name.toLowerCase().includes(n) || n.includes(x.name.toLowerCase()));
+		return part.length === 1 ? { p: part[0], hints: [] } : { hints: (part.length ? part : all).map((x) => x.name).slice(0, 20) };
+	};
+	const PRIVATE_NOTE = (p: Project) => `「${p.name}」是隱私專案,內容不對其他專案開放。請到那個專案的資料夾裡問。`;
 	const projectFrom = (q: URLSearchParams | Record<string, string | undefined>): Project | undefined => {
 		const get = (k: string) => (q instanceof URLSearchParams ? (q.get(k) ?? undefined) : q[k]);
 		const id = get("project");
@@ -316,7 +326,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 			// 所有 /api 都要登入;例外:健康檢查、網頁回報錯誤、本機 agent 整合(開工簡報、提問、回報)
 			const OPEN = new Set(["/api/health", "/api/clientlog"]);
-			const LOCAL_INTEGRATION = new Set(["/api/brief", "/api/ask", "/api/report"]);
+			const LOCAL_INTEGRATION = new Set(["/api/brief", "/api/ask", "/api/report", "/api/projects"]);
 			if (path.startsWith("/api/") && !OPEN.has(path) && !(LOCAL_INTEGRATION.has(path) && isPureLocal(req))) {
 				const a = await authorize(req);
 				if (!a.ok) return send(res, a.status, { error: a.reason, login: a.login });
@@ -541,13 +551,47 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 
 			// ---------- 給 agent 用 ----------
+			// 給 agent 的專案列表(MCP steward_projects):隱私專案只給名稱
+			if (req.method === "GET" && path === "/api/projects") {
+				const list = store.projects().filter((x) => x.kind === "project" && x.status === "active").map((x) => x.private
+					? { name: x.name, private: true }
+					: { name: x.name, root: x.root, progress: (x.state?.progress ?? "").replace(/\s+/g, " ").slice(0, 120), lastActivityAt: x.lastActivityAt ?? x.state?.updatedAt });
+				return send(res, 200, { projects: list });
+			}
 			if (req.method === "GET" && path === "/api/brief") {
+				// project 參數:用名稱查別的專案(隱私專案不開放給別的專案)
+				const want = url.searchParams.get("project");
+				if (want) {
+					const { p: target, hints } = projectByName(want);
+					const from = url.searchParams.get("cwd") ? resolveProject(store, url.searchParams.get("cwd")!) : undefined;
+					const text = !target ? `找不到「${want}」這個專案。現有的專案:${hints.join("、")}` : target.private && target.id !== from?.id ? PRIVATE_NOTE(target) : brief(store, target);
+					return url.searchParams.get("format") === "json" ? send(res, 200, { project: target ?? null, text }) : send(res, 200, text, "text/plain; charset=utf-8");
+				}
 				const p = projectFrom(url.searchParams) ?? ensureSpecial(store, MISC_ROOT);
 				const text = brief(store, p);
 				return url.searchParams.get("format") === "json" ? send(res, 200, { project: p, text }) : send(res, 200, text, "text/plain; charset=utf-8");
 			}
 			if (req.method === "POST" && path === "/api/ask") {
 				const b = await body(req);
+				// 跨專案提問:在 A 的資料夾裡問 B(project 參數)→ 用 B 的資料單次回答,紀錄留在 A
+				if (b.project) {
+					const { p: target, hints } = projectByName(String(b.project));
+					const from = b.cwd ? resolveProject(store, String(b.cwd)) : undefined;
+					if (!target) return send(res, 200, { project: null, answer: `找不到「${b.project}」這個專案。現有的專案:${hints.join("、")}` });
+					if (!from || from.id !== target.id) {
+						if (target.private) return send(res, 200, { project: target.name, answer: PRIVATE_NOTE(target) });
+						const question = String(b.question ?? "").trim();
+						let answer: string;
+						try { answer = await steward.askAbout(target, question, !!from?.private); }
+						catch (e) { answer = `管家沒有回答:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`; }
+						if (from) {
+							const via = `herdr · ${b.agent || "agent"} 問了「${target.name}」`;
+							appendChat(from.id, { role: "me", text: question, via });
+							appendChat(from.id, { role: "bot", text: answer, via: `回答「${target.name}」的問題` });
+						}
+						return send(res, 200, { project: target.name, answer });
+					}
+				}
 				const p = projectFrom(b) ?? ensureSpecial(store, OVERVIEW_ROOT);
 				const who = b.agent ? `(提問者:${b.agent})` : "";
 				const answer = await steward.send(p, `【提問】${who}${b.question}`);

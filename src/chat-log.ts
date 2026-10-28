@@ -21,6 +21,8 @@ export interface ChatEntry {
 	quote?: ChatQuote;
 	/** 這個問題帶了哪些檔案(只記路徑,不存內容) */
 	files?: string[];
+	/** 從哪裡問的(例如 herdr 裡 A 專案的 Claude Code 問了 B 專案) */
+	via?: string;
 	/** 附的圖片縮圖(data URL;原圖不存) */
 	images?: string[];
 	/** 管家擬的工作卡草稿:status draft=還沒決定、proposed=放進提案、dispatched=直接派工 */
