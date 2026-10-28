@@ -182,7 +182,7 @@ for d in "$APP"/herdr-plugins/*/; do
 done
 
 # 資料夾導覽的快捷鍵(prefix+e)與 herdr 選單項目;herdr 正在跑的話讓它重新讀設定
-"$NODE" --experimental-strip-types --no-warnings "$APP/src/herdr-setup.ts" || warn "設定 herdr 的資料夾導覽失敗"
+STEWARD_NODE="$NODE" "$NODE" --experimental-strip-types --no-warnings "$APP/src/herdr-setup.ts" || warn "設定 herdr 的資料夾導覽失敗"
 [ -x "$HERDR" ] && "$HERDR" server reload-config >/dev/null 2>&1 || true
 
 # ---------- 7. 已經接上專案管家的 agent:更新路徑(新的 agent 在設定頁「Agent」接上) ----------

@@ -12,6 +12,8 @@ const CONFIG = join(herdrConfigDir(), "config.toml");
 const PLUGIN = join(herdrConfigDir(), "plugins-local", "folder-nav", "folder_nav.mjs");
 const MARK = "# 資料夾導覽 popup(專案管家安裝,外掛 local.folder-nav)";
 const STAMP = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+// 用安裝程式選定的 Node 路徑(可能是捷徑;process.execPath 會是解開後的真實路徑,換版本就失效)
+const NODE = process.env.STEWARD_NODE || process.execPath;
 const isFolderNav = (block: string) => /folder[_-]nav/.test(block);
 
 /** 執行資料夾導覽的指令(herdr 交給系統 shell 執行) */
@@ -20,11 +22,11 @@ function command(): string {
 		// cmd.exe 的引號規則很麻煩:寫一個 .cmd 包起來,設定檔裡只放這個路徑
 		const wrapper = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "folder-nav.cmd");
 		mkdirSync(dirname(wrapper), { recursive: true });
-		writeFileSync(wrapper, `@"${process.execPath}" "${PLUGIN}" %*\r\n`);
+		writeFileSync(wrapper, `@"${NODE}" "${PLUGIN}" %*\r\n`);
 		return /\s/.test(wrapper) ? `"${wrapper}"` : wrapper;
 	}
 	const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
-	return `${q(process.execPath)} ${q(PLUGIN)}`;
+	return `${q(NODE)} ${q(PLUGIN)}`;
 }
 const tomlStr = (s: string) => JSON.stringify(s); // TOML 基本字串跟 JSON 字串的跳脫相容
 

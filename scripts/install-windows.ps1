@@ -206,6 +206,7 @@ if ($env:STEWARD_NO_SERVICE) { $NoService = $true }
 		}
 
 		# 資料夾導覽的快捷鍵(prefix+e)與 herdr 選單項目;herdr 正在跑的話讓它重新讀設定
+		$env:STEWARD_NODE = $Node
 		& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\herdr-setup.ts")
 		if ($Herdr) { & $Herdr server reload-config *> $null }
 
