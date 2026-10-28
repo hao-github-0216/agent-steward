@@ -118,6 +118,7 @@
 	}
 	const isMd = (p) => /\.(md|markdown|mdx)$/i.test(p || "");
 	const isNb = (p) => /\.ipynb$/i.test(p || "");
+	const isTex = (p) => /\.tex$/i.test(p || "");
 	let mathLib = null;
 	/** KaTeX(數學式排版),一樣經過 Monaco 的 AMD 載入器;載不到就不排版,不影響其他內容 */
 	function loadMath() {
@@ -485,6 +486,80 @@
 			n.innerHTML = `<div class="empty" style="text-align:center;padding:20px">${t.info}</div>`;
 		}
 	}
+	// ---------- LaTeX:latexmk 編譯、錯誤清單、PDF 在旁邊自動刷新 ----------
+	const texAuto = () => pref(`steward.texAuto:${cm.pid}`) === "1";
+	function texBar(g, t) {
+		const r = t.tex;
+		const nErr = r?.issues?.filter((i) => i.level === "error").length || 0, nWarn = r?.issues?.filter((i) => i.level === "warning").length || 0;
+		const state = t.texBusy ? "編譯中…" : !r ? "LaTeX" : r.ok ? `✓ 編譯成功(${esc(r.engine)},${r.seconds} 秒)` : r.pdf ? `有錯誤,PDF 可能不完整(${esc(r.engine)})` : "✗ 編譯失敗";
+		bar(g, `<span class="tex-state${r && !r.ok && !t.texBusy ? " bad" : ""}">${state}</span>${r && (nErr || nWarn) ? `<button class="small" data-bar="texissues">${nErr ? `✗ ${nErr} 個錯誤` : ""}${nErr && nWarn ? " · " : ""}${nWarn ? `⚠ ${nWarn} 個警告` : ""}</button>` : ""}<span class="sp"></span><label class="tex-auto" title="按 ⌘/Ctrl+S 存檔時自動編譯"><input type="checkbox" data-texauto ${texAuto() ? "checked" : ""}> 存檔時編譯</label><button class="small primary" data-bar="texbuild" ${t.texBusy ? "disabled" : ""}>編譯</button>`);
+		g.barEl?.querySelector("[data-texauto]")?.addEventListener("change", (e) => pref(`steward.texAuto:${cm.pid}`, e.target.checked ? "1" : "0"));
+	}
+	async function texBuild(t) {
+		if (t.texBusy) return;
+		if (t.dirty && !(await saveTab(t))) return;
+		t.texBusy = true;
+		if (t.group.active === t) texBar(t.group, t);
+		const r = await api("latex", { method: "POST", body: JSON.stringify({ path: t.path }) }).catch((e) => ({ error: e.message }));
+		t.texBusy = false;
+		if (r.error) { toast(r.error); if (t.group.active === t) texBar(t.group, t); return; }
+		// 同一份主檔的所有 .tex 分頁共用結果(\input 進來的子檔也看得到)
+		for (const x of allTabs()) if (x.kind === "file" && isTex(x.path) && (x === t || r.issues.some((i) => i.file === x.path))) x.tex = r;
+		texMarkers(r);
+		if (t.group.active === t) texBar(t.group, t);
+		if (r.pdf) await texShowPdf(t, r.pdf);
+		const nErr = r.issues.filter((i) => i.level === "error").length;
+		toast(r.ok ? "編譯完成" : nErr ? `編譯有 ${nErr} 個錯誤` : "編譯失敗,看看完整紀錄");
+	}
+	/** 編輯器裡把錯誤 / 警告畫成波浪線 */
+	function texMarkers(r) {
+		const m = cm.monaco;
+		for (const x of allTabs()) {
+			if (x.kind !== "file" || !isTex(x.path) || !x.model) continue;
+			const mine = r.issues.filter((i) => i.line && (i.file ? i.file === x.path : x.path === r.main));
+			m.editor.setModelMarkers(x.model, "latex", mine.map((i) => ({ severity: i.level === "error" ? m.MarkerSeverity.Error : m.MarkerSeverity.Warning, message: i.message, startLineNumber: i.line, endLineNumber: i.line, startColumn: 1, endColumn: x.model.getLineMaxColumn(Math.min(i.line, x.model.getLineCount())) })));
+		}
+	}
+	/** PDF:已經開著就刷新,沒開就開在旁邊 */
+	async function texShowPdf(t, pdf) {
+		const ex = findTab(`file:${pdf}`);
+		if (ex) { texReloadPdf(ex); return; }
+		const g = t.group;
+		if (mobile()) return toast("PDF 已經產生,從檔案列表打開");
+		const ci = cm.cols.indexOf(colOf(g));
+		const target = cm.cols[ci + 1]?.groups[0] || (cm.cols.length < MAX_COLS ? newGroupAt(g, "right") : null);
+		await openFile(pdf, target || g);
+		// 開完 PDF 把焦點還給 .tex
+		setActiveGroup(g); activate(g, t);
+	}
+	function texReloadPdf(x) {
+		x.pv?.remove(); x.pv = null; x.pdfDoc?.destroy?.(); x.pdfDoc = null;
+		if (x.group.active === x) activate(x.group, x);
+	}
+	function texIssues(t) {
+		const r = t.tex;
+		if (!r) return;
+		const row = (i, k) => `<button type="button" class="tex-issue ${i.level}" data-ti="${k}"><b>${i.level === "error" ? "✗" : "⚠"}</b> ${esc(i.file || r.main)}${i.line ? `:${i.line}` : ""} — ${esc(i.message)}</button>`;
+		const d = dialog({
+			title: `編譯結果 · ${baseName(r.main)}`,
+			html: `<div class="hint">引擎 ${esc(r.engine)} · ${r.seconds} 秒${r.pdf ? ` · PDF:${esc(r.pdf)}` : ""}。點一項跳到那一行。</div>
+				<div class="tex-list">${r.issues.map(row).join("") || '<div class="hint">沒有錯誤或警告</div>'}</div>
+				<details><summary class="hint">完整編譯紀錄(最後 300 行)</summary><pre class="tex-log">${esc(r.log)}</pre></details>`,
+			buttons: [],
+		});
+		d.querySelector(".box")?.classList.add("ov-box");
+		d.addEventListener("click", async (e) => {
+			const k = e.target.closest("[data-ti]")?.dataset.ti;
+			if (k == null) return;
+			const i = r.issues[Number(k)];
+			if (!i.line) return;
+			d.remove();
+			await openFile(i.file || r.main);
+			const tab = findTab(`file:${i.file || r.main}`);
+			const ed = tab?.group.editor;
+			if (ed && tab.group.active === tab) { ed.revealLineInCenter(i.line); ed.setPosition({ lineNumber: i.line, column: 1 }); ed.focus(); }
+		});
+	}
 	// ---------- Office:Word 照版面顯示(docx-preview)、Excel 顯示表格(SheetJS) ----------
 	const officeLibs = {};
 	function loadOfficeLib(which) {
@@ -717,7 +792,8 @@
 				g.diff.setModel(null);
 				g.editor.setModel(t.model);
 				g.editor.updateOptions({ readOnly: !!t.readonly });
-				bar(g, t.truncated ? `<span>大檔(${fmtSize(t.size)})唯讀:只顯示開頭和結尾各 ${t.truncated.shown} 行,共 ${t.truncated.total} 行</span><span class="sp"></span><button class="small" data-bar="more">多載入 2000 行</button><button class="small" data-bar="term">在終端機開啟</button>` : t.readonly ? "<span>唯讀</span>" : isMd(t.path) ? `<span class="sp"></span><button class="small" data-bar="mdprev">${mobile() ? "預覽" : "在旁邊預覽"}</button>` : "");
+				if (isTex(t.path) && !t.truncated && !t.readonly) texBar(g, t);
+				else bar(g, t.truncated ? `<span>大檔(${fmtSize(t.size)})唯讀:只顯示開頭和結尾各 ${t.truncated.shown} 行,共 ${t.truncated.total} 行</span><span class="sp"></span><button class="small" data-bar="more">多載入 2000 行</button><button class="small" data-bar="term">在終端機開啟</button>` : t.readonly ? "<span>唯讀</span>" : isMd(t.path) ? `<span class="sp"></span><button class="small" data-bar="mdprev">${mobile() ? "預覽" : "在旁邊預覽"}</button>` : "");
 				if (t.viewState) g.editor.restoreViewState(t.viewState);
 				// 手機:切分頁不自動聚焦編輯器(會跳鍵盤、iOS 還會放大);要打字點一下內容就好
 				if (!mobile() && !matchMedia("(pointer: coarse)").matches) g.editor.focus();
@@ -779,6 +855,8 @@
 		if (a === "nbraw") return openFile(t.path, g, { raw: true });
 		if (a === "fullview") return setFull(t, true);
 		if (a === "officeedit") return officeEdit(t);
+		if (a === "texbuild") return texBuild(t);
+		if (a === "texissues") return texIssues(t);
 		if (a === "officehist") return officeHistory(t);
 	}
 	async function openFile(rel, g = cm.activeGroup, { quiet = false, view = null, raw = false } = {}) {
@@ -795,6 +873,7 @@
 			const f = await api(`file?path=${encodeURIComponent(rel)}`);
 			const t = { key, group: g, kind: f.kind === "text" ? "file" : f.kind === "image" || f.kind === "pdf" || f.kind === "office" ? f.kind : "info", path: rel, label: baseName(rel), title: rel, size: f.size };
 			if (t.kind === "office") { t.app = f.app; t.hash = f.hash; }
+			if (t.kind === "pdf") t.hash = f.hash;
 			if (t.kind === "file") {
 				t.model = cm.monaco.editor.createModel(f.content, langOf(rel));
 				t.hash = f.hash; t.readonly = f.readonly; t.truncated = f.truncated;
@@ -1315,6 +1394,7 @@
 			renderProjSelect();
 			toast("已存檔");
 			cm.dirs = {}; renderFiles(); refreshGit();
+			if (isTex(t.path) && texAuto()) texBuild(t);
 			return true;
 		} catch (e) {
 			if (e.status === 409 && e.data?.disk) {
@@ -1359,6 +1439,12 @@
 	// 沒修改的分頁:磁碟上的檔案被改了就自動重新載入(agent 改檔時畫面跟著更新)
 	setInterval(async () => {
 		if (!document.body.classList.contains("code") || document.hidden || !cm.pid) return;
+		// PDF:重新產生了(LaTeX 編譯、agent 輸出)就刷新
+		const pdfs = allTabs().filter((x) => x.kind === "pdf" && x.hash);
+		if (pdfs.length) {
+			const st = await api("stamps", { method: "POST", body: JSON.stringify({ paths: [...new Set(pdfs.map((x) => x.path))] }) }).catch(() => null);
+			for (const x of pdfs) { const h = st?.[x.path]?.hash; if (h && h !== x.hash) { x.hash = h; texReloadPdf(x); } }
+		}
 		// Office 檔:被 Office 存檔或 agent 改了就重畫預覽;目前看的那個順便更新「正在 Office 編輯中」
 		const offs = allTabs().filter((x) => x.kind === "office" && x.hash);
 		for (const t of offs) if (t.group.active === t) officeInfo(t);

@@ -14,6 +14,7 @@ import { listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
+import { buildLatex } from "./latex.ts";
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
@@ -178,6 +179,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 	const codeRoute = async (p: Project, sub: string, req: IncomingMessage, res: ServerResponse, url: URL) => {
 		const q = (k: string) => url.searchParams.get(k) ?? "";
 		try {
+			// ---------- LaTeX 編譯 ----------
+			if (req.method === "POST" && sub === "latex") return send(res, 200, await buildLatex(p, String((await body(req)).path ?? "")));
 			// ---------- Office:專用連結、編輯狀態、歷史版本 ----------
 			if (sub.startsWith("office/")) {
 				const op = sub.slice(7);

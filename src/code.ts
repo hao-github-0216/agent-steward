@@ -299,7 +299,7 @@ export function readFile(p: Project, rel: string, opts: { more?: number } = {}) 
 	const ext = extname(abs).toLowerCase();
 	const base = { path: rel, name: basename(abs), size: st.size, mtime: st.mtimeMs };
 	if (IMAGE.has(ext)) return { ...base, kind: "image" as const };
-	if (ext === ".pdf") return { ...base, kind: "pdf" as const };
+	if (ext === ".pdf") return { ...base, kind: "pdf" as const, hash: officeStamp(st) };
 	if (OFFICE[ext]) return { ...base, kind: "office" as const, app: OFFICE[ext], hash: officeStamp(st) };
 	if (st.size > VIEW_LIMIT) return { ...base, kind: "toolarge" as const };
 	const buf = readFileSync(abs);
@@ -390,7 +390,7 @@ export function fileStamps(p: Project, rels: string[]) {
 			}
 			const st = statSync(abs);
 			// Office 檔用大小 + 修改時間(檔案可能很大,不每次都讀整個檔)
-			if (OFFICE[extname(abs).toLowerCase()]) { out[rel] = { hash: officeStamp(st) }; continue; }
+			if (OFFICE[extname(abs).toLowerCase()] || extname(abs).toLowerCase() === ".pdf") { out[rel] = { hash: officeStamp(st) }; continue; }
 			if (st.size > EDIT_LIMIT) continue;
 			out[rel] = { hash: hashOf(readFileSync(abs)) };
 		} catch {
