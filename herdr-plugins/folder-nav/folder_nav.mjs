@@ -60,7 +60,9 @@ function cdCommand(shell, path) {
 function openInTerminal(path, pane, ws) {
 	const sh = idleShell(pane);
 	if (sh) {
-		herdr("pane", "send-keys", pane, "ctrl+u"); // 清掉提示字元上打到一半的字
+		// 清掉提示字元上打到一半的字:Windows 的 PowerShell / cmd 不認得 Ctrl+U(會變成一個看不見的字元
+		// 黏在指令前面),要用 Esc;Mac/Linux 的 shell(含 pwsh)用 Ctrl+U,那裡的 Esc 會跟下一個字變成組合鍵
+		herdr("pane", "send-keys", pane, WIN && ["pwsh", "powershell", "cmd"].includes(sh) ? "esc" : "ctrl+u");
 		herdr("pane", "run", pane, cdCommand(sh, path));
 		return `已在目前窗格 cd 到 ${path}`;
 	}
