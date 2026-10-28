@@ -15,6 +15,7 @@ import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
 import { buildLatex } from "./latex.ts";
+import { PasteError, savePastedImage } from "./term-paste.ts";
 import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./plugins.ts";
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
@@ -971,6 +972,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				if (size < 2_000_000) appendFileSync(file, `${new Date().toISOString()} ${req.socket.remoteAddress} ${header(req, "tailscale-user-login") ?? ""} ${JSON.stringify(b).slice(0, 2000)}\n`);
 				return send(res, 204, "");
+			}
+			// 終端機貼圖片:存成檔案,回傳路徑讓網頁貼進終端機(和終端機同一套身分檢查)
+			if (req.method === "POST" && path === "/api/terminal/paste-image") {
+				const auth = await authorizeTerminal(req);
+				if (!auth.ok) return send(res, auth.status, { error: auth.reason });
+				try {
+					return send(res, 200, { path: await savePastedImage(req, header(req, "content-type") ?? "") });
+				} catch (e) {
+					if (e instanceof PasteError) return send(res, e.status, { error: e.message });
+					throw e;
+				}
 			}
 			// 終端機:讓 herdr 跳到這個專案所在的 space(沒有就不動)
 			if (req.method === "POST" && path === "/api/terminal/focus") {
