@@ -320,11 +320,7 @@ export class Steward {
 		if (role === "chat") {
 			const ref = routeFor("chat", { private: p.private, fallback });
 			const cli = this.cliOf(ref.provider);
-			if (cli) {
-				const history = recentChat(p.id, 8).slice(0, -1).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");
-				const system = `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
-				return runCli(cli, ref.modelId, system, content, timeoutMs ?? 180_000).catch((e) => { throw new StewardUnanswered(String((e as Error).message ?? e)); });
-			}
+			if (cli) return runCli(cli, ref.modelId, this.chatSystem(p), content, timeoutMs ?? 180_000).catch((e) => { throw new StewardUnanswered(String((e as Error).message ?? e)); });
 		}
 		return this.serial(p.id, async () => {
 			const conv = await this.conversation(p);
@@ -377,6 +373,30 @@ export class Steward {
 		);
 		if (msg.errorMessage) throw new Error(msg.errorMessage);
 		return (msg.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+	}
+
+	/** 不經過管家對話回答提問時用的系統提示:管家身分 + 專案簡報 + 最近的問答 */
+	private chatSystem(p: Project): string {
+		const history = recentChat(p.id, 8).slice(0, -1).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");
+		return `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
+	}
+
+	/** 有圖片的提問:用看得懂圖片的模型單次回答(不寫進管家的對話) */
+	async askWithImages(p: Project, content: string, images: { data: string; mimeType: string }[], ref: { provider: string; modelId: string }, timeoutMs = 180_000): Promise<string> {
+		if (!this.models) throw new StewardUnanswered("管家還沒準備好");
+		const model = (this.models as unknown as { getModel(p: string, id: string): unknown }).getModel(ref.provider, ref.modelId);
+		if (!model) throw new StewardUnanswered(`找不到模型 ${ref.provider}/${ref.modelId}`);
+		const ask = (this.models as unknown as { completeSimple(m: unknown, c: unknown, o?: unknown): Promise<{ content?: { type: string; text?: string }[]; errorMessage?: string }> }).completeSimple(
+			model,
+			{ systemPrompt: this.chatSystem(p), messages: [{ role: "user", content: [{ type: "text", text: content }, ...images.map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType }))], timestamp: Date.now() }] },
+			{ reasoning: "low", maxTokens: 4000 },
+		);
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const msg = await Promise.race([ask, new Promise<never>((_, no) => { timer = setTimeout(() => no(new StewardUnanswered(`等了 ${Math.round(timeoutMs / 1000)} 秒沒有回應`)), timeoutMs); })]).finally(() => clearTimeout(timer));
+		if (msg.errorMessage) throw new StewardUnanswered(msg.errorMessage);
+		const text = (msg.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+		if (!text) throw new StewardUnanswered("模型沒有回答");
+		return text;
 	}
 
 	/** 這個接口是不是電腦上的 agent CLI(是的話回傳是哪一個) */

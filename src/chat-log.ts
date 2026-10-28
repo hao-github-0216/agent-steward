@@ -20,6 +20,8 @@ export interface ChatEntry {
 	quote?: ChatQuote;
 	/** 這個問題帶了哪些檔案(只記路徑,不存內容) */
 	files?: string[];
+	/** 附的圖片縮圖(data URL;原圖不存) */
+	images?: string[];
 	at: string;
 	error?: boolean;
 	cloud?: boolean; // (舊)使用者按「改用雲端回答這一題」得到的回答

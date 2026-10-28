@@ -257,6 +257,21 @@ export function modelLabel(ref: { provider: string; modelId: string }): string {
 	const c = settings().providers.find((p) => p.id === ref.provider);
 	return `${c?.name.replace(/[((]沿用 pi 的(登入|模型設定)[))]/, "").trim() || ref.provider} · ${ref.modelId}`;
 }
+/** 這個模型看不看得懂圖片(agent CLI 一律不行) */
+export function supportsImages(ref: { provider: string; modelId: string }): boolean {
+	const c = settings().providers.find((x) => x.id === ref.provider);
+	if (!c || c.type === "agent-cli" || !models) return false;
+	const m = (models as unknown as { getModel(p: string, id: string): { input?: string[] } | undefined }).getModel(ref.provider, ref.modelId);
+	return !!m?.input?.includes("image");
+}
+/** 有圖片的問題用哪個模型:聊天主要 → 聊天備用 → 提案檢查主要 → 提案檢查備用;隱私專案只能用隱私模型 */
+export function imageRoute(privateProject: boolean): { provider: string; modelId: string } | undefined {
+	const r = settings().routing;
+	const refs = privateProject ? [r.privacy] : [r.chat.primary, r.chat.fallback, r.judge.primary, r.judge.fallback];
+	for (const ref of refs) { const p = parseRef(ref); if (p && supportsImages(p)) return p; }
+	return undefined;
+}
+
 /** 這個模型代號是不是 agent CLI(只能用在聊天、建議問題、提交訊息) */
 export function isCliRef(ref: string): boolean {
 	const p = parseRef(ref);

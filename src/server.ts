@@ -16,7 +16,7 @@ import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.
 import { stewardAuth } from "./auth-store.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
-import { compatInfo, fillEmptyRouting, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
+import { compatInfo, fillEmptyRouting, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
@@ -597,9 +597,14 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				const quote = q ? { path: q.path ? String(q.path) : undefined, from: Number(q.from) || undefined, to: Number(q.to) || undefined, text: q.text.slice(0, 20000) } : undefined;
 				// 浮動球加進來的檔案:網頁有給內容(編輯器裡還沒存的版本)就用它,否則讀磁碟
 				const fileReqs: { path: string; content?: string }[] = (Array.isArray(b.files) ? b.files : []).slice(0, 10).filter((f: { path?: unknown }) => typeof f?.path === "string" && f.path);
-				if (!message && !quote && !fileReqs.length) return send(res, 400, { error: "請輸入問題" });
+				// 圖片:只跟著這一題(最多 4 張);對話紀錄只存網頁做好的縮圖
+				const images: { data: string; mimeType: string }[] = (Array.isArray(b.images) ? b.images : []).slice(0, 4)
+					.filter((i: { data?: unknown; mimeType?: unknown }) => typeof i?.data === "string" && /^image\/(png|jpeg|gif|webp)$/.test(String(i.mimeType)) && i.data.length < 8_000_000)
+					.map((i: { data: string; mimeType: string }) => ({ data: i.data, mimeType: i.mimeType }));
+				const thumbs: string[] = (Array.isArray(b.thumbs) ? b.thumbs : []).slice(0, 4).filter((t: unknown) => typeof t === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(t) && t.length < 60_000);
+				if (!message && !quote && !fileReqs.length && !images.length) return send(res, 400, { error: "請輸入問題" });
 				// 先記下問題(回答還沒回來時重新整理也看得到);「改用雲端重問」不重複記問題
-				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote, ...(fileReqs.length ? { files: fileReqs.map((f) => f.path) } : {}) });
+				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote, ...(fileReqs.length ? { files: fileReqs.map((f) => f.path) } : {}), ...(thumbs.length ? { images: thumbs } : {}) });
 				let snippet = quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
 				let budget = 300_000;
 				for (const f of fileReqs) {
@@ -609,6 +614,24 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					if (item.text && item.text.length > budget) item = { path: item.path, note: "這次帶的檔案太多,這個檔案沒有附上內容" };
 					if (item.text) budget -= item.text.length;
 					snippet += item.text ? `\n\n使用者附上的檔案 ${item.path}:\n\`\`\`\n${item.text}\n\`\`\`` : `\n\n(使用者附上的檔案 ${item.path}:${item.note})`;
+				}
+				if (images.length) {
+					// 有圖片:用看得懂圖片的模型回答這一題(隱私專案只能用隱私模型)
+					const ref = imageRoute(p.private);
+					if (!ref) {
+						const bot = appendChat(p.id, { role: "bot", text: p.private ? "這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。" : "目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。", error: true });
+						return send(res, 200, { error: bot.text, me: mine, bot });
+					}
+					try {
+						const answer = await steward.askWithImages(p, `【提問】(使用者,附了 ${images.length} 張圖片)${message || "請看圖片"}${snippet}`, images, ref);
+						let primary = "";
+						try { primary = `${routeFor("chat", { private: p.private }).provider}/${routeFor("chat", { private: p.private }).modelId}`; } catch { /* 沒設定 */ }
+						const bot = appendChat(p.id, { role: "bot", text: answer, ...(`${ref.provider}/${ref.modelId}` !== primary ? { alt: `看圖改用 ${modelLabel(ref)}` } : {}) });
+						return send(res, 200, { answer, me: mine, bot });
+					} catch (e) {
+						const bot = appendChat(p.id, { role: "bot", text: `「${modelLabel(ref)}」看圖失敗:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`, error: true });
+						return send(res, 200, { error: bot.text, me: mine, bot });
+					}
 				}
 				try {
 					// 聊天室用路由「聊天室」的主要模型(純問答,不能開卡);使用者按「改用備用模型」才用備用
