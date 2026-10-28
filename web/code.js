@@ -452,6 +452,15 @@
 		t.pv?.remove();
 		t.pv = el("div", `cv-pv cv-pv-${t.kind}`);
 		g.previewEl.appendChild(t.pv);
+		// 記住看到哪裡(切分頁、重新整理、換電腦都回到原位)
+		const pv = t.pv;
+		pv.addEventListener("scroll", () => {
+			if (pv.hidden || t.restoring) return;
+			t.pos = { ...(t.pos || {}), top: pv.scrollTop, left: pv.scrollLeft };
+			// PDF 記「第幾頁、頁內位置」:版面寬度改變(分割畫面、換電腦)時頁高會變,像素就不準了
+			if (t.kind === "pdf" && t.pdfPages) { const at = pdfWhere(t); if (at) Object.assign(t.pos, at); pdfPageLabel(t); }
+			saveSoon(1500);
+		}, { passive: true });
 		return t.pv;
 	}
 	/** 預覽全螢幕(蓋住整個畫面,右上角 ✕ 或 Esc 關閉) */
@@ -467,7 +476,22 @@
 		}
 	}
 	addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".cv-pv.cv-full .cv-fullx").forEach((b) => b.click()); });
-	function showPv(g, t) { for (const c of g.previewEl.children) c.hidden = c !== t.pv; }
+	function showPv(g, t) {
+		for (const c of g.previewEl.children) c.hidden = c !== t.pv;
+		// 隱藏的元素會丟掉捲動位置:顯示回來時補回去
+		if (t.pv && t.pos) requestAnimationFrame(() => applyPos(t));
+	}
+	/** 回到記住的位置(內容畫好之後呼叫);有縮放的先還原縮放 */
+	function applyPos(t) {
+		const pv = t.pv;
+		if (!pv || !t.pos) return;
+		t.restoring = true;
+		if (t.pos.zoom && t.zoomer && Math.abs(t.zoomer.zoom - t.pos.zoom) > 0.01) t.zoomer.setZoom(t.pos.zoom);
+		const pr = t.kind === "pdf" && t.pos.page != null ? pdfPageRect(t, t.pos.page) : null;
+		pv.scrollTop = pr ? pr.top + pr.height * (t.pos.frac || 0) : t.pos.top || 0;
+		pv.scrollLeft = t.pos.left || 0;
+		requestAnimationFrame(() => { t.restoring = false; });
+	}
 	function buildPreview(t, n) {
 		const src = `/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`;
 		if (t.kind === "image") {
@@ -475,13 +499,13 @@
 			const img = n.querySelector("img"), wrap = n.querySelector(".zoomwrap");
 			// 先縮到剛好放得下,之後用 zoom 放大
 			const fit = () => { if (!img.naturalWidth) return; const r = Math.min(1, (n.clientWidth - 16) / img.naturalWidth, (n.clientHeight - 16) / img.naturalHeight); img.style.width = `${Math.round(img.naturalWidth * r)}px`; img.style.height = `${Math.round(img.naturalHeight * r)}px`; };
-			img.onload = fit;
-			attachZoom(n, wrap);
+			img.onload = () => { fit(); applyPos(t); };
+			t.zoomer = attachZoom(n, wrap, { onEnd: (z) => { t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); } });
 		} else if (t.kind === "office") {
 			buildOffice(t, n, src);
 		} else if (t.kind === "pdf") {
-			if (touch()) buildPdfjs(t, n, src); // 手機/平板:內建 PDF 無法縮放,改用 PDF.js
-			else n.innerHTML = `<iframe src="${src}" title="${esc(t.label)}"></iframe>`;
+			// 一律用 PDF.js:才能記住看到第幾頁、手機也能縮放;要用瀏覽器內建檢視器(搜尋)按「用瀏覽器開啟」
+			buildPdfjs(t, n, src);
 		} else {
 			n.innerHTML = `<div class="empty" style="text-align:center;padding:20px">${t.info}</div>`;
 		}
@@ -649,11 +673,11 @@
 				n.innerHTML = '<div class="office-word"></div>';
 				const wrap = n.firstChild;
 				await lib.renderAsync(buf, wrap, null, { className: "docx", inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: false, renderHeaders: true, renderFooters: true, renderFootnotes: true, useBase64URL: true });
-				attachZoom(n, wrap);
+				if (n === t.pv) { t.zoomer = attachZoom(n, wrap, { onEnd: (z) => { t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); } }); applyPos(t); } else attachZoom(n, wrap);
 			} else {
 				const wb = lib.read(buf, { type: "array", cellDates: true, cellNF: true });
 				const names = wb.SheetNames;
-				t.sheet = names.includes(t.sheet) ? t.sheet : names[0];
+				t.sheet = names.includes(t.sheet) ? t.sheet : names.includes(t.pos?.sheet) ? t.pos.sheet : names[0];
 				const draw = () => {
 					const ws = wb.Sheets[t.sheet];
 					// 太大的工作表只畫前 2000 列、200 欄
@@ -668,9 +692,10 @@
 					}
 					const html = ws ? lib.utils.sheet_to_html(ws, { header: "", footer: "" }) : "<p>(空的工作表)</p>";
 					n.innerHTML = `${names.length > 1 ? `<div class="xl-tabs">${names.map((nm) => `<button type="button" class="small${nm === t.sheet ? " on" : ""}" data-sheet="${esc(nm)}">${esc(nm)}</button>`).join("")}</div>` : ""}${note}<div class="office-xl">${html}</div>`;
-					n.querySelectorAll("[data-sheet]").forEach((b) => (b.onclick = () => { t.sheet = b.dataset.sheet; draw(); }));
+					n.querySelectorAll("[data-sheet]").forEach((b) => (b.onclick = () => { t.sheet = b.dataset.sheet; if (n === t.pv) { t.pos = { sheet: t.sheet, top: 0, left: 0 }; saveSoon(1500); } draw(); }));
 				};
 				draw();
+				if (n === t.pv) applyPos(t);
 			}
 		} catch (e) {
 			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><p class="hint">預覽失敗:${esc(e.message || String(e))}</p></div>`;
@@ -716,7 +741,11 @@
 			apply(z * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
 			clearTimeout(attachZoom.t); attachZoom.t = setTimeout(() => onEnd?.(z), 200);
 		}, { passive: false });
-		return { get zoom() { return z; } };
+		return {
+			get zoom() { return z; },
+			/** 工具列的放大縮小、還原上次的縮放 */
+			setZoom(nz) { const r = box.getBoundingClientRect(); apply(nz, r.left + r.width / 2, r.top + r.height / 2); onEnd?.(z); },
+		};
 	}
 	// PDF.js(只在觸控裝置載入)
 	const PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build";
@@ -774,10 +803,39 @@
 				for (const en of entries) { const p = pages.find((x) => x.box === en.target); if (!p) continue; p.visible = en.isIntersecting; if (en.isIntersecting) { render(p); renderText(p); } }
 			}, { root: n, rootMargin: "150% 0px" });
 			for (const p of pages) io.observe(p.box);
-			attachZoom(n, wrap, { onEnd: (z) => { zoom = z; for (const p of pages) if (p.visible) render(p); } });
+			t.pdfPages = pages;
+			t.zoomer = attachZoom(n, wrap, { onEnd: (z) => { zoom = z; t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); for (const p of pages) if (p.visible) render(p); } });
+			applyPos(t);
+			pdfPageLabel(t);
 		} catch (e) {
 			wrap.innerHTML = `<div class="empty" style="padding:20px">PDF 顯示失敗:${esc(e.message || String(e))}</div>`;
 		}
+	}
+	/** 每一頁在捲動區裡的實際位置(含縮放) */
+	function pdfPageRect(t, i) {
+		const pv = t.pv, b = t.pdfPages?.[i]?.box;
+		if (!pv || !b) return null;
+		const r = b.getBoundingClientRect(), pr = pv.getBoundingClientRect();
+		return { top: r.top - pr.top + pv.scrollTop, height: r.height };
+	}
+	/** 目前畫面頂端在第幾頁、頁內幾成的位置 */
+	function pdfWhere(t) {
+		const pages = t.pdfPages, pv = t.pv;
+		if (!pages?.length || !pv) return null;
+		for (let i = 0; i < pages.length; i++) {
+			const r = pdfPageRect(t, i);
+			if (r && r.top + r.height > pv.scrollTop) return { page: i, frac: Math.max(0, Math.min(1, (pv.scrollTop - r.top) / r.height)) };
+		}
+		return { page: pages.length - 1, frac: 0 };
+	}
+	/** PDF 工具列的「第 x / N 頁」:跟記住的位置用同一個基準(畫面頂端) */
+	function pdfPageLabel(t) {
+		const pages = t.pdfPages;
+		if (!pages?.length || !t.pv) return;
+		const at = pdfWhere(t);
+		t.page = (at?.page ?? 0) + 1;
+		const lab = t.group.barEl?.querySelector(".pdf-page");
+		if (lab && t.group.active === t) lab.textContent = `第 ${t.page} / ${pages.length} 頁`;
 	}
 	function surface(g, which) {
 		for (const k of ["editorEl", "diffEl", "previewEl", "emptyEl"]) g[k].hidden = k !== which;
@@ -785,6 +843,7 @@
 	function bar(g, html) { g.barEl.hidden = !html; g.barEl.innerHTML = html || ""; }
 	function activate(g, t) {
 		if (g.active && g.active !== t && g.active.kind === "file" && !g.active.conflict && g.editor) g.active.viewState = g.editor.saveViewState();
+		if (g.active && g.active !== t && g.active.kind === "diff" && g.diff) g.active.viewState = g.diff.saveViewState();
 		g.active = t;
 		if (g === cm.activeGroup) notifyCurrent();
 		if (t && mobile()) document.body.classList.add("cv-editing");
@@ -812,6 +871,7 @@
 			g.editor.setModel(null);
 			g.diff.updateOptions({ readOnly: true });
 			g.diff.setModel({ original: t.orig, modified: t.mod });
+			if (t.viewState) g.diff.restoreViewState(t.viewState);
 			bar(g, `<span>${esc(t.caption)}</span><span class="sp"></span>${t.which !== "commit" ? '<button class="small" data-bar="openfile">開啟檔案編輯</button>' : ""}`);
 		} else if (t.kind === "nb") {
 			surface(g, "previewEl");
@@ -836,6 +896,7 @@
 			if (fresh) buildPreview(t, n); // 只有第一次(或搬到別的群組)才建立,切回來沿用
 			showPv(g, t);
 			if (t.kind === "office") officeBar(g, t);
+			else if (t.kind === "pdf") bar(g, `<span class="pdf-page">${t.pdfPages ? `第 ${t.page || 1} / ${t.pdfPages.length} 頁` : "PDF"}</span><span class="sp"></span><button class="small" data-bar="zoomout" title="縮小">−</button><button class="small" data-bar="zoomin" title="放大">＋</button>${touch() ? '<button class="small" data-bar="fullview">全螢幕</button>' : ""}<button class="small" data-bar="openraw" title="在瀏覽器的新分頁用內建檢視器打開(可以搜尋文字)">用瀏覽器開啟</button>`);
 			else bar(g, (t.kind === "pdf" || t.kind === "image") && touch() ? '<span>雙指縮放、點兩下放大/還原</span><span class="sp"></span><button class="small" data-bar="fullview">全螢幕</button>' : "");
 		}
 		renderTabs(g);
@@ -863,14 +924,16 @@
 		}
 		if (a === "nbraw") return openFile(t.path, g, { raw: true });
 		if (a === "fullview") return setFull(t, true);
+		if (a === "zoomin" || a === "zoomout") return t.zoomer?.setZoom((t.zoomer.zoom || 1) * (a === "zoomin" ? 1.25 : 0.8));
+		if (a === "openraw") return window.open(`/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`, "_blank", "noopener");
 		if (a === "officeedit") return officeEdit(t);
 		if (a === "texbuild") return texBuild(t);
 		if (a === "texissues") return texIssues(t);
 		if (a === "officehist") return officeHistory(t);
 	}
-	async function openFile(rel, g = cm.activeGroup, { quiet = false, view = null, raw = false } = {}) {
+	async function openFile(rel, g = cm.activeGroup, { quiet = false, view = null, raw = false, pos = null } = {}) {
 		// .ipynb 跟 VS Code 一樣預設顯示成 Notebook;要改 JSON 用「編輯原始 JSON」
-		if (isNb(rel) && !raw) return openNotebook(rel, g, { quiet });
+		if (isNb(rel) && !raw) return openNotebook(rel, g, { quiet, pos });
 		await loadMonaco().catch(fail);
 		if (!cm.monaco) return;
 		ensureLayout();
@@ -883,6 +946,7 @@
 			const t = { key, group: g, kind: f.kind === "text" ? "file" : f.kind === "image" || f.kind === "pdf" || f.kind === "office" ? f.kind : "info", path: rel, label: baseName(rel), title: rel, size: f.size };
 			if (t.kind === "office") { t.app = f.app; t.hash = f.hash; }
 			if (t.kind === "pdf") t.hash = f.hash;
+			if (pos && t.kind !== "file") t.pos = pos;
 			if (t.kind === "file") {
 				t.model = cm.monaco.editor.createModel(f.content, langOf(rel));
 				t.hash = f.hash; t.readonly = f.readonly; t.truncated = f.truncated;
@@ -905,7 +969,7 @@
 	}
 	// ---------- Markdown 預覽 ----------
 	/** 開預覽分頁:電腦放在右邊(沒有就分割出來),手機放在同一個群組 */
-	async function openPreview(rel, target = null, { quiet = false } = {}) {
+	async function openPreview(rel, target = null, { quiet = false, pos = null } = {}) {
 		cm.md = await loadMd().catch((e) => { if (!quiet) fail(e); return null; });
 		if (!cm.md) return;
 		const key = `md:${rel}`;
@@ -925,7 +989,7 @@
 				g = cm.cols[ci + 1]?.groups[0] || (cm.cols.length < MAX_COLS ? newGroupAt(g, "right") : g);
 			}
 		}
-		const t = { key, group: g, kind: "md", path: rel, label: `預覽 ${baseName(rel)}`, title: `${rel}(預覽)`, text };
+		const t = { key, group: g, kind: "md", path: rel, label: `預覽 ${baseName(rel)}`, title: `${rel}(預覽)`, text, ...(pos ? { pos } : {}) };
 		if (srcTab?.model) t.sub = watchMd(t, srcTab.model);
 		g.tabs.push(t);
 		setActiveGroup(g);
@@ -944,6 +1008,7 @@
 		const box = t.pv && t.pv.parentNode === g.previewEl ? t.pv : pvNode(g, t);
 		const scroll = box.scrollTop;
 		box.innerHTML = `<article class="md-body">${html}</article>`;
+		const restoreTo = t.pos?.top ?? scroll;
 		const base = dirOf(t.path);
 		const resolve = (href) => {
 			const parts = (base ? `${base}/${href}` : href).split("/");
@@ -962,10 +1027,12 @@
 				a.addEventListener("click", (e) => { e.preventDefault(); openFile(resolve(decodeURI(u.split("#")[0])), t.group); });
 			} else if (!u.startsWith("#")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
 		}
-		box.scrollTop = scroll;
+		// 圖片載入會改變高度:先捲一次,圖片都載好再捲一次
+		t.restoring = true; box.scrollTop = restoreTo;
+		Promise.all([...box.querySelectorAll("img")].map((im) => (im.complete ? 0 : new Promise((ok) => { im.onload = im.onerror = ok; })))).then(() => { box.scrollTop = t.pos?.top ?? restoreTo; t.restoring = false; });
 	}
 	// ---------- Jupyter Notebook(.ipynb):顯示、編輯、用 kernel 執行 ----------
-	async function openNotebook(rel, g = cm.activeGroup, { quiet = false } = {}) {
+	async function openNotebook(rel, g = cm.activeGroup, { quiet = false, pos = null } = {}) {
 		await loadMonaco().catch(fail);
 		if (!cm.monaco) return;
 		ensureLayout();
@@ -973,7 +1040,7 @@
 		const key = `nb:${rel}`;
 		const existing = findTab(key);
 		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
-		const t = { key, group: g, kind: "nb", path: rel, label: baseName(rel), title: `${rel}(Notebook)`, kstate: "off", runs: new Map() };
+		const t = { key, group: g, kind: "nb", path: rel, label: baseName(rel), title: `${rel}(Notebook)`, kstate: "off", runs: new Map(), ...(pos ? { pos } : {}) };
 		g.tabs.push(t);
 		setActiveGroup(g);
 		activate(g, t);
@@ -1032,7 +1099,7 @@
 		body.appendChild(add);
 		root.appendChild(body);
 		box.replaceChildren(root);
-		box.scrollTop = scroll;
+		box.scrollTop = t.pos?.top ?? scroll;
 		box.tabIndex = -1;
 		box.onkeydown = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveNb(t); } };
 		nbToolbar(t);
@@ -1533,9 +1600,14 @@
 
 	// ---------- 記住開了什麼(存在伺服器,換專案/換電腦都能還原) ----------
 	function tabSpec(t) {
-		if (t.kind === "diff") return { kind: "diff", path: t.path, which: t.which, commit: t.commit };
-		if (t.kind === "md") return { kind: "md", path: t.path };
-		if (t.kind === "nb") return { kind: "nb", path: t.path };
+		if (t.kind === "diff") {
+			const vs = t.group.active === t && t.group.diff ? t.group.diff.saveViewState() : t.viewState;
+			return { kind: "diff", path: t.path, which: t.which, commit: t.commit, ...(vs ? { view: vs } : {}) };
+		}
+		const pos = t.pos ? { pos: t.pos } : {};
+		if (t.kind === "md") return { kind: "md", path: t.path, ...pos };
+		if (t.kind === "nb") return { kind: "nb", path: t.path, ...pos };
+		if (t.kind !== "file") return { kind: "file", path: t.path, ...pos }; // 圖片、PDF、Office:重開時 openFile 會判斷類型
 		const spec = { kind: "file", path: t.path };
 		const vs = t.group.active === t && t.kind === "file" && !t.conflict && t.group.editor?.getModel() === t.model ? t.group.editor.saveViewState() : t.viewState;
 		if (vs) spec.view = vs;
@@ -1593,10 +1665,10 @@
 		for (const { g, spec } of plan) {
 			for (const ts of spec.tabs || []) {
 				if (!ts?.path) continue;
-				if (ts.kind === "diff") await openDiff(ts.path, ts.which, ts.commit, g, { quiet: true });
-				else if (ts.kind === "md") await openPreview(ts.path, g, { quiet: true });
-				else if (ts.kind === "nb") await openNotebook(ts.path, g, { quiet: true });
-				else await openFile(ts.path, g, { quiet: true, view: ts.view || null, raw: true });
+				if (ts.kind === "diff") await openDiff(ts.path, ts.which, ts.commit, g, { quiet: true, view: ts.view || null });
+				else if (ts.kind === "md") await openPreview(ts.path, g, { quiet: true, pos: ts.pos });
+				else if (ts.kind === "nb") await openNotebook(ts.path, g, { quiet: true, pos: ts.pos });
+				else await openFile(ts.path, g, { quiet: true, view: ts.view || null, raw: true, pos: ts.pos });
 			}
 			const want = g.tabs[spec.active] || g.tabs[0] || null;
 			// 先記下目前分頁的位置再切,避免被覆蓋
@@ -1982,7 +2054,7 @@
 		}
 		openDiff(path, which);
 	});
-	async function openDiff(path, which, commit, into = null, { quiet = false } = {}) {
+	async function openDiff(path, which, commit, into = null, { quiet = false, view = null } = {}) {
 		await loadMonaco().catch(fail);
 		if (!cm.monaco) return;
 		ensureLayout();
@@ -1995,7 +2067,7 @@
 			const lang = langOf(path);
 			const caption = which === "staged" ? "已暫存的變更:上次提交 ↔ 暫存區" : which === "commit" ? `提交 ${commit.slice(0, 7)} 的變更` : which === "untracked" ? "新檔案" : "未暫存的變更:暫存區 ↔ 工作目錄";
 			const target = allGroups().includes(g) ? g : allGroups()[0];
-			const t = { key, group: target, kind: "diff", path, which, commit, label: `${baseName(path)}${which === "staged" ? "(已暫存)" : which === "commit" ? `@${commit.slice(0, 7)}` : "(變更)"}`, title: `${path} · ${caption}`, caption, orig: cm.monaco.editor.createModel(d.original, lang), mod: cm.monaco.editor.createModel(d.modified, lang) };
+			const t = { key, group: target, kind: "diff", path, which, commit, label: `${baseName(path)}${which === "staged" ? "(已暫存)" : which === "commit" ? `@${commit.slice(0, 7)}` : "(變更)"}`, title: `${path} · ${caption}`, caption, orig: cm.monaco.editor.createModel(d.original, lang), mod: cm.monaco.editor.createModel(d.modified, lang), ...(view ? { viewState: view } : {}) };
 			target.tabs.push(t);
 			setActiveGroup(target);
 			activate(target, t);
