@@ -18,6 +18,8 @@ export interface ChatEntry {
 	role: "me" | "bot";
 	text: string;
 	quote?: ChatQuote;
+	/** 這個問題帶了哪些檔案(只記路徑,不存內容) */
+	files?: string[];
 	at: string;
 	error?: boolean;
 	cloud?: boolean; // (舊)使用者按「改用雲端回答這一題」得到的回答

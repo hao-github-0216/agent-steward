@@ -392,3 +392,75 @@ export function fileStamps(p: Project, rels: string[]) {
 	}
 	return out;
 }
+
+// ---------- 給「問管家」用 ----------
+const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "venv", "env", "__pycache__", ".next", "dist", "build", "target", ".cache", ".mypy_cache", ".pytest_cache", ".ipynb_checkpoints"]);
+/** 在專案裡找檔名(浮動球「＋ 檔案」的搜尋框) */
+export function findFiles(p: Project, q: string, limit = 30): string[] {
+	const root = inProject(p, "");
+	const needle = q.trim().toLowerCase();
+	if (!needle) return [];
+	const hits: { rel: string; score: number }[] = [];
+	const stack = [root];
+	let seen = 0;
+	while (stack.length && seen < 30_000) {
+		const dir = stack.pop()!;
+		let names: string[];
+		try { names = readdirSync(dir); } catch { continue; }
+		for (const name of names) {
+			const abs = join(dir, name);
+			let st;
+			try { st = lstatSync(abs); } catch { continue; }
+			if (st.isSymbolicLink()) continue;
+			if (st.isDirectory()) { if (!SKIP_DIRS.has(name) && !name.startsWith(".")) stack.push(abs); continue; }
+			seen++;
+			const rel = relative(root, abs).split(sep).join("/");
+			const low = rel.toLowerCase();
+			if (!low.includes(needle)) continue;
+			// 檔名本身符合的排前面,路徑短的排前面
+			hits.push({ rel, score: (name.toLowerCase().includes(needle) ? 0 : 1000) + rel.length });
+		}
+	}
+	return hits.sort((a, b) => a.score - b.score).slice(0, limit).map((h) => h.rel);
+}
+
+export const CHAT_FILE_LIMIT = 100_000; // 單一檔案最多帶 100KB(超過只帶頭尾)
+/** 把檔案內容整理成問管家用的文字;content 有給就用它(編輯器裡還沒存的版本) */
+export function fileForChat(p: Project, rel: string, content?: string): { path: string; text?: string; note?: string } {
+	let text = content;
+	if (typeof text !== "string") {
+		const f = readFile(p, rel);
+		if (f.kind !== "text") return { path: rel, note: f.kind === "image" || f.kind === "pdf" ? "不是文字檔(圖片請用「＋ 圖片」)" : f.kind === "toolarge" ? "檔案太大" : "不是文字檔" };
+		text = f.content;
+	}
+	if (/\.ipynb$/i.test(rel)) text = notebookAsText(text);
+	if (text.length > CHAT_FILE_LIMIT) {
+		const half = CHAT_FILE_LIMIT / 2;
+		text = `${text.slice(0, half)}\n\n…(中間省略 ${text.length - CHAT_FILE_LIMIT} 字,檔案太長只帶開頭和結尾)…\n\n${text.slice(-half)}`;
+	}
+	return { path: rel, text };
+}
+
+/** Notebook 轉成好讀的文字:依序列出儲存格,文字輸出保留(太長截掉),圖片只標註 */
+function notebookAsText(json: string): string {
+	let nb: { cells?: { cell_type: string; source?: string | string[]; execution_count?: number | null; outputs?: Record<string, unknown>[] }[] };
+	try { nb = JSON.parse(json); } catch { return json; }
+	const t = (x: unknown) => (Array.isArray(x) ? x.join("") : typeof x === "string" ? x : "");
+	const clip = (s: string, n = 2000) => (s.length > n ? `${s.slice(0, n)}…(省略 ${s.length - n} 字)` : s);
+	const out: string[] = [];
+	(nb.cells ?? []).forEach((c, i) => {
+		const src = t(c.source);
+		if (c.cell_type === "markdown") { out.push(`## [儲存格 ${i + 1}] Markdown\n${src}`); return; }
+		if (c.cell_type !== "code") { out.push(`## [儲存格 ${i + 1}] ${c.cell_type}\n${src}`); return; }
+		const parts = [`## [儲存格 ${i + 1}] 程式碼${c.execution_count != null ? `(執行編號 ${c.execution_count})` : "(沒執行過)"}\n${src}`];
+		for (const o of c.outputs ?? []) {
+			const d = (o.data ?? {}) as Record<string, unknown>;
+			if (o.output_type === "stream") parts.push(`輸出:\n${clip(t(o.text))}`);
+			else if (o.output_type === "error") parts.push(`錯誤:${o.ename}: ${o.evalue}`);
+			else if (d["image/png"] || d["image/jpeg"] || d["image/svg+xml"]) parts.push("輸出:(一張圖)");
+			else if (d["text/plain"]) parts.push(`輸出:\n${clip(t(d["text/plain"]))}`);
+		}
+		out.push(parts.join("\n"));
+	});
+	return out.join("\n\n");
+}

@@ -19,7 +19,7 @@ import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { compatInfo, fillEmptyRouting, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
-import { CodeError, diffSides, fileStamps, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
+import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -167,6 +167,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 	const codeRoute = async (p: Project, sub: string, req: IncomingMessage, res: ServerResponse, url: URL) => {
 		const q = (k: string) => url.searchParams.get(k) ?? "";
 		try {
+			if (req.method === "GET" && sub === "find") return send(res, 200, { files: findFiles(p, q("q")) });
 			if (req.method === "GET" && sub === "tree") return send(res, 200, { entries: await listDir(p, q("dir"), q("hidden") === "1"), repo: await isRepo(p) });
 			if (req.method === "GET" && sub === "file") return send(res, 200, readFile(p, q("path"), { more: Number(q("more")) || 0 }));
 			if (req.method === "GET" && sub === "raw") {
@@ -594,10 +595,21 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				const message = String(b.message ?? "").trim();
 				const q = b.quote && typeof b.quote.text === "string" ? (b.quote as ChatQuote) : undefined;
 				const quote = q ? { path: q.path ? String(q.path) : undefined, from: Number(q.from) || undefined, to: Number(q.to) || undefined, text: q.text.slice(0, 20000) } : undefined;
-				if (!message && !quote) return send(res, 400, { error: "請輸入問題" });
+				// 浮動球加進來的檔案:網頁有給內容(編輯器裡還沒存的版本)就用它,否則讀磁碟
+				const fileReqs: { path: string; content?: string }[] = (Array.isArray(b.files) ? b.files : []).slice(0, 10).filter((f: { path?: unknown }) => typeof f?.path === "string" && f.path);
+				if (!message && !quote && !fileReqs.length) return send(res, 400, { error: "請輸入問題" });
 				// 先記下問題(回答還沒回來時重新整理也看得到);「改用雲端重問」不重複記問題
-				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote });
-				const snippet = quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
+				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote, ...(fileReqs.length ? { files: fileReqs.map((f) => f.path) } : {}) });
+				let snippet = quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
+				let budget = 300_000;
+				for (const f of fileReqs) {
+					let item: { path: string; text?: string; note?: string };
+					try { item = fileForChat(p, f.path, typeof f.content === "string" ? f.content : undefined); }
+					catch (e) { item = { path: f.path, note: (e as Error).message || "讀不到" }; }
+					if (item.text && item.text.length > budget) item = { path: item.path, note: "這次帶的檔案太多,這個檔案沒有附上內容" };
+					if (item.text) budget -= item.text.length;
+					snippet += item.text ? `\n\n使用者附上的檔案 ${item.path}:\n\`\`\`\n${item.text}\n\`\`\`` : `\n\n(使用者附上的檔案 ${item.path}:${item.note})`;
+				}
 				try {
 					// 聊天室用路由「聊天室」的主要模型(純問答,不能開卡);使用者按「改用備用模型」才用備用
 					const answer = await steward.send(p, `【提問】(使用者)${message}${snippet}`, { role: "chat", fallback: useFallback, timeoutMs: 180_000 });

@@ -575,6 +575,8 @@
 	function activate(g, t) {
 		if (g.active && g.active !== t && g.active.kind === "file" && !g.active.conflict && g.editor) g.active.viewState = g.editor.saveViewState();
 		g.active = t;
+		// 浮動球的「目前檔案」:記住最後看的檔案(換專案時清掉)
+		if (t?.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md") && cm.lastPath !== t.path) { cm.lastPath = t.path; dispatchEvent(new CustomEvent("steward:codefile")); }
 		if (t && mobile()) document.body.classList.add("cv-editing");
 		if (!t || !g.editor && (t.kind === "file" || t.kind === "diff")) { surface(g, "emptyEl"); bar(g, ""); renderTabs(g); return; }
 		if (t.kind === "file") {
@@ -1812,6 +1814,20 @@
 	function refresh() { cm.dirs = {}; renderFiles(); refreshGit(); }
 	window.codeMode = {
 		pid: () => cm.pid,
+		/** 浮動球用:最後看的檔案、開著的檔案(目前的排第一)、編輯器裡的最新內容(含沒存的) */
+		lastFile: () => cm.lastPath || null,
+		openFiles() {
+			const cur = cm.activeGroup?.active?.path;
+			const paths = [...new Set(allTabs().filter((t) => t.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md")).map((t) => t.path))];
+			return paths.sort((a, b) => (a === cur ? -1 : b === cur ? 1 : 0)).map((path) => ({ path, current: path === cur, dirty: allTabs().some((t) => t.path === path && t.dirty) }));
+		},
+		fileText(path) {
+			const t = allTabs().find((x) => x.kind === "file" && x.path === path && x.model && !x.model.isDisposed() && !x.truncated);
+			if (t?.dirty) return t.model.getValue();
+			const nb = allTabs().find((x) => x.kind === "nb" && x.path === path && x.dirty && x.nb);
+			if (nb) return JSON.stringify({ ...nb.nb, cells: nb.nb.cells.map(({ _el, _id, _runId, _editing, _sent, _started, _clearNext, ...c }) => c) }, null, 1);
+			return null; // 沒改過:伺服器自己讀磁碟
+		},
 		hasUnsaved: (id) => (id === cm.pid ? allTabs().some((t) => t.dirty) : cm.stash.has(id)),
 		/** 共用入口呼叫:程式碼頁面開著時換到這個專案 */
 		async pick(id) {

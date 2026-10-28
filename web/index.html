@@ -488,6 +488,25 @@ body.term #ballWrap[data-corner^="t"] #ballPanel { top: 158px; }
 .bp-quote .qh { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .bp-quote .qh span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-quote pre { margin: 4px 0 0; max-height: 90px; overflow: auto; white-space: pre-wrap; font: 12px/1.4 Menlo, monospace; }
+.bp-ctx { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 0; align-items: center; }
+.bp-ctx button { font: inherit; font-size: 12px; cursor: pointer; }
+.ctx-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; max-width: 200px; }
+.ctx-chip button { border: 0; background: none; color: var(--muted); padding: 0 4px; }
+.ctx-sugg, .ctx-add { border: 1px dashed var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 2px 9px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-sugg:hover, .ctx-add:hover { color: var(--ink); border-color: var(--accent); }
+.ctx-sugg b { color: var(--accent); }
+.bp-pick { margin: 6px 12px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: flex; flex-direction: column; max-height: 240px; }
+.bp-pick input[type=search] { margin: 8px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+.pk-list { overflow-y: auto; padding: 0 4px; flex: 1; min-height: 0; }
+.pk-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.pk-row:hover { background: var(--chip); }
+.pk-name { white-space: nowrap; }
+.pk-path { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.pk-sec, .pk-hint { color: var(--muted); font-size: 12px; padding: 4px 8px; }
+.pk-foot { display: flex; justify-content: flex-end; padding: 6px 8px; border-top: 1px solid var(--line); }
+.msg .mfiles { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.msg .mfiles span { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.22); }
+.msg.bot .mfiles span { background: var(--chip); }
 #bpForm { display: flex; gap: 8px; padding: 10px 12px; }
 #bpForm textarea { flex: 1; resize: none; min-height: 44px; max-height: 140px; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 @media (max-width: 800px) {
@@ -604,6 +623,8 @@ form.tool { flex-direction: row; }
 		<div class="bp-log sfade" id="bpLog"></div>
 		<div class="bp-sugg" id="bpSugg" hidden></div>
 		<div class="bp-quote" id="bpQuote" hidden></div>
+		<div class="bp-ctx" id="bpCtx"></div>
+		<div class="bp-pick" id="bpPick" hidden></div>
 		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><button class="small primary">送出</button></form>
 	</div>
 	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
@@ -1942,7 +1963,7 @@ setInterval(() => { if (!document.hidden) document.querySelectorAll(".sfade").fo
 
 // ---------- 問管家浮動球 ----------
 // 三個頁面共用;問的永遠是「目前專案」。紀錄存在伺服器(全部保留),先載最近的,往上捲再載更早的。
-const ball = { open: false, pid: null, items: [], more: false, loading: false, pending: new Map(), quote: null, clearArmed: 0 };
+const ball = { open: false, pid: null, items: [], more: false, loading: false, pending: new Map(), quote: null, clearArmed: 0, files: [] };
 function setBallCorner(c) {
 	if (c) pref("steward.ballCorner", c);
 	const v = pref("steward.ballCorner");
@@ -1980,6 +2001,7 @@ function toggleBall(open = !ball.open) {
 		$("stewardBall").classList.remove("unread");
 		ball.pid = null; // 每次打開都重新載入(別的裝置可能問過)
 		syncBall();
+		renderCtx();
 		// 觸控裝置不自動聚焦(會跳出鍵盤蓋住半個畫面)
 		if (!matchMedia("(pointer: coarse)").matches) setTimeout(() => $("bpInput").focus(), 30);
 	} else if (document.body.classList.contains("term")) focusTerm();
@@ -1989,7 +2011,7 @@ function syncBall() {
 	const p = state.projects.find((x) => x.id === sel);
 	$("bpTitle").textContent = p ? `問管家 · ${p.name}` : "問管家";
 	if (!ball.open || !sel || ball.pid === sel) return;
-	ball.pid = sel; ball.items = []; ball.more = false;
+	ball.pid = sel; ball.items = []; ball.more = false; ball.files = []; $("bpPick").hidden = true; renderCtx();
 	loadBall(false);
 	loadSuggest(sel);
 }
@@ -2008,7 +2030,8 @@ async function loadBall(older) {
 }
 const quoteLabel = (q) => `${q.path ?? ""}${q.from ? ` 第 ${q.from}${q.to && q.to !== q.from ? `–${q.to}` : ""} 行` : ""}`;
 function msgHtml(e) {
-	const q = e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "";
+	const files = e.files?.length ? `<div class="mfiles">${e.files.map((f) => `<span title="${esc(f)}">📎 ${esc(f.split("/").pop())}</span>`).join("")}</div>` : "";
+	const q = files + (e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
 	const cloud = e.alt ? `<span class="cloud" title="這一則用備用模型回答:${esc(e.alt)}">備用 · ${esc(e.alt)}</span>` : e.cloud ? '<span class="cloud" title="這一則用雲端模型回答">雲端</span>' : "";
 	const retry = e.retryable ? `<button class="small retry" data-retry="${esc(e.id)}">改用備用模型回答這一題</button>` : "";
 	return `<div class="msg ${e.role}${e.error ? " err" : ""}">${q}${cloud}${esc(e.text)}${retry}</div>`;
@@ -2036,18 +2059,80 @@ $("bpClear").onclick = async () => {
 	toast("已清除這個專案的問答紀錄");
 };
 $("bpInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("bpForm").requestSubmit(); });
+// ---- 帶檔案:目前檔案提示、已加入的檔案(之後每題都帶,直到拿掉或換專案)、＋ 檔案 ----
+const fname = (p) => p.split("/").pop();
+function ctxFiles() {
+	const cmode = window.codeMode;
+	const same = cmode && cmode.pid() === ball.pid;
+	return { last: same ? cmode.lastFile() : null, open: same ? cmode.openFiles() : [] };
+}
+function renderCtx() {
+	const box = $("bpCtx");
+	if (!box) return;
+	const { last } = ctxFiles();
+	const sugg = last && !ball.files.includes(last) ? `<button type="button" class="ctx-sugg" data-add="${esc(last)}" title="把正在看的檔案加進來">目前檔案:${esc(fname(last))} <b>＋</b></button>` : "";
+	const chips = ball.files.map((f) => `<span class="ctx-chip" title="${esc(f)}">📎 ${esc(fname(f))}<button type="button" data-rm="${esc(f)}" title="拿掉">×</button></span>`).join("");
+	box.innerHTML = `${chips}${sugg}<button type="button" class="ctx-add" data-pick>＋ 檔案</button>`;
+}
+function addCtxFile(path) {
+	if (!path || ball.files.includes(path)) return;
+	if (ball.files.length >= 10) return toast("最多加 10 個檔案");
+	ball.files.push(path); renderCtx();
+}
+$("bpCtx").addEventListener("click", (e) => {
+	const add = e.target.closest("[data-add]")?.dataset.add;
+	if (add) return addCtxFile(add);
+	const rm = e.target.closest("[data-rm]")?.dataset.rm;
+	if (rm) { ball.files = ball.files.filter((f) => f !== rm); renderCtx(); renderPick(); return; }
+	if (e.target.closest("[data-pick]")) { const pk = $("bpPick"); pk.hidden = !pk.hidden; if (!pk.hidden) { ball.pickQ = ""; ball.pickHits = []; renderPick(); setTimeout(() => pk.querySelector("input")?.focus(), 20); } }
+});
+function renderPick() {
+	const pk = $("bpPick");
+	if (pk.hidden) return;
+	const { open } = ctxFiles();
+	const row = (path, sub) => `<label class="pk-row"><input type="checkbox" data-pk="${esc(path)}" ${ball.files.includes(path) ? "checked" : ""}><span class="pk-name">${esc(fname(path))}</span><span class="pk-path">${esc(sub || path)}</span></label>`;
+	const openHtml = open.length ? open.map((f) => row(f.path, `${f.current ? "目前 · " : ""}${f.dirty ? "未存 · " : ""}${f.path}`)).join("") : '<div class="pk-hint">程式碼頁沒有開著的檔案</div>';
+	const hits = (ball.pickHits || []).filter((p) => !open.some((f) => f.path === p));
+	const focused = document.activeElement?.id === "pkQ";
+	const caret = focused ? $("pkQ").selectionStart : null;
+	pk.innerHTML = `<input id="pkQ" type="search" placeholder="搜尋專案裡的檔案…" value="${esc(ball.pickQ || "")}" autocomplete="off">
+		<div class="pk-list">${ball.pickQ ? (hits.length ? hits.map((p) => row(p)).join("") : `<div class="pk-hint">${ball.pickBusy ? "搜尋中…" : "找不到"}</div>`) : `<div class="pk-sec">開著的檔案</div>${openHtml}`}</div>
+		<div class="pk-foot"><button type="button" class="small" data-pkclose>完成</button></div>`;
+	if (focused) { $("pkQ").focus(); $("pkQ").setSelectionRange(caret, caret); }
+}
+$("bpPick").addEventListener("input", (e) => {
+	if (e.target.id !== "pkQ") return;
+	ball.pickQ = e.target.value;
+	clearTimeout(ball.pickTimer);
+	if (!ball.pickQ.trim()) { ball.pickHits = []; return renderPick(); }
+	ball.pickBusy = true; renderPick();
+	ball.pickTimer = setTimeout(async () => {
+		const q = ball.pickQ;
+		const r = await fetch(`/api/code/${encodeURIComponent(ball.pid)}/find?q=${encodeURIComponent(q)}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+		if (q !== ball.pickQ) return;
+		ball.pickBusy = false; ball.pickHits = r?.files || []; renderPick();
+	}, 250);
+});
+$("bpPick").addEventListener("change", (e) => {
+	const path = e.target.dataset?.pk;
+	if (!path) return;
+	if (e.target.checked) addCtxFile(path); else { ball.files = ball.files.filter((f) => f !== path); renderCtx(); }
+});
+$("bpPick").addEventListener("click", (e) => { if (e.target.closest("[data-pkclose]")) $("bpPick").hidden = true; });
+addEventListener("steward:codefile", () => { if (ball.open) renderCtx(); });
 async function askBall(text, quote, opts = {}) {
 	const pid = sel;
 	if ((!text && !quote) || !pid) return;
 	let temp = null;
 	if (!opts.retry) {
-		temp = { id: `tmp-${Date.now()}`, role: "me", text, quote };
+		temp = { id: `tmp-${Date.now()}`, role: "me", text, quote, files: [...(opts.files ?? ball.files)] };
 		if (ball.pid === pid) ball.items.push(temp);
 	}
 	ball.pending.set(pid, (ball.pending.get(pid) || 0) + 1);
 	renderBall(); renderSugg(); $("bpLog").scrollTop = 1e9;
 	const prevAt = ball.sugg.pid === pid ? ball.sugg.at : null;
-	const r = await post("/api/chat", { project: pid, message: text, quote, ...(opts.cloud ? { fallback: true, retry: !!opts.retry } : {}) }).catch((err) => ({ error: `連不上管家:${err}` }));
+	const files = (opts.files ?? ball.files).map((path) => { const content = window.codeMode?.pid() === pid ? window.codeMode.fileText(path) : null; return content == null ? { path } : { path, content }; });
+	const r = await post("/api/chat", { project: pid, message: text, quote, files, ...(opts.cloud ? { fallback: true, retry: !!opts.retry } : {}) }).catch((err) => ({ error: `連不上管家:${err}` }));
 	ball.pending.set(pid, Math.max(0, (ball.pending.get(pid) || 1) - 1));
 	if (ball.pid === pid) {
 		const i = temp ? ball.items.indexOf(temp) : -1;
@@ -2076,7 +2161,7 @@ $("bpLog").addEventListener("click", (e) => {
 	const me = ball.items.slice(0, i).reverse().find((x) => x.role === "me");
 	if (!me) return toast("找不到原本的問題");
 	ball.items[i] = { ...ball.items[i], retryable: false };
-	askBall(me.text, me.quote, { cloud: true, retry: true });
+	askBall(me.text, me.quote, { cloud: true, retry: true, files: me.files || [] });
 });
 // ---------- 三個建議問題 ----------
 ball.sugg = { pid: null, items: [], at: null, loading: false };
