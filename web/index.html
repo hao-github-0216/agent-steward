@@ -497,6 +497,8 @@ body.term #ballWrap[data-corner^="t"] #ballPanel { top: 158px; }
 .ctx-sugg b { color: var(--accent); }
 .bp-pick { margin: 6px 12px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: flex; flex-direction: column; max-height: 240px; }
 .bp-pick[hidden] { display: none; }
+#ballPanel:has(#bpPick:not([hidden])) #bpSugg { display: none; }
+@media (max-width: 600px) { .bp-pick { max-height: 32vh; } }
 .bp-pick input[type=search] { margin: 8px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
 .pk-list { overflow-y: auto; padding: 0 4px; flex: 1; min-height: 0; }
 .pk-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-size: 13px; }
