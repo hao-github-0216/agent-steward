@@ -1137,7 +1137,7 @@
 	}
 	/** 存檔:輸出、執行編號都寫回 .ipynb(跟 Jupyter 存的格式一樣) */
 	async function saveNb(t, force = false) {
-		if (!t.nb || t.readonly) return;
+		if (!t.nb || t.readonly) return false;
 		for (const c of t.nb.cells) if (c._editing) c._el?.querySelector("textarea.nb-edit")?.blur();
 		const clean = { ...t.nb, cells: t.nb.cells.map((c) => {
 			const o = { cell_type: c.cell_type, metadata: c.metadata || {}, source: Array.isArray(c.source) ? c.source : nbLines(nbText(c.source)) };
@@ -1153,10 +1153,12 @@
 			renderTabs(t.group); nbToolbar(t);
 			toast("已存檔");
 			cm.dirs = {}; renderFiles(); refreshGit();
+			return true;
 		} catch (e) {
 			if (e.status === 409) {
 				if (await confirmBox("檔案在外面被改過", "這個 notebook 在你開啟之後被別的程式改過了。要用網頁上的版本覆蓋嗎?(取消就保留磁碟上的版本,你可以按「重新載入」看最新內容)", "用網頁的版本覆蓋")) return saveNb(t, true);
 			} else fail(e);
+			return false;
 		}
 	}
 	async function reloadTab(t) {
@@ -1168,29 +1170,48 @@
 		if (t.group.active === t) activate(t.group, t); else renderTabs(t.group);
 	}
 	async function save(g = cm.activeGroup, force = false) {
-		const t = g?.active;
+		return saveTab(g?.active, force);
+	}
+	/** 存一個分頁(不一定是目前顯示的);成功回傳 true,磁碟被改過(衝突)或失敗回傳 false */
+	async function saveTab(t, force = false) {
 		if (t?.kind === "nb") return saveNb(t, force);
-		if (!t || t.kind !== "file" || t.readonly) return;
+		if (!t || t.kind !== "file" || t.readonly || !t.model) return false;
+		const g = t.group;
 		try {
 			const r = await api("file", { method: "PUT", body: JSON.stringify({ path: t.path, content: t.model.getValue(), baseHash: t.hash, force }) });
 			t.hash = r.hash;
-			if (t.conflict) { g.diff.setModel(null); t.conflict.model.dispose(); t.conflict = null; }
+			if (t.conflict) { if (g.active === t) g.diff.setModel(null); t.conflict.model.dispose(); t.conflict = null; }
 			t.savedVersion = t.model.getAlternativeVersionId(); t.dirty = false;
-			activate(g, t);
+			if (g.active === t) activate(g, t); else renderTabs(g);
 			renderProjSelect();
 			toast("已存檔");
 			cm.dirs = {}; renderFiles(); refreshGit();
+			return true;
 		} catch (e) {
 			if (e.status === 409 && e.data?.disk) {
+				// 檔案在外面被改過:切到這個分頁顯示左右對照,讓使用者決定
 				t.conflict = { content: e.data.disk.content, hash: e.data.disk.hash, model: cm.monaco.editor.createModel(e.data.disk.content, langOf(t.path)) };
+				setActiveGroup(g);
 				activate(g, t);
 			} else fail(e);
+			return false;
 		}
 	}
 	function closeTab(t, force = false) {
 		if (!t) return;
 		if (t.dirty && !force) {
-			confirmBox("還沒存檔", `「${t.label}」有還沒存的修改,確定要關閉嗎?`, "不存直接關閉").then((ok) => ok && closeTab(t, true));
+			const canSave = !t.readonly && (t.kind === "nb" ? !!t.nb : !!t.model);
+			const d = dialog({
+				title: "還沒存檔",
+				html: `<p>「${esc(t.label)}」有還沒存的修改。</p>`,
+				buttons: [
+					{ label: "取消" },
+					{ label: "不存直接關閉", onClick: () => closeTab(t, true) },
+					...(canSave ? [{ label: "存檔並關閉", primary: true, onClick: async () => { if (await saveTab(t)) closeTab(t, true); } }] : []),
+				],
+			});
+			// Enter = 存檔並關閉(沒辦法存就是「不存直接關閉」)
+			setTimeout(() => d.querySelector(".mfoot .primary, .mfoot button:last-child")?.focus(), 40);
 			return;
 		}
 		const g = t.group;
