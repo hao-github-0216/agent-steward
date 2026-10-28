@@ -6,7 +6,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSy
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { which } from "./agents.ts";
-import { IS_WIN } from "./platform.ts";
+import { batSafe, IS_WIN } from "./platform.ts";
 import { DATA_DIR, hasSystemJupyter, hasSystemTex, type PluginId, settings, updateSettings } from "./settings.ts";
 
 export const TOOLS = join(DATA_DIR, "tools");
@@ -37,8 +37,9 @@ async function download(url: string, to: string, log: Log, label: string): Promi
 	renameSync(tmp, to);
 }
 function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<string> {
+	const b = batSafe(cmd, args);
 	return new Promise((ok, fail) => {
-		execFile(cmd, args, { ...opts, timeout: 30 * 60_000, maxBuffer: 50 * 1024 * 1024, windowsHide: true }, (err, out, errOut) => (err ? fail(new Error(String(errOut || out || err.message).trim().split("\n").slice(-6).join(" ").slice(0, 800))) : ok(String(out))));
+		execFile(b.cmd, b.args, { ...opts, ...b.opts, timeout: 30 * 60_000, maxBuffer: 50 * 1024 * 1024, windowsHide: true }, (err, out, errOut) => (err ? fail(new Error(String(errOut || out || err.message).trim().split("\n").slice(-6).join(" ").slice(0, 800))) : ok(String(out))));
 	});
 }
 /** 解壓縮用的 tar:Windows 固定用內建的(裝了 Git 的電腦,PATH 裡的 tar 是 Git 的,會把 D:\ 當成遠端主機) */

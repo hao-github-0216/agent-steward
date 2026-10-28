@@ -22,6 +22,16 @@ export function samePath(a: string, b: string): boolean {
 	return !!a && !!b && norm(a) === norm(b);
 }
 
+/**
+ * 要執行的程式和參數:Windows 的 .bat / .cmd 不能直接 execFile(Node 會回 EINVAL),要經過 cmd.exe。
+ * 參數只用在固定值、路徑與套件名稱(不會有使用者輸入的文字)。
+ */
+export function batSafe(cmd: string, args: string[]): { cmd: string; args: string[]; opts: { windowsVerbatimArguments?: boolean } } {
+	if (!IS_WIN || !/\.(bat|cmd)$/i.test(cmd)) return { cmd, args, opts: {} };
+	const q = (a: string) => (/[\s"&|<>^]/.test(a) || a === "" ? `"${a.replace(/"/g, '""')}"` : a);
+	return { cmd: "cmd.exe", args: ["/d", "/s", "/c", `"${[cmd, ...args].map(q).join(" ")}"`], opts: { windowsVerbatimArguments: true } };
+}
+
 /** 移到垃圾桶 / 資源回收筒(救得回來) */
 export function trash(abs: string): Promise<void> {
 	return new Promise((ok, fail) => {

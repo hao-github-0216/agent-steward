@@ -7,7 +7,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { which } from "./agents.ts";
 import { tinytexBin } from "./plugins.ts";
 import { CodeError, inProject } from "./code.ts";
-import { IS_WIN } from "./platform.ts";
+import { batSafe, IS_WIN } from "./platform.ts";
 import type { Project } from "./store.ts";
 
 export function latexmkPath(): string | undefined {
@@ -77,7 +77,8 @@ function missingFiles(log: string): string[] {
 	return [...out].slice(0, 10);
 }
 function tlmgr(bin: string, args: string[]): Promise<string> {
-	return new Promise((ok, fail) => execFile(join(bin, IS_WIN ? "tlmgr.bat" : "tlmgr"), args, { timeout: 600_000, maxBuffer: 20 * 1024 * 1024 }, (e, out) => (e ? fail(e) : ok(String(out)))));
+	const b = batSafe(join(bin, IS_WIN ? "tlmgr.bat" : "tlmgr"), args);
+	return new Promise((ok, fail) => execFile(b.cmd, b.args, { ...b.opts, timeout: 600_000, maxBuffer: 20 * 1024 * 1024, windowsHide: true }, (e, out) => (e ? fail(e) : ok(String(out)))));
 }
 /** tlmgr search --global --file:輸出裡沒有縮排、以冒號結尾的行是套件名稱 */
 async function tlmgrFind(bin: string, file: string): Promise<string[]> {
