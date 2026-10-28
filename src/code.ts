@@ -12,7 +12,7 @@ export const EDIT_LIMIT = 5 * 1024 * 1024; // 5MB 以下正常編輯
 export const VIEW_LIMIT = 50 * 1024 * 1024; // 50MB 以下唯讀(頭尾各 N 行)
 const HEADTAIL_LINES = 2000;
 const IMAGE = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
-const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".bmp": "image/bmp", ".ico": "image/x-icon", ".pdf": "application/pdf" };
+const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".bmp": "image/bmp", ".ico": "image/x-icon", ".pdf": "application/pdf", ".ipynb": "application/json; charset=utf-8" };
 
 export class CodeError extends Error {
 	status: number;
@@ -315,7 +315,7 @@ export function readFile(p: Project, rel: string, opts: { more?: number } = {}) 
 export function rawFile(p: Project, rel: string): { buf: Buffer; type: string } {
 	const abs = inProject(p, rel);
 	const ext = extname(abs).toLowerCase();
-	if (!MIME[ext]) throw new CodeError(400, "只支援圖片與 PDF 預覽");
+	if (!MIME[ext]) throw new CodeError(400, "只支援圖片、PDF 與 Notebook 預覽");
 	if (statSync(abs).size > VIEW_LIMIT) throw new CodeError(413, "檔案太大");
 	return { buf: readFileSync(abs), type: MIME[ext] };
 }

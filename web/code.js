@@ -116,6 +116,23 @@
 		return mdLib;
 	}
 	const isMd = (p) => /\.(md|markdown|mdx)$/i.test(p || "");
+	const isNb = (p) => /\.ipynb$/i.test(p || "");
+	let mathLib = null;
+	/** KaTeX(數學式排版),一樣經過 Monaco 的 AMD 載入器;載不到就不排版,不影響其他內容 */
+	function loadMath() {
+		if (mathLib) return mathLib;
+		const base = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist";
+		if (!document.querySelector("link[data-katex]")) {
+			const l = document.createElement("link");
+			l.rel = "stylesheet"; l.href = `${base}/katex.min.css`; l.dataset.katex = "1";
+			document.head.appendChild(l);
+		}
+		mathLib = loadMonaco().then(() => new Promise((ok) => {
+			window.require.config({ paths: { katex: `${base}/katex.min`, "katex-auto": `${base}/contrib/auto-render.min` } });
+			window.require(["katex", "katex-auto"], (katex, auto) => ok({ katex, auto }), () => ok(null));
+		}));
+		return mathLib;
+	}
 	function langOf(path) {
 		const ext = `.${path.split(".").pop()}`.toLowerCase();
 		const name = baseName(path).toLowerCase();
@@ -583,6 +600,16 @@
 			g.diff.updateOptions({ readOnly: true });
 			g.diff.setModel({ original: t.orig, modified: t.mod });
 			bar(g, `<span>${esc(t.caption)}</span><span class="sp"></span>${t.which !== "commit" ? '<button class="small" data-bar="openfile">開啟檔案編輯</button>' : ""}`);
+		} else if (t.kind === "nb") {
+			surface(g, "previewEl");
+			const fresh = !t.pv || t.pv.parentNode !== g.previewEl;
+			pvNode(g, t).classList.add("nb");
+			showPv(g, t);
+			// 原始 JSON 開著而且改過,切回來時用最新內容重畫
+			const src = findTab(`file:${t.path}`);
+			const ver = src?.model && !src.model.isDisposed() ? src.model.getAlternativeVersionId() : null;
+			if (fresh || (ver !== null && ver !== t.srcVer)) renderNb(t);
+			bar(g, `<span>Notebook 預覽(唯讀,不能執行程式)</span><span class="sp"></span><button class="small" data-bar="nbreload">重新載入</button><button class="small" data-bar="nbraw">${mobile() ? "原始 JSON" : "編輯原始 JSON"}</button>`);
 		} else if (t.kind === "md") {
 			surface(g, "previewEl");
 			pvNode(g, t).classList.add("md");
@@ -616,9 +643,13 @@
 		if (a === "term") { setMode("term"); return jumpTo(cm.pid); }
 		if (a === "openfile") return openFile(t.path);
 		if (a === "mdprev") return openPreview(t.path);
+		if (a === "nbreload") return renderNb(t, true);
+		if (a === "nbraw") return openFile(t.path, g, { raw: true });
 		if (a === "fullview") return setFull(t, true);
 	}
-	async function openFile(rel, g = cm.activeGroup, { quiet = false, view = null } = {}) {
+	async function openFile(rel, g = cm.activeGroup, { quiet = false, view = null, raw = false } = {}) {
+		// .ipynb 跟 VS Code 一樣預設顯示成 Notebook;要改 JSON 用「編輯原始 JSON」
+		if (isNb(rel) && !raw) return openNotebook(rel, g, { quiet });
 		await loadMonaco().catch(fail);
 		if (!cm.monaco) return;
 		ensureLayout();
@@ -709,6 +740,137 @@
 			} else if (!u.startsWith("#")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
 		}
 		box.scrollTop = scroll;
+	}
+	// ---------- Jupyter Notebook(.ipynb)預覽 ----------
+	async function openNotebook(rel, g = cm.activeGroup, { quiet = false } = {}) {
+		await loadMonaco().catch(fail);
+		if (!cm.monaco) return;
+		ensureLayout();
+		g = g || allGroups()[0];
+		const key = `nb:${rel}`;
+		const existing = findTab(key);
+		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
+		const t = { key, group: g, kind: "nb", path: rel, label: baseName(rel), title: `${rel}(Notebook)` };
+		g.tabs.push(t);
+		setActiveGroup(g);
+		activate(g, t);
+		if (!quiet) return;
+	}
+	const nbText = (x) => (Array.isArray(x) ? x.join("") : typeof x === "string" ? x : "");
+	const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+	/** 把 Notebook 畫出來;force = 重新從磁碟讀 */
+	async function renderNb(t, force = false) {
+		const box = pvNode(t.group, t);
+		const scroll = box.scrollTop;
+		const src = findTab(`file:${t.path}`);
+		let text;
+		if (src?.model && !src.model.isDisposed() && !force) { text = src.model.getValue(); t.srcVer = src.model.getAlternativeVersionId(); }
+		else {
+			if (!box.childElementCount) box.innerHTML = '<div class="nb-msg">讀取中…</div>';
+			const r = await fetch(`/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`).catch(() => null);
+			if (!r?.ok) { box.innerHTML = `<div class="nb-msg">讀不到這個檔案${r ? `(${r.status})` : ""}</div>`; return; }
+			text = await r.text();
+			t.srcVer = null;
+		}
+		let nb;
+		try { nb = JSON.parse(text); } catch (e) { box.innerHTML = `<div class="nb-msg">這不是有效的 Notebook(JSON 格式錯誤:${esc(e.message)})。可以用「編輯原始 JSON」修正。</div>`; return; }
+		const [md, math] = await Promise.all([loadMd().catch(() => null), loadMath()]);
+		const lang = String(nb.metadata?.language_info?.name || nb.metadata?.kernelspec?.language || "python").toLowerCase();
+		const cells = Array.isArray(nb.cells) ? nb.cells : (nb.worksheets?.[0]?.cells ?? []); // nbformat 3 也試著顯示
+		const root = el("article", "nb-body");
+		const kernel = nb.metadata?.kernelspec?.display_name;
+		if (kernel) root.appendChild(el("div", "nb-kernel", esc(`${kernel} · ${cells.length} 個儲存格`)));
+		const sanitize = (html) => (md ? md.purify.sanitize(html) : esc(html));
+		const mdHtml = (s, attachments) => {
+			let h = md ? md.marked.parse(s, { gfm: true }) : `<pre>${esc(s)}</pre>`;
+			h = sanitize(h);
+			if (attachments) h = h.replace(/src="attachment:([^"]+)"/g, (m, name) => {
+				const a = attachments[decodeURIComponent(name)];
+				const mime = a && Object.keys(a)[0];
+				return mime ? `src="data:${mime};base64,${nbText(a[mime]).replace(/\s/g, "")}"` : m;
+			});
+			return h;
+		};
+		for (const c of cells) {
+			const cell = el("section", `nb-cell nb-${c.cell_type}`);
+			const source = nbText(c.source ?? c.input);
+			if (c.cell_type === "markdown") {
+				const body = el("div", "nb-md md-body");
+				body.innerHTML = mdHtml(source, c.attachments);
+				cell.appendChild(body);
+			} else if (c.cell_type === "code") {
+				const n = c.execution_count ?? c.prompt_number;
+				const inRow = el("div", "nb-row");
+				inRow.appendChild(el("div", "nb-prompt", n != null ? `[${n}]` : "[ ]"));
+				const pre = el("pre", "nb-code");
+				pre.dataset.lang = lang;
+				pre.textContent = source;
+				inRow.appendChild(pre);
+				cell.appendChild(inRow);
+				for (const o of c.outputs || []) {
+					const out = nbOutput(o, sanitize, mdHtml);
+					if (!out) continue;
+					const row = el("div", "nb-row nb-outrow");
+					row.appendChild(el("div", "nb-prompt nb-outprompt", o.output_type === "execute_result" && o.execution_count != null ? `[${o.execution_count}]` : ""));
+					row.appendChild(out);
+					cell.appendChild(row);
+				}
+			} else {
+				const pre = el("pre", "nb-raw");
+				pre.textContent = source;
+				cell.appendChild(pre);
+			}
+			root.appendChild(cell);
+		}
+		if (!cells.length) root.appendChild(el("div", "nb-msg", "這個 Notebook 沒有儲存格"));
+		box.replaceChildren(root);
+		// 程式碼上色(Monaco)、數學式排版(KaTeX)
+		for (const pre of root.querySelectorAll("pre.nb-code")) {
+			cm.monaco.editor.colorize(pre.textContent, langOf(`x.${pre.dataset.lang === "python" ? "py" : pre.dataset.lang}`) || pre.dataset.lang, { tabSize: 4 }).then((h) => { pre.innerHTML = h; }).catch(() => {});
+		}
+		if (math?.auto) {
+			for (const m of root.querySelectorAll(".nb-md, .nb-latex")) {
+				try { math.auto(m, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true }, { left: "$", right: "$", display: false }, { left: "\\(", right: "\\)", display: false }], throwOnError: false }); } catch { /* 排版失敗就顯示原文 */ }
+			}
+		}
+		// Markdown 裡的相對路徑圖片
+		for (const img of root.querySelectorAll(".nb-md img[src]")) {
+			const u = img.getAttribute("src");
+			if (u && !/^([a-z]+:|\/\/|#|\/)/i.test(u)) {
+				const parts = `${dirOf(t.path) ? `${dirOf(t.path)}/` : ""}${decodeURI(u.split(/[?#]/)[0])}`.split("/");
+				const outp = [];
+				for (const x of parts) { if (x === "..") outp.pop(); else if (x && x !== ".") outp.push(x); }
+				img.src = `/api/code/${cm.pid}/raw?path=${encodeURIComponent(outp.join("/"))}`;
+			}
+		}
+		for (const a of root.querySelectorAll("a[href]")) if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+		box.scrollTop = scroll;
+	}
+	/** 一個輸出:圖片 > HTML > Markdown > LaTeX > 純文字(跟 Jupyter 的優先順序一樣) */
+	function nbOutput(o, sanitize, mdHtml) {
+		if (o.output_type === "stream") {
+			const pre = el("pre", `nb-out nb-stream${o.name === "stderr" ? " nb-stderr" : ""}`);
+			pre.textContent = stripAnsi(nbText(o.text));
+			return pre;
+		}
+		if (o.output_type === "error" || o.output_type === "pyerr") {
+			const pre = el("pre", "nb-out nb-error");
+			pre.textContent = stripAnsi((o.traceback || []).join("\n") || `${o.ename}: ${o.evalue}`);
+			return pre;
+		}
+		const d = o.data || {};
+		const box = el("div", "nb-out nb-data");
+		for (const mime of ["image/png", "image/jpeg", "image/gif"]) {
+			if (d[mime]) { box.innerHTML = `<img alt="" src="data:${mime};base64,${nbText(d[mime]).replace(/\s/g, "")}">`; return box; }
+		}
+		if (d["image/svg+xml"]) { box.innerHTML = sanitize(nbText(d["image/svg+xml"])); return box; }
+		if (d["text/html"]) { box.classList.add("nb-html"); box.innerHTML = sanitize(nbText(d["text/html"])); return box; }
+		if (d["text/markdown"]) { box.classList.add("nb-md", "md-body"); box.innerHTML = mdHtml(nbText(d["text/markdown"])); return box; }
+		if (d["text/latex"]) { box.classList.add("nb-latex"); box.textContent = nbText(d["text/latex"]); return box; }
+		if (d["text/plain"]) { const pre = el("pre", "nb-out nb-stream"); pre.textContent = stripAnsi(nbText(d["text/plain"])); return pre; }
+		const kinds = Object.keys(d);
+		if (kinds.length) { box.classList.add("nb-note"); box.textContent = `(互動式輸出 ${kinds.join(", ")},網頁預覽無法顯示)`; return box; }
+		return null;
 	}
 	async function reloadTab(t) {
 		const f = await api(`file?path=${encodeURIComponent(t.path)}${t.more ? `&more=${t.more}` : ""}`).catch(fail);
@@ -816,6 +978,7 @@
 	function tabSpec(t) {
 		if (t.kind === "diff") return { kind: "diff", path: t.path, which: t.which, commit: t.commit };
 		if (t.kind === "md") return { kind: "md", path: t.path };
+		if (t.kind === "nb") return { kind: "nb", path: t.path };
 		const spec = { kind: "file", path: t.path };
 		const vs = t.group.active === t && t.kind === "file" && !t.conflict && t.group.editor?.getModel() === t.model ? t.group.editor.saveViewState() : t.viewState;
 		if (vs) spec.view = vs;
@@ -875,7 +1038,8 @@
 				if (!ts?.path) continue;
 				if (ts.kind === "diff") await openDiff(ts.path, ts.which, ts.commit, g, { quiet: true });
 				else if (ts.kind === "md") await openPreview(ts.path, g, { quiet: true });
-				else await openFile(ts.path, g, { quiet: true, view: ts.view || null });
+				else if (ts.kind === "nb") await openNotebook(ts.path, g, { quiet: true });
+				else await openFile(ts.path, g, { quiet: true, view: ts.view || null, raw: true });
 			}
 			const want = g.tabs[spec.active] || g.tabs[0] || null;
 			// 先記下目前分頁的位置再切,避免被覆蓋
@@ -967,6 +1131,7 @@
 		];
 		if (type === "file" && !mobile()) items.unshift({ label: "在右邊開啟", run: () => openToSide(rel) });
 		if (type === "file" && isMd(rel)) items.unshift({ label: "預覽 Markdown", run: () => openPreview(rel) });
+		if (type === "file" && isNb(rel)) items.unshift({ label: "以原始 JSON 開啟", run: () => openFile(rel, cm.activeGroup, { raw: true }) });
 		if (type === "dir") items.unshift({ label: "上傳檔案到這裡", run: () => pickAndUpload(rel, false) }, { label: "上傳資料夾到這裡", run: () => pickAndUpload(rel, true) }, { label: "在這裡新增檔案", run: () => toolAct("newfile", rel) }, { label: "在這裡新增資料夾", run: () => toolAct("newdir", rel) });
 		menu(x, y, items);
 	}
