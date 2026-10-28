@@ -49,6 +49,10 @@ export interface Card {
 	paneId?: string; // 派工後的 herdr 窗格
 	attempts?: number; // 派工次數(重新派工會加一)
 	terminalId?: string; // herdr 終端機 ID:窗格搬到別的 space 時 paneId 會變,這個不會
+	/** 工作說明最後一次寫好的時間(建立或「派工前更新」);之後專案有新進度就算舊卡 */
+	revisedAt?: string;
+	/** 派工前正在請管家依最新進度改寫(管家重啟後會接著做) */
+	refreshing?: boolean;
 	createdAt: string;
 	updatedAt: string;
 }

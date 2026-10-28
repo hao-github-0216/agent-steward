@@ -108,6 +108,33 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		return part.length === 1 ? { p: part[0], hints: [] } : { hints: (part.length ? part : all).map((x) => x.name).slice(0, 20) };
 	};
 	const PRIVATE_NOTE = (p: Project) => `「${p.name}」是隱私專案,內容不對其他專案開放。請到那個專案的資料夾裡問。`;
+	/**
+	 * 派工:卡片寫好之後專案又有新進度(舊卡)→ 先在 pi durable 的專案長期對話請管家依最新狀態改寫(revise_card),
+	 * 再派工並開始監看。卡片上的 refreshing 標記讓管家重啟後可以接著做。
+	 */
+	const startDispatch = async (cardId: string, previous?: { column: string; note?: string; paneId?: string }) => {
+		let card = store.card(cardId);
+		if (!card) return;
+		const p = store.project(card.projectId);
+		const since = card.revisedAt ?? card.createdAt;
+		const stale = !!p?.state?.updatedAt && p.state.updatedAt > since;
+		if (p && (stale || card.refreshing)) {
+			store.updateCard(card.id, { column: "approved", refreshing: true, note: "管家正在依最新進度更新卡片…" });
+			const r = await steward.refreshCard(p, store.card(card.id)!).catch(() => "unchanged" as const);
+			store.updateCard(card.id, { refreshing: false });
+			if (r === "withdrawn") return; // 退回提案(revise_card 已寫好原因)
+			if (r === "unchanged") store.updateCard(card.id, { revisedAt: new Date().toISOString(), note: previous ? "重新派工中…" : "派工中…" });
+			card = store.card(card.id)!;
+			if (card.column !== "approved") return;
+		}
+		await dispatchCard(store, watcher, card, previous as never)
+			.then((c) => (c.column === "running" && c.paneId ? steward.watchCard(c.id, c.paneId, c.terminalId) : undefined))
+			.catch((e) => store.updateCard(cardId, { column: "blocked", note: `派工失敗:${e}` }));
+	};
+	// 管家重啟:還在「派工前更新」的卡接著做
+	setTimeout(() => {
+		for (const c of store.cards()) if (c.refreshing && c.column === "approved") void startDispatch(c.id);
+	}, 15_000);
 	const projectFrom = (q: URLSearchParams | Record<string, string | undefined>): Project | undefined => {
 		const get = (k: string) => (q instanceof URLSearchParams ? (q.get(k) ?? undefined) : q[k]);
 		const id = get("project");
@@ -777,9 +804,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (b.action === "dispatch") {
 					// 跟看板上「提案 → 已核准」一樣:派工並追蹤
 					store.updateCard(card.id, { column: "approved", note: "派工中…" });
-					dispatchCard(store, watcher, store.card(card.id)!)
-						.then((c) => (c.column === "running" && c.paneId ? steward.watchCard(c.id, c.paneId, c.terminalId) : undefined))
-						.catch((e) => store.updateCard(card.id, { column: "blocked", note: `派工失敗:${e}` }));
+					void startDispatch(card.id);
 				}
 				const bot = updateChat(p.id, entry.id, { draft: { ...draft, status: b.action === "dispatch" ? "dispatched" : "proposed", cardId: card.id } });
 				return send(res, 200, { bot, card: store.card(card.id) });
@@ -916,9 +941,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const previous = rule.action === "redispatch" ? { column: card.column, note: card.note, paneId: card.paneId } : undefined;
 					store.updateCard(card.id, { column: "approved", note: previous ? "重新派工中…" : "派工中…", paneId: undefined });
 					send(res, 202, store.card(card.id));
-					dispatchCard(store, watcher, store.card(card.id)!, previous)
-						.then((c) => (c.column === "running" && c.paneId ? steward.watchCard(c.id, c.paneId, c.terminalId) : undefined))
-						.catch((e) => store.updateCard(card.id, { column: "blocked", note: `派工失敗:${e}` }));
+					void startDispatch(card.id, previous);
 					return;
 				}
 				const patch: Partial<Card> = { column };

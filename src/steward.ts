@@ -38,6 +38,10 @@ const PERSONA = () => `你是「專案管家」,負責追蹤使用者${settings(
 2. 【提問】agent 或使用者問專案的事。根據你知道的狀態與歷史回答;不知道就說不知道,不要編。
 3. 【工作卡更新】派出去的工作有了結果。用 update_card 更新卡片欄位與說明,並同步更新專案狀態。
 4. 【提案檢查】看目前狀態有沒有能立刻派出去的工作。有就 propose_card,沒有就只回「無」。
+5. 【派工前更新】使用者剛核准一張較早提出的卡,在那之後專案又有新進展。對照你知道的最新狀態與歷史,呼叫一次 revise_card:
+   - 背景、前提、限制過時了就改寫 instructions(要完整、讓沒背景的 agent 也能開工),必要時改標題與完成條件;
+   - 卡片已經完成、被取代、或做了會跟最新決定衝突,就 withdraw=true 並說明原因;
+   - 還是完全正確就只帶 id 和 reason 說「不用改」。
 
 提案前必須逐條核對專案狀態的「卡點」與「重要決定」:只要工作會碰到任何還在等人放行的事(例如寫檔、改程式、commit、花算力),就不能提案,不管檔案在不在 repo 裡。
 
@@ -197,6 +201,39 @@ export class Steward {
 		});
 		this.cardWatch = CardWatch;
 
+		/** 派工前更新:管家依專案最新狀態改寫舊卡(只能改「正在派工前更新」的卡) */
+		const reviseCard = defineTool({
+			name: "revise_card",
+			description: "派工前更新工作卡:依專案目前的狀態改寫標題、工作說明、完成條件;如果這張卡已經不需要做(或做了會出問題),設 withdraw=true 並說明原因,卡片會退回「提案」不派工。只能用在【派工前更新】的卡。",
+			parameters: Type.Object({
+				id: Type.String(),
+				title: Type.Optional(Type.String()),
+				instructions: Type.Optional(Type.String({ description: "完整的新工作說明(會整個取代舊的)" })),
+				done_criteria: Type.Optional(Type.String()),
+				withdraw: Type.Optional(Type.Boolean({ description: "true = 這張卡不該派出去" })),
+				reason: Type.Optional(Type.String({ description: "改了什麼 / 為什麼不派工,給使用者看" })),
+			}),
+			replay: "safe",
+			execute: async (args, api) => {
+				const p = projectOf(api.conversationId);
+				const card = store.card(args.id);
+				if (!card || card.projectId !== p.id) return { output: [{ type: "text", text: "找不到這張卡" }] };
+				if (!card.refreshing) return { output: [{ type: "text", text: "這張卡不在派工前更新中,不能改寫" }] };
+				if (args.withdraw) {
+					store.updateCard(card.id, { column: "proposed", refreshing: false, note: `管家建議先不要派工:${args.reason ?? "依最新進度,這張卡已經不需要或不適合現在做"}` });
+					return { output: [{ type: "text", text: "已退回提案" }] };
+				}
+				store.updateCard(card.id, {
+					...(args.title ? { title: args.title } : {}),
+					...(args.instructions ? { instructions: args.instructions } : {}),
+					...(args.done_criteria ? { doneCriteria: args.done_criteria } : {}),
+					revisedAt: new Date().toISOString(),
+					note: `已依最新進度更新${args.reason ? `:${args.reason}` : ""},派工中…`,
+				});
+				return { output: [{ type: "text", text: "已改寫,接著會派工" }] };
+			},
+		});
+
 		const updateCard = defineTool({
 			name: "update_card",
 			description: "更新工作卡的狀態(running / blocked / done)與說明。不能核准卡片。",
@@ -226,7 +263,7 @@ export class Steward {
 					return p ? `專案:${p.name}\n路徑:${p.root}\n類型:${p.kind}` : undefined;
 				}),
 			],
-			tools: [updateState, listCards, proposeCard, updateCard],
+			tools: [updateState, listCards, proposeCard, updateCard, reviseCard],
 			tasks: [CardWatch],
 		});
 
@@ -373,6 +410,26 @@ export class Steward {
 		);
 		if (msg.errorMessage) throw new Error(msg.errorMessage);
 		return (msg.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+	}
+
+	/**
+	 * 派工前更新:在專案的長期對話(記得完整脈絡)請管家改寫舊卡,等它呼叫 revise_card。
+	 * 回傳 "revised" / "withdrawn" / "unchanged"(模型沒呼叫工具或失敗也算 unchanged,照原卡派工)。
+	 */
+	async refreshCard(p: Project, card: Card): Promise<"revised" | "withdrawn" | "unchanged"> {
+		const since = card.revisedAt ?? card.createdAt;
+		const msg = `【派工前更新】卡 #${card.id}「${card.title}」(交給 ${card.agent})是 ${since} 寫的,使用者剛核准要派工;在那之後專案已經有新進展。
+目前的工作說明:
+${card.instructions}
+
+完成條件:${card.doneCriteria}
+
+請依目前的專案狀態呼叫一次 revise_card(id=${card.id})。`;
+		try { await this.send(p, msg, { role: "judge", timeoutMs: 180_000 }); } catch { return "unchanged"; }
+		const now = this.deps.store.card(card.id);
+		if (!now) return "unchanged";
+		if (now.column === "proposed") return "withdrawn";
+		return now.revisedAt && now.revisedAt > since ? "revised" : "unchanged";
 	}
 
 	/** 不經過管家對話回答提問時用的系統提示:管家身分 + 專案簡報 + 最近的問答 */

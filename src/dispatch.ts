@@ -4,6 +4,7 @@ import { herdrCli, listPanes, listWorkspaces, type HerdrPane } from "./herdr.ts"
 import { ownerOf } from "./projects.ts";
 import { boundSpace, ensureSpace } from "./spaces.ts";
 import type { Card, Project, Store } from "./store.ts";
+import { brief } from "./brief.ts";
 import type { Watcher } from "./watcher.ts";
 
 
@@ -65,7 +66,7 @@ export interface PreviousAttempt {
 	paneId?: string;
 }
 
-function prompt(card: Card, project: Project, previous?: PreviousAttempt): string {
+function prompt(card: Card, project: Project, previous: PreviousAttempt | undefined, current: string): string {
 	const retry = previous
 		? [
 				"",
@@ -83,6 +84,9 @@ function prompt(card: Card, project: Project, previous?: PreviousAttempt): strin
 		"",
 		`完成標準:${card.doneCriteria}`,
 		"做完後簡短說明結果;做不下去就說明卡在哪裡。管家會自動讀取你的對話記錄,不需要另外回報。",
+		"",
+		"【派工當下的專案狀態】以下是管家目前記錄的最新進度。跟上面的說明有衝突時,以這裡為準,並在回覆裡指出哪裡衝突:",
+		current.length > 6000 ? `${current.slice(0, 6000)}\n…(後面省略)` : current,
 	].join("\n");
 }
 
@@ -104,7 +108,7 @@ export async function dispatchCard(store: Store, watcher: Watcher, input: Card, 
 	if (started?.error) return store.updateCard(card.id, { column: "blocked", paneId, note: `啟動 ${kind} 失敗:${String(started.error.message ?? "").slice(0, 200)}` });
 
 	watcher.expectWork.add(paneId);
-	const sent = herdrCli(["agent", "prompt", paneId, prompt(card, project, previous)], 20_000);
+	const sent = herdrCli(["agent", "prompt", paneId, prompt(card, project, previous, brief(store, project))], 20_000);
 	if (sent?.error) return store.updateCard(card.id, { column: "blocked", paneId, note: `送出指示失敗:${String(sent.error.message ?? "").slice(0, 200)}` });
 	return store.updateCard(card.id, { column: "running", paneId, terminalId, note: `已派給 ${kind}(${paneId})` });
 }
