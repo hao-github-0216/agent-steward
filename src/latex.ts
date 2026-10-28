@@ -5,18 +5,22 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { which } from "./agents.ts";
+import { tinytexBin } from "./plugins.ts";
 import { CodeError, inProject } from "./code.ts";
 import { IS_WIN } from "./platform.ts";
 import type { Project } from "./store.ts";
 
 export function latexmkPath(): string | undefined {
+	// 專案管家裝的 TinyTeX 優先(缺套件可以自動補),再來是電腦上的
+	const tt = tinytexBin();
+	if (tt) return join(tt, IS_WIN ? "latexmk.exe" : "latexmk");
 	return which("latexmk") ?? (IS_WIN ? ["C:\\texlive\\2026\\bin\\windows\\latexmk.exe", "C:\\texlive\\2025\\bin\\windows\\latexmk.exe"] : ["/Library/TeX/texbin/latexmk", "/usr/local/texlive/2026/bin/universal-darwin/latexmk", "/usr/bin/latexmk"]).find((p) => existsSync(p));
 }
 
 const magic = (src: string, key: string) => src.split("\n").slice(0, 30).map((l) => l.match(new RegExp(`^\\s*%\\s*!\\s*TeX\\s+${key}\\s*=\\s*(.+?)\\s*$`, "i"))?.[1]).find(Boolean);
 
 export interface LatexIssue { file?: string; line?: number; message: string; level: "error" | "warning" }
-export interface LatexResult { ok: boolean; engine: string; main: string; pdf?: string; issues: LatexIssue[]; log: string; seconds: number }
+export interface LatexResult { ok: boolean; engine: string; main: string; pdf?: string; issues: LatexIssue[]; log: string; seconds: number; installed?: string[] }
 
 const running = new Map<string, Promise<LatexResult>>();
 
@@ -35,12 +39,53 @@ export function buildLatex(p: Project, rel: string): Promise<LatexResult> {
 	const key = `${p.id}:${mainRel}`;
 	const busy = running.get(key);
 	if (busy) return busy;
-	const job = run(p, abs, mainRel).finally(() => running.delete(key));
+	const job = runWithAutoInstall(p, abs, mainRel).finally(() => running.delete(key));
 	running.set(key, job);
 	return job;
 }
 
-function run(p: Project, abs: string, mainRel: string): Promise<LatexResult> {
+/** 用專案管家的 TinyTeX 時:缺套件就用 tlmgr 補上再編一次(最多兩輪) */
+async function runWithAutoInstall(p: Project, abs: string, mainRel: string): Promise<LatexResult> {
+	let r = await run(p, abs, mainRel);
+	const bin = tinytexBin();
+	if (!bin) return r;
+	const installed: string[] = [];
+	for (let round = 0; round < 2; round++) {
+		const missing = missingFiles(r.log);
+		if (!missing.length) break;
+		const pkgs = new Set<string>();
+		for (const f of missing) for (const pkg of await tlmgrFind(bin, f)) pkgs.add(pkg);
+		const fresh = [...pkgs].filter((x) => !installed.includes(x));
+		if (!fresh.length) break;
+		try { await tlmgr(bin, ["install", ...fresh]); }
+		catch {
+			// tlmgr 太舊時要先更新它自己
+			try { await tlmgr(bin, ["update", "--self"]); await tlmgr(bin, ["install", ...fresh]); } catch { break; }
+		}
+		installed.push(...fresh);
+		// 原始檔沒變,latexmk 會以為不用重編:強制重編
+		r = await run(p, abs, mainRel, true);
+	}
+	return installed.length ? { ...r, installed } : r;
+}
+/** 紀錄裡「找不到檔案 / 字型」的名字 */
+function missingFiles(log: string): string[] {
+	const out = new Set<string>();
+	for (const m of log.matchAll(/File `([^']+)' not found/g)) out.add(m[1]);
+	for (const m of log.matchAll(/I can't find file `([^']+)'/g)) out.add(m[1].includes(".") ? m[1] : `${m[1]}.tex`);
+	for (const m of log.matchAll(/The font "([^"]+)" cannot be\s*found/g)) out.add(m[1]);
+	return [...out].slice(0, 10);
+}
+function tlmgr(bin: string, args: string[]): Promise<string> {
+	return new Promise((ok, fail) => execFile(join(bin, IS_WIN ? "tlmgr.bat" : "tlmgr"), args, { timeout: 600_000, maxBuffer: 20 * 1024 * 1024 }, (e, out) => (e ? fail(e) : ok(String(out)))));
+}
+/** tlmgr search --global --file:輸出裡沒有縮排、以冒號結尾的行是套件名稱 */
+async function tlmgrFind(bin: string, file: string): Promise<string[]> {
+	const out = await tlmgr(bin, ["search", "--global", "--file", `/${file}`]).catch(() => "");
+	return [...new Set(out.split("\n").filter((l) => /^[\w.-]+:\s*$/.test(l)).map((l) => l.replace(/:\s*$/, "")))].slice(0, 3);
+}
+
+function run(p: Project, abs: string, mainRel: string, force = false): Promise<LatexResult> {
 	const exe = latexmkPath();
 	if (!exe) throw new CodeError(400, "這台電腦找不到 latexmk:請先安裝 TeX Live / MacTeX(macOS 可以用 brew install --cask mactex-no-gui)");
 	const src = readFileSync(abs, "utf8");
@@ -53,7 +98,7 @@ function run(p: Project, abs: string, mainRel: string): Promise<LatexResult> {
 	const env = { ...process.env, PATH: `${dirname(exe)}${IS_WIN ? ";" : ":"}${process.env.PATH ?? ""}` };
 	return new Promise((ok) => {
 		// 中間檔(.aux .log .fls…)放隱藏資料夾 .latexmk,專案裡只留 PDF
-		execFile(exe, [flag, "-interaction=nonstopmode", "-file-line-error", "-synctex=1", "-auxdir=.latexmk", "-f", file], { cwd, env, timeout: 180_000, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
+		execFile(exe, [flag, "-interaction=nonstopmode", "-file-line-error", "-synctex=1", "-auxdir=.latexmk", "-f", ...(force ? ["-g"] : []), file], { cwd, env, timeout: 180_000, maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
 			const logPath = [join(cwd, ".latexmk", `${job}.log`), join(cwd, `${job}.log`)].find((f) => existsSync(f)) ?? "";
 			const log = logPath ? readFileSync(logPath, "latin1") : `${stdout}\n${stderr}`;
 			const issues = parseLog(Buffer.from(log, "latin1").toString("utf8"), cwd, inProject(p, ""));

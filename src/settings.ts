@@ -43,6 +43,7 @@ export interface Route { primary: string; fallback: string }
 export const ROLES = ["chat", "suggest", "digest", "judge", "commitmsg"] as const;
 export type RouteRole = (typeof ROLES)[number];
 
+export type PluginId = "latex" | "notebook" | "office";
 export interface Settings {
 	version: 1;
 	/** 管家怎麼稱呼使用者(空白 = 「使用者」) */
@@ -77,6 +78,8 @@ export interface Settings {
 	aiDetected: boolean;
 	/** 第一次設定精靈已經走完(或略過) */
 	setupDone: boolean;
+	/** 內建外掛的開關(設定 → 外掛);相依軟體裝在 ~/.agent-steward/tools */
+	plugins: Record<PluginId, { enabled: boolean }>;
 	providers: ProviderConfig[];
 	routing: Record<RouteRole, Route> & { privacy: string };
 	notify: {
@@ -95,6 +98,7 @@ export const DEFAULTS: Settings = {
 	paths: { createRoot: "~", privacy: [], usePiPrivacy: false },
 	aiDetected: false,
 	setupDone: false,
+	plugins: { latex: { enabled: false }, notebook: { enabled: false }, office: { enabled: true } },
 	providers: [],
 	routing: {
 		chat: { primary: "", fallback: "" },
@@ -124,6 +128,19 @@ function merge<T>(base: T, over: unknown): T {
 }
 
 // ---------- 第一次執行:從這台電腦偵測 ----------
+/** 電腦上有沒有 latexmk(MacTeX / TeX Live) */
+export function hasSystemTex(): boolean {
+	const cands = process.platform === "win32" ? [] : ["/Library/TeX/texbin/latexmk", "/usr/bin/latexmk", "/usr/local/bin/latexmk"];
+	if (cands.some((p) => existsSync(p))) return true;
+	try { execFileSync(process.platform === "win32" ? "where" : "which", ["latexmk"], { stdio: "ignore", timeout: 5000 }); return true; } catch { return false; }
+}
+/** 系統的 python 有沒有 ipykernel */
+export function hasSystemJupyter(): boolean {
+	for (const py of process.platform === "win32" ? ["python", "py"] : ["python3", "python"]) {
+		try { execFileSync(py, ["-c", "import ipykernel, jupyter_client"], { stdio: "ignore", timeout: 15000 }); return true; } catch { /* 試下一個 */ }
+	}
+	return false;
+}
 export function findTailscale(): string | undefined {
 	const candidates = process.platform === "win32"
 		? ["C:\\Program Files\\Tailscale\\tailscale.exe"]
@@ -163,6 +180,8 @@ function detect(): Settings {
 			}
 		}
 	}
+	// 外掛:電腦上已經有 TeX / Jupyter 的直接開啟
+	s.plugins = { latex: { enabled: hasSystemTex() }, notebook: { enabled: hasSystemJupyter() }, office: { enabled: true } };
 	// pi 的隱私清單
 	if (existsSync(join(HOME, ".pi", "agent", "privacy-paths.json"))) s.paths.usePiPrivacy = true;
 	// Hermes 推播路由
@@ -234,6 +253,11 @@ export function settings(): Settings {
 			// 舊設定檔沒有 Tailscale 開關:有允許帳號就當作已開啟(維持原本的行為)
 			if (!raw.access?.tailscale) {
 				current.access.tailscale.enabled = current.access.tailscaleUsers.length > 0;
+				write(current);
+			}
+			// 外掛出現之前就在用的人:原本就能用的功能維持開啟(LaTeX 要電腦上有 TeX)
+			if (raw.plugins === undefined) {
+				current.plugins = { latex: { enabled: hasSystemTex() }, notebook: { enabled: true }, office: { enabled: true } };
 				write(current);
 			}
 			// 有精靈之前就在用的人:不再跳出第一次設定

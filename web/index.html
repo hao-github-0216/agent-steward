@@ -43,6 +43,14 @@ header h1 { font-size: 16px; margin: 0; }
 .login-box .row { display: flex; gap: 6px; align-items: center; }
 .login-box .row input { flex: 1; min-width: 0; }
 .login-box .row button { flex: 0 0 auto; }
+.plug { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 4px; }
+.plug.on { border-color: var(--accent); }
+.plug-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.plug-job { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.plug-job.bad { color: var(--warn, #c0392b); }
+.plug-bar { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
+.plug-bar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
 .upd-log, .upd-notes, .upd-cmd { background: var(--bg2, rgba(127,127,127,.12)); padding: 8px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; margin: 6px 0; }
 .set-tabs { flex: 0 0 150px; border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
 .set-tabs button { text-align: left; border: 0; background: none; color: var(--ink); font: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
@@ -1307,16 +1315,37 @@ function applyFont() {
 // herdr 拖曳選取放開後用 OSC 52 要外層終端機寫剪貼簿;ttyd 的 xterm.js 沒處理 52,這裡補上。
 // ---------- 設定 ----------
 let setState = null; // { s: 目前的設定, detected, tab }
-const SET_TABS = [["general", "一般"], ["ai", "AI 接口"], ["routing", "路由"], ["agents", "Agent"], ["access", "存取"], ["notify", "推播"], ["about", "關於"]];
+const SET_TABS = [["general", "一般"], ["ai", "AI 接口"], ["routing", "路由"], ["agents", "Agent"], ["access", "存取"], ["notify", "推播"], ["plugins", "外掛"], ["about", "關於"]];
 let setAgents = null;
 // 第一次設定精靈:[分頁, 標題, 說明]
 const WIZ = [
 	["general", "歡迎", "專案管家會整理你在各個 AI agent(Claude Code、Codex、pi…)的工作進度,並在看板上提案、派工。先花一分鐘設定幾件事,之後都能在右上角 ⚙ 修改。"],
 	["ai", "AI 接口", "管家自己也要用 AI(聊天、整理進度、檢查提案)。至少接上一個:貼上 API 金鑰,或填自架模型的網址;儲存後會自動幫每項工作挑好模型(「路由」分頁可以改)。"],
 	["agents", "Agent", "勾選要接上專案管家的 agent:它們開工時會讀到專案進度,做完會回報給管家。"],
+	["plugins", "外掛", "要用哪些額外功能?打開的話會自動下載需要的軟體(不需要管理員權限),之後也可以在設定 → 外掛 開關。電腦上已經有的(例如 MacTeX)會直接沿用。"],
 	["access", "密碼與遠端存取", "只在這台電腦用的話,這一步可以直接按「完成」。要從手機或其他電腦連進來,先設定管理密碼,再開啟 Tailscale 或區網存取。"],
 ];
 let setUpdate = null; // GET /api/settings/update 的結果
+let setPlugins = null; // GET /api/settings/plugins
+let plugTimer = null;
+async function loadSetPlugins() { const r = await fetch("/api/settings/plugins").then((x) => x.json()).catch(() => null); setPlugins = r?.plugins || []; }
+const PLUG_STATUS = { ready: "可以用", system: "沿用電腦上的", installed: "已安裝", missing: "還沒安裝", installing: "安裝中" };
+function pluginsPane() {
+	if (!setPlugins) return '<div class="empty">讀取中…</div>';
+	return `<div class="hint">外掛需要的軟體會下載到 ~/.agent-steward/tools,不需要管理員權限。關閉只是把功能藏起來,下載的東西會保留;「移除下載的檔案」只刪專案管家自己下載的,不會動你自己裝的軟體。</div>
+		${setPlugins.map((p) => {
+			const j = p.job;
+			const busy = j?.running;
+			return `<div class="plug${p.enabled ? " on" : ""}">
+				<div class="plug-h"><b>${esc(p.name)}</b><span class="chip">${esc(PLUG_STATUS[p.status] || p.status)}</span><span class="hint">${esc(p.size)}</span><span style="flex:1"></span>
+					<label class="switch"><input type="checkbox" data-plug="${p.id}" ${p.enabled ? "checked" : ""} ${busy ? "disabled" : ""}><span>${busy ? "安裝中…" : p.enabled ? "已開啟" : p.status === "missing" ? "開啟並安裝" : "開啟"}</span></label></div>
+				<div class="hint">${esc(p.description)}</div>
+				<div class="hint">${esc(p.detail)}</div>
+				${j ? `<div class="plug-job ${j.error ? "bad" : ""}">${busy ? `<div class="plug-bar"><i style="width:${Math.max(3, j.progress || 0)}%"></i></div>` : ""}<span>${esc(j.message)}</span>${j.log?.length ? `<details><summary class="hint">安裝紀錄</summary><pre class="upd-log">${esc(j.log.join("\n"))}</pre></details>` : ""}</div>` : ""}
+				${p.removable && !busy ? `<div><button class="small" data-plugrm="${p.id}">移除下載的檔案</button></div>` : ""}
+			</div>`;
+		}).join("")}`;
+}
 async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: "連不上管家" })); }
 function aboutPane() {
 	const u = setUpdate;
@@ -1487,7 +1516,7 @@ async function openSettings(tab = "general", wizard = false) {
 	const r = await fetch("/api/settings").then((x) => x.json().then((d) => ({ ok: x.ok, d }))).catch(() => ({ ok: false, d: { error: "連不上管家" } }));
 	if (!r.ok) return toast(r.d.error || "沒有權限打開設定");
 	setState = { s: r.d.settings, detected: r.d.detected, platform: r.d.platform, tab, auth: await fetch("/api/auth/status").then((x) => x.json()).catch(() => null) };
-	setModels = null; setAgents = null; setUpdate = null;
+	setModels = null; setAgents = null; setUpdate = null; setPlugins = null;
 	if (wizard) { setState.wizard = 0; setState.tab = WIZ[0][0]; }
 	let m = $("setModal");
 	if (!m) {
@@ -1559,6 +1588,7 @@ function renderSettings() {
 		agents: agentsPane(),
 		routing: routingPane(s),
 		about: aboutPane(),
+		plugins: pluginsPane(),
 	}[tab];
 	const wz = setState.wizard;
 	m.innerHTML = wz == null ? `<div class="box" role="dialog" aria-label="設定">
@@ -1642,6 +1672,24 @@ function renderSettings() {
 		const r = await post("/api/settings/logout-provider", { provider: b.dataset.logout }).catch(() => ({ error: "連不上管家" }));
 		if (r.error) return toast(r.error);
 		toast("已登出"); await loadSetModels(); renderSettings();
+	}));
+	if (tab === "plugins" && !setPlugins) loadSetPlugins().then(() => setState && setState.tab === "plugins" && renderSettings());
+	// 有外掛在安裝:每 1.5 秒更新進度
+	clearInterval(plugTimer);
+	if (tab === "plugins" && setPlugins?.some((p) => p.job?.running)) plugTimer = setInterval(async () => { if (!setState || setState.tab !== "plugins") return clearInterval(plugTimer); await loadSetPlugins(); renderSettings(); }, 1500);
+	m.querySelectorAll("[data-plug]").forEach((c) => (c.onchange = async () => {
+		c.disabled = true;
+		const r = await post(`/api/settings/plugins/${c.dataset.plug}`, { enable: c.checked }).catch(() => ({ error: "連不上管家" }));
+		if (r.error) toast(r.error); else { setPlugins = r.plugins; if (r.started) toast("開始下載安裝,可以先做別的事"); }
+		renderSettings();
+		window.codeMode?.refreshPlugins?.();
+	}));
+	m.querySelectorAll("[data-plugrm]").forEach((b) => (b.onclick = async () => {
+		if (!(await window.confirmBox("移除下載的檔案", "刪掉專案管家為這個外掛下載的軟體?之後要用再開啟就會重新下載。你自己裝的軟體不受影響。", "移除"))) return;
+		const r = await post(`/api/settings/plugins/${b.dataset.plugrm}/remove`, {}).catch(() => ({ error: "連不上管家" }));
+		if (r.error) toast(r.error); else { setPlugins = r.plugins; toast("已移除"); }
+		renderSettings();
+		window.codeMode?.refreshPlugins?.();
 	}));
 	if (tab === "about" && !setUpdate) loadSetUpdate().then(() => setState && setState.tab === "about" && renderSettings());
 	if (tab === "about" && setUpdate?.running) pollUpdateLog();

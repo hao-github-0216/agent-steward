@@ -15,6 +15,7 @@ import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
 import { buildLatex } from "./latex.ts";
+import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./plugins.ts";
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
@@ -180,6 +181,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		const q = (k: string) => url.searchParams.get(k) ?? "";
 		try {
 			// ---------- LaTeX 編譯 ----------
+			const off = (id: "latex" | "notebook" | "office", name: string) => send(res, 403, { error: `「${name}」外掛沒有開啟(設定 → 外掛)` });
+			if (sub === "latex" && !pluginEnabled("latex")) return off("latex", "LaTeX 編譯");
+			if (sub.startsWith("nb/") && !pluginEnabled("notebook")) return off("notebook", "Notebook 執行");
+			if (sub.startsWith("office/") && !pluginEnabled("office")) return off("office", "Office 編輯");
 			if (req.method === "POST" && sub === "latex") return send(res, 200, await buildLatex(p, String((await body(req)).path ?? "")));
 			// ---------- Office:專用連結、編輯狀態、歷史版本 ----------
 			if (sub.startsWith("office/")) {
@@ -297,7 +302,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		const path = url.pathname;
 		try {
 			// ---------- 用 Office 編輯(WebDAV):Office 拿不到瀏覽器登入,只靠專用連結 ----------
-			if (path.startsWith("/dav/") && (await handleDav(req, res, store))) return;
+			if (path.startsWith("/dav/")) {
+				if (!pluginEnabled("office")) { res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }); res.end("Office 編輯外掛沒有開啟"); return; }
+				if (await handleDav(req, res, store)) return;
+			}
 			// ---------- 登入 ----------
 			if (path.startsWith("/api/auth/")) {
 				if (req.method === "GET" && path === "/api/auth/status") {
@@ -394,6 +402,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					steward.resetModels();
 					const restart = JSON.stringify({ port: next.server.port, terminalPort: next.server.terminalPort, hosts: next.server.hosts, lan: next.access.lan.enabled }) !== prevServer;
 					return send(res, 200, { settings: publicSettings(next), restartNeeded: restart });
+				}
+				// 內建外掛:列表、開關(還沒裝就在背景安裝)、移除下載的檔案
+				if (req.method === "GET" && path === "/api/settings/plugins") return send(res, 200, { plugins: pluginList() });
+				const mpl = path.match(/^\/api\/settings\/plugins\/(latex|notebook|office)(\/remove)?$/);
+				if (req.method === "POST" && mpl) {
+					try {
+						if (mpl[2]) { removePluginFiles(mpl[1] as never); return send(res, 200, { plugins: pluginList() }); }
+						const r = togglePlugin(mpl[1] as never, !!(await body(req)).enable);
+						return send(res, 200, { ...r, plugins: pluginList() });
+					} catch (e) { return send(res, 400, { error: (e as Error).message }); }
 				}
 				// 訂閱登入(ChatGPT / Claude):在伺服器跑登入流程,網頁輪詢進度
 				if (req.method === "POST" && path === "/api/settings/login") {
@@ -939,6 +957,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				currentCache = null; // 跳完馬上查要拿到新位置
 				return send(res, 200, focusProject(store, p, { create: create !== false }));
 			}
+			if (req.method === "GET" && path === "/api/plugins") return send(res, 200, { latex: pluginEnabled("latex"), notebook: pluginEnabled("notebook"), office: pluginEnabled("office") });
 			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: listAgents().filter((a) => a.installed && a.dispatch).map((a) => ({ id: a.id, name: a.name })) });
 			if (req.method === "GET" && path === "/api/terminal/current") return send(res, 200, terminalCurrent());
 			// 三個頁面共用的「目前專案」

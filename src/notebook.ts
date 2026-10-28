@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerResponse } from "node:http";
 import { which } from "./agents.ts";
+import { OWN_JUPYTER, uvPath } from "./plugins.ts";
 import { inProject } from "./code.ts";
 import { IS_WIN } from "./platform.ts";
 import { DATA_DIR } from "./settings.ts";
@@ -13,7 +14,7 @@ import type { Project } from "./store.ts";
 
 const BRIDGE = join(dirname(fileURLToPath(import.meta.url)), "nbkernel.py");
 /** 專案管家自己的 Jupyter 環境(使用者選「安裝」又沒有專案環境時建在這裡) */
-const OWN_ENV = join(DATA_DIR, "jupyter", ".venv");
+const OWN_ENV = OWN_JUPYTER;
 const pyIn = (venv: string) => (IS_WIN ? join(venv, "Scripts", "python.exe") : join(venv, "bin", "python"));
 
 export interface PythonEnv { python: string; label: string; version?: string; ready: boolean; why?: string; own?: boolean }
@@ -69,7 +70,7 @@ function run(cmd: string, args: string[], cwd?: string): Promise<string> {
 
 /** 安裝 ipykernel:own = 建立專案管家自己的環境;否則裝進指定的 Python(使用者按了按鈕才會做) */
 export async function installKernel(python: string, own: boolean): Promise<string> {
-	const uv = which("uv");
+	const uv = uvPath();
 	const pkgs = ["ipykernel", "jupyter_client"];
 	if (own) {
 		const py = pyIn(OWN_ENV);

@@ -487,6 +487,15 @@
 		}
 	}
 	// ---------- LaTeX:latexmk 編譯、錯誤清單、PDF 在旁邊自動刷新 ----------
+	// 外掛開關(設定 → 外掛):沒開的功能不顯示按鈕
+	cm.plugins = { latex: true, notebook: true, office: true };
+	async function refreshPlugins() {
+		const r = await fetch("/api/plugins").then((x) => (x.ok ? x.json() : null)).catch(() => null);
+		if (!r) return;
+		cm.plugins = r;
+		for (const g of allGroups()) if (g.active) activate(g, g.active);
+		for (const t of allTabs()) if (t.kind === "nb" && t.nb) { if (r.notebook) { nbConnect(t); nbLoadPythons(t); } nbToolbar(t); }
+	}
 	const texAuto = () => pref(`steward.texAuto:${cm.pid}`) === "1";
 	function texBar(g, t) {
 		const r = t.tex;
@@ -509,7 +518,7 @@
 		if (t.group.active === t) texBar(t.group, t);
 		if (r.pdf) await texShowPdf(t, r.pdf);
 		const nErr = r.issues.filter((i) => i.level === "error").length;
-		toast(r.ok ? "編譯完成" : nErr ? `編譯有 ${nErr} 個錯誤` : "編譯失敗,看看完整紀錄");
+		toast(`${r.installed?.length ? `自動安裝了 ${r.installed.join("、")};` : ""}${r.ok ? "編譯完成" : nErr ? `編譯有 ${nErr} 個錯誤` : "編譯失敗,看看完整紀錄"}`);
 	}
 	/** 編輯器裡把錯誤 / 警告畫成波浪線 */
 	function texMarkers(r) {
@@ -574,7 +583,7 @@
 	const OFFICE_SCHEME = { word: "ms-word", excel: "ms-excel", powerpoint: "ms-powerpoint" };
 	function officeBar(g, t) {
 		const app = OFFICE_NAME[t.app] || "Office";
-		bar(g, `<span class="office-state">${t.editing ? `<b>正在 Office 編輯中</b>${t.editOwner && t.editOwner !== "Office" ? `(${esc(t.editOwner)})` : ""} · 存檔後這裡會自動更新` : `${app} 檔 · 預覽`}</span><span class="sp"></span><button class="small" data-bar="officehist">歷史版本</button><button class="small primary" data-bar="officeedit">用 ${app} 編輯</button>`);
+		bar(g, `<span class="office-state">${t.editing ? `<b>正在 Office 編輯中</b>${t.editOwner && t.editOwner !== "Office" ? `(${esc(t.editOwner)})` : ""} · 存檔後這裡會自動更新` : `${app} 檔 · 預覽`}</span><span class="sp"></span>${cm.plugins.office ? `<button class="small" data-bar="officehist">歷史版本</button><button class="small primary" data-bar="officeedit">用 ${app} 編輯</button>` : '<span class="hint">要用 Office 編輯,請到 設定 → 外掛 開啟</span>'}`);
 	}
 	/** 用這台電腦上的 Office 打開(WebDAV 專用連結),存檔直接寫回專案裡的原檔 */
 	async function officeEdit(t) {
@@ -792,7 +801,7 @@
 				g.diff.setModel(null);
 				g.editor.setModel(t.model);
 				g.editor.updateOptions({ readOnly: !!t.readonly });
-				if (isTex(t.path) && !t.truncated && !t.readonly) texBar(g, t);
+				if (isTex(t.path) && !t.truncated && !t.readonly && cm.plugins.latex) texBar(g, t);
 				else bar(g, t.truncated ? `<span>大檔(${fmtSize(t.size)})唯讀:只顯示開頭和結尾各 ${t.truncated.shown} 行,共 ${t.truncated.total} 行</span><span class="sp"></span><button class="small" data-bar="more">多載入 2000 行</button><button class="small" data-bar="term">在終端機開啟</button>` : t.readonly ? "<span>唯讀</span>" : isMd(t.path) ? `<span class="sp"></span><button class="small" data-bar="mdprev">${mobile() ? "預覽" : "在旁邊預覽"}</button>` : "");
 				if (t.viewState) g.editor.restoreViewState(t.viewState);
 				// 手機:切分頁不自動聚焦編輯器(會跳鍵盤、iOS 還會放大);要打字點一下內容就好
@@ -1006,8 +1015,7 @@
 		catch (e) { box.innerHTML = `<div class="nb-msg">${e instanceof SyntaxError ? `這不是有效的 Notebook(JSON 格式錯誤:${esc(e.message)})。可以用「編輯原始 JSON」修正。` : esc(e.message || String(e))}</div>`; return; }
 		[t.mdLib, t.math] = await Promise.all([loadMd().catch(() => null), loadMath()]);
 		drawNb(t);
-		nbConnect(t);
-		nbLoadPythons(t);
+		if (cm.plugins.notebook) { nbConnect(t); nbLoadPythons(t); }
 	}
 	const nbLang = (t) => String(t.nb?.metadata?.language_info?.name || t.nb?.metadata?.kernelspec?.language || "python").toLowerCase();
 	function nbMarkDirty(t) { if (!t.dirty) { t.dirty = true; renderTabs(t.group); } nbToolbar(t); }
@@ -1211,6 +1219,11 @@
 		const env = t.envs?.find((e) => e.python === t.python);
 		const opts = (t.envs || []).map((e) => `<option value="${esc(e.python)}" ${e.python === t.python ? "selected" : ""}>${esc(e.label)}${e.version ? ` · Python ${esc(e.version)}` : ""}${e.ready ? "" : `(${esc(e.why || "不能用")})`}</option>`).join("");
 		const busy = t.kstate === "busy" || t.kstate === "starting";
+		if (!cm.plugins.notebook) {
+			bar.innerHTML = `<span class="hint">要在網頁上執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」(可以照常檢視與編輯)</span><span class="sp"></span><button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled" : ""}>${t.dirty ? "● 存檔" : "存檔"}</button>`;
+			bar.onclick = (e) => { if (e.target.closest("[data-nb=save]")) saveNb(t); };
+			return;
+		}
 		bar.innerHTML = `<select class="nb-py" title="用哪個 Python 環境執行">${opts || "<option>偵測 Python 環境中…</option>"}</select>
 			${env && !env.ready ? `<button class="small primary" data-nb="install">${env.own ? "建立並安裝 ipykernel" : "在這個環境安裝 ipykernel"}</button>` : ""}
 			<span class="nb-kstate nb-k-${t.kstate}">${KSTATE[t.kstate] || t.kstate}</span>
@@ -1267,6 +1280,7 @@
 		return !!ok;
 	}
 	async function nbRun(t, cells) {
+		if (!cm.plugins.notebook) return toast("要執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」");
 		cells = cells.filter((c) => c.cell_type === "code");
 		if (!cells.length || t.readonly) return;
 		for (const c of cells) if (c._editing) c._el.querySelector("textarea.nb-edit")?.blur();
@@ -2078,6 +2092,7 @@
 			return null; // 沒改過:伺服器自己讀磁碟
 		},
 		hasUnsaved: (id) => (id === cm.pid ? allTabs().some((t) => t.dirty) : cm.stash.has(id)),
+		refreshPlugins,
 		/** 共用入口呼叫:程式碼頁面開著時換到這個專案 */
 		async pick(id) {
 			if (!projects().some((p) => p.id === id)) return; // 雜務/總覽之類不是程式碼專案:維持原樣
@@ -2085,6 +2100,7 @@
 			render();
 		},
 		async show() {
+			refreshPlugins();
 			const w = pref("steward.cvSideWidth");
 			if (w) document.querySelector(".cv-side").style.flexBasis = w;
 			if (pref("steward.cvSideCollapsed") === "1" && !mobile()) setSideCollapsed(true);

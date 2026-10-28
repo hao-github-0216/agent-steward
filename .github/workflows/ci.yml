@@ -129,3 +129,24 @@ jobs:
         run: |
           if (Test-Path "$HOME\.agent-steward") { throw "還有 .agent-steward" }
           if (Get-ScheduledTask -TaskName "agent-steward*" -ErrorAction SilentlyContinue) { throw "排程工作還在" }
+
+  plugins:
+    # 外掛實際安裝:TinyTeX、uv + Python + Jupyter;用 TinyTeX 編中文與缺套件的文件
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Install and use plugins
+        shell: bash
+        run: |
+          export STEWARD_DATA_DIR="$RUNNER_TEMP/steward-data"
+          mkdir -p "$RUNNER_TEMP/work"
+          node --experimental-strip-types --no-warnings scripts/ci-plugins.mjs "$RUNNER_TEMP/work"
+
