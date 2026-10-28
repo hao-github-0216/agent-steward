@@ -8,6 +8,9 @@ import { DB_PATH } from "./config.ts";
 import { settings } from "./settings.ts";
 import { herdrCli, listPanes } from "./herdr.ts";
 import { buildModels, hasFallback, routeFor } from "./models.ts";
+import { isCliKind, runCli } from "./agent-cli.ts";
+import { brief } from "./brief.ts";
+import { recentChat } from "./chat-log.ts";
 import { notify } from "./notify.ts";
 import { ensureSpecial, OVERVIEW_ROOT } from "./projects.ts";
 import type { Card, Project, Store } from "./store.ts";
@@ -313,6 +316,16 @@ export class Steward {
 
 	private async sendOnce(p: Project, content: string, opts: { role?: Role; requestId?: string; timeoutMs?: number; fallback?: boolean }): Promise<string> {
 		const { role = "judge", requestId, timeoutMs, fallback = false } = opts;
+		// 聊天室用的是電腦上的 agent CLI:不經過管家的對話,給它專案簡報和最近的問答
+		if (role === "chat") {
+			const ref = routeFor("chat", { private: p.private, fallback });
+			const cli = this.cliOf(ref.provider);
+			if (cli) {
+				const history = recentChat(p.id, 8).slice(0, -1).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");
+				const system = `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
+				return runCli(cli, ref.modelId, system, content, timeoutMs ?? 180_000).catch((e) => { throw new StewardUnanswered(String((e as Error).message ?? e)); });
+			}
+		}
 		return this.serial(p.id, async () => {
 			const conv = await this.conversation(p);
 			await this.ensureConfigured(p, conv as never, role, fallback);
@@ -352,6 +365,8 @@ export class Steward {
 
 	/** 用指定的模型問一次(設定頁「測試連線」也用這個) */
 	async oneShotWith(system: string, user: string, ref: { provider: string; modelId: string }, maxTokens = 2000): Promise<string> {
+		const cli = this.cliOf(ref.provider);
+		if (cli) return runCli(cli, ref.modelId, system, user);
 		if (!this.models) throw new Error("管家還沒準備好");
 		const model = (this.models as unknown as { getModel(p: string, id: string): unknown }).getModel(ref.provider, ref.modelId);
 		if (!model) throw new Error(`找不到模型 ${ref.provider}/${ref.modelId}(到設定 → AI 接口確認)`);
@@ -362,6 +377,12 @@ export class Steward {
 		);
 		if (msg.errorMessage) throw new Error(msg.errorMessage);
 		return (msg.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+	}
+
+	/** 這個接口是不是電腦上的 agent CLI(是的話回傳是哪一個) */
+	private cliOf(providerId: string) {
+		const c = settings().providers.find((x) => x.id === providerId && x.type === "agent-cli");
+		return c && isCliKind(c.cli) ? c.cli : undefined;
 	}
 
 	/** 各模型累計 token 用量(整個管家) */

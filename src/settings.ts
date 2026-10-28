@@ -24,7 +24,7 @@ export type Builtin = (typeof BUILTINS)[number];
  */
 export interface ProviderConfig {
 	id: string;
-	type: "builtin" | "openai-compatible" | "pi-models";
+	type: "builtin" | "openai-compatible" | "pi-models" | "agent-cli";
 	name: string;
 	builtin?: Builtin;
 	/** apiKey:API 金鑰;pi:沿用 pi 的登入;login:在專案管家裡用訂閱登入(存 ~/.agent-steward/auth.json) */
@@ -33,6 +33,8 @@ export interface ProviderConfig {
 	baseUrl?: string;
 	models?: string[];
 	piProvider?: string;
+	/** agent-cli:用哪個 CLI(claude / codex / gemini / copilot / qwen) */
+	cli?: string;
 	/** 本地/自架(隱私專案可以用) */
 	local?: boolean;
 }

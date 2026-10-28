@@ -38,6 +38,7 @@ header h1 { font-size: 16px; margin: 0; }
 .modal.setmodal .mbody { flex-direction: row; gap: 0; padding: 0; flex: 1; min-height: 0; }
 .wz-intro { background: var(--bg2, rgba(127,127,127,.12)); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; line-height: 1.5; }
 .login-box { border: 1px solid var(--line, rgba(127,127,127,.3)); border-radius: 8px; padding: 10px 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.login-box[hidden] { display: none; }
 .login-code { font: 600 26px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 3px; padding: 6px 0; user-select: all; }
 .login-box .row { display: flex; gap: 6px; align-items: center; }
 .login-box .row input { flex: 1; min-width: 0; }
@@ -396,8 +397,15 @@ html, body { height: var(--appH, 100dvh); }
 #toast { position: fixed; left: 50%; bottom: 18px; translate: -50% 0; z-index: 80; background: #282828; color: #ebdbb2; border: 1px solid #504945; padding: 6px 12px; border-radius: 8px; font-size: 13px; opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s; pointer-events: none; }
 #toast.show { opacity: 1; transform: none; }
 /* ---------- 問管家浮動球 ---------- */
-#stewardBall { position: fixed; z-index: 56; width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-family: inherit; font-size: 18px; font-weight: 700; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.3); cursor: grab; touch-action: none; user-select: none; transition: transform .12s, box-shadow .12s; }
+#stewardBall { position: fixed; z-index: 56; width: 56px; height: 56px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 0; background: #fff1dc; color: #fff; font-family: inherit; font-size: 18px; font-weight: 700; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.3); cursor: grab; touch-action: none; user-select: none; transition: transform .12s, box-shadow .12s; }
 #stewardBall:hover { transform: scale(1.06); }
+#stewardBall .cat { width: 48px; height: 48px; margin-top: 2px; pointer-events: none; overflow: visible; }
+/* 偶爾眨眼;管家在想事情時左右歪頭 */
+#stewardBall .cat-eyes { transform-box: fill-box; transform-origin: center; animation: catBlink 5s infinite; }
+@keyframes catBlink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
+#stewardBall.busy .cat { animation: catTilt 1.2s ease-in-out infinite; transform-origin: 50% 70%; }
+@keyframes catTilt { 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) { #stewardBall .cat-eyes, #stewardBall.busy .cat { animation: none; } }
 #stewardBall.on { box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--accent); }
 #stewardBall.dragging { cursor: grabbing; transition: none; transform: scale(1.1); opacity: .9; }
 #stewardBall.unread::after { content: ""; position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #e5484d; border: 2px solid var(--panel); }
@@ -557,7 +565,19 @@ form.tool { flex-direction: row; }
 		<div class="bp-quote" id="bpQuote" hidden></div>
 		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><button class="small primary">送出</button></form>
 	</div>
-	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家">管</button>
+	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
+		<path d="M11 27 L13 6 L28 17 Z" fill="#f6a04d"/><path d="M53 27 L51 6 L36 17 Z" fill="#f6a04d"/>
+		<path d="M15 22 L16 11 L24 17 Z" fill="#ffb3c1"/><path d="M49 22 L48 11 L40 17 Z" fill="#ffb3c1"/>
+		<ellipse cx="32" cy="37" rx="24" ry="21" fill="#f6a04d"/>
+		<path d="M26 17 Q32 22 38 17 Q35 25 32 26 Q29 25 26 17 Z" fill="#e08a36"/>
+		<ellipse cx="32" cy="44" rx="15" ry="11" fill="#fff6ea"/>
+		<g class="cat-eyes"><ellipse cx="22.5" cy="35" rx="4.2" ry="5" fill="#3b2a20"/><ellipse cx="41.5" cy="35" rx="4.2" ry="5" fill="#3b2a20"/>
+		<circle cx="24" cy="33" r="1.6" fill="#fff"/><circle cx="43" cy="33" r="1.6" fill="#fff"/></g>
+		<ellipse cx="15.5" cy="43" rx="3.6" ry="2.2" fill="#ff8fa3" opacity=".55"/><ellipse cx="48.5" cy="43" rx="3.6" ry="2.2" fill="#ff8fa3" opacity=".55"/>
+		<path d="M30 41.5 h4 l-2 2.4 z" fill="#ff7b93" stroke="#ff7b93" stroke-linejoin="round"/>
+		<path d="M27.5 45.5 q2.2 2.6 4.5 0 q2.3 2.6 4.5 0" fill="none" stroke="#3b2a20" stroke-width="1.5" stroke-linecap="round"/>
+		<g stroke="#3b2a20" stroke-width="1" stroke-linecap="round" opacity=".55"><path d="M4 41 L16 42.5"/><path d="M5 47 L16 45.5"/><path d="M60 41 L48 42.5"/><path d="M59 47 L48 45.5"/></g>
+	</svg></button>
 </div>
 <div class="modal" id="createDlg" hidden>
 	<div class="box" role="dialog" aria-labelledby="createTitle">
@@ -1303,7 +1323,7 @@ const ROLE_ROWS = [["chat", "聊天室問答", "浮動球裡的問答"], ["sugge
 let setModels = null; // GET /api/settings/models 的結果
 async function loadSetModels() { setModels = await fetch("/api/settings/models").then((r) => r.json()).catch(() => null); }
 function providerCard(c, i) {
-	const kind = c.type === "builtin" ? (c.auth === "pi" ? "沿用 pi 的登入" : c.auth === "login" ? "訂閱登入" : "API 金鑰") : c.type === "pi-models" ? "沿用 pi 的模型設定" : "OpenAI 相容網址";
+	const kind = c.type === "builtin" ? (c.auth === "pi" ? "沿用 pi 的登入" : c.auth === "login" ? "訂閱登入" : "API 金鑰") : c.type === "pi-models" ? "沿用 pi 的模型設定" : c.type === "agent-cli" ? "電腦上的 CLI" : "OpenAI 相容網址";
 	const info = setModels?.providers.find((x) => x.id === c.id);
 	const n = info?.models.length;
 	return `<div class="prov" data-i="${i}">
@@ -1317,6 +1337,7 @@ function providerCard(c, i) {
 		${c.type === "openai-compatible" ? `<label class="field">網址(OpenAI 相容,通常結尾是 /v1)<input type="text" data-p="${i}.baseUrl" value="${esc(c.baseUrl || "")}"></label>
 			<label class="field">API 金鑰(沒有就空白)<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" autocomplete="off"></label>
 			<label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
+		${c.type === "agent-cli" ? `<div class="hint">直接用這台電腦上已經登入好的 CLI 回答(用它自己的訂閱)。CLI 不能呼叫管家的工具,所以只能用在<b>聊天室問答、建議問題、產生提交訊息</b>;整理回報和提案檢查請用其他接口。${esc(setModels?.cliNotes?.[c.cli] || "")}</div>` : ""}
 		${c.type === "pi-models" ? `<div class="hint">網址、金鑰、模型清單都讀 pi 的設定(~/.pi/agent/models.json 的「${esc(c.piProvider || c.id)}」),pi 改了這裡跟著變。</div><label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
 		<div class="prov-test" id="ptest${i}"></div>
 	</div>`;
@@ -1324,6 +1345,7 @@ function providerCard(c, i) {
 function aiPane(s) {
 	const have = new Set(s.providers.map((p) => p.id));
 	const piAdd = (setModels?.piProviders || []).filter((p) => !have.has(p.id));
+	const cliAdd = (setModels?.cliProviders || []).filter((p) => !have.has(p.id));
 	return `${setState.wizard == null ? '<div class="hint">管家用到的 AI 都從這裡設定。新增或修改後按「儲存」才會生效;「測試連線」會先幫你儲存。</div>' : ""}
 		${s.providers.map(providerCard).join("") || '<div class="empty">還沒有任何 AI 接口,從下面新增一個。</div>'}
 		<h4>用訂閱登入(不需要 API 金鑰)</h4>
@@ -1335,12 +1357,13 @@ function aiPane(s) {
 		<div class="row">
 			<label class="field">雲端服務(用 API 金鑰)<select id="addBuiltin"><option value="">選一個…</option>${Object.entries(BUILTIN_LABEL).filter(([k]) => !have.has(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
 			<label class="field">本地或自架(OpenAI 相容)<select id="addCompat"><option value="">選一個…</option><option value="ollama|Ollama|http://localhost:11434/v1">Ollama</option><option value="lmstudio|LM Studio|http://localhost:1234/v1">LM Studio</option><option value="local|自架模型|http://">vLLM / 其他網址</option></select></label>
+			${cliAdd.length ? `<label class="field">電腦上的 agent CLI(用它自己的訂閱)<select id="addCli"><option value="">選一個…</option>${cliAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
 			${piAdd.length ? `<label class="field">沿用 pi(這台電腦偵測到的)<select id="addPi"><option value="">選一個…</option>${piAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
 		</div>`;
 }
-function routeOptions(selected, onlyLocal) {
+function routeOptions(selected, onlyLocal, noCli) {
 	const ps = setModels?.providers || [];
-	const opts = ps.map((p) => `<optgroup label="${esc(p.name)}${p.local ? "(本地)" : ""}">${p.models.map((m) => { const v = `${p.id}/${m}`; const dis = onlyLocal && !p.local; return `<option value="${esc(v)}" ${v === selected ? "selected" : ""} ${dis ? "disabled" : ""}>${esc(m)}${dis ? "(雲端,不能用)" : ""}</option>`; }).join("")}</optgroup>`).join("");
+	const opts = ps.map((p) => `<optgroup label="${esc(p.name)}${p.local ? "(本地)" : ""}">${p.models.map((m) => { const v = `${p.id}/${m}`; const dis = (onlyLocal && !p.local) || (noCli && p.cli); return `<option value="${esc(v)}" ${v === selected ? "selected" : ""} ${dis ? "disabled" : ""}>${esc(m)}${dis ? (p.cli ? "(CLI,這項不能用)" : "(雲端,不能用)") : ""}</option>`; }).join("")}</optgroup>`).join("");
 	const known = ps.some((p) => p.models.some((m) => `${p.id}/${m}` === selected));
 	return `<option value="">(不設定)</option>${selected && !known ? `<option value="${esc(selected)}" selected>${esc(selected)}(找不到這個模型)</option>` : ""}${opts}`;
 }
@@ -1348,8 +1371,8 @@ function routingPane(s) {
 	if (!setModels) return '<div class="empty">讀取模型清單中…</div>';
 	return `<div class="hint">每項工作選一個主要模型;可以再選一個備用。主要的失敗時:背景工作(整理回報、提案檢查、建議問題、提交訊息)自動改用備用;聊天室會讓你按「改用備用模型回答這一題」。剛新增的接口要先儲存才會出現在選單裡。</div>
 		${ROLE_ROWS.map(([k, l, d]) => `<div class="route"><div><b>${l}</b><div class="hint">${d}</div></div>
-			<label class="field">主要<select data-route="${k}.primary">${routeOptions(s.routing[k].primary)}</select></label>
-			<label class="field">備用<select data-route="${k}.fallback">${routeOptions(s.routing[k].fallback)}</select></label></div>`).join("")}
+			<label class="field">主要<select data-route="${k}.primary">${routeOptions(s.routing[k].primary, false, k === "digest" || k === "judge")}</select></label>
+			<label class="field">備用<select data-route="${k}.fallback">${routeOptions(s.routing[k].fallback, false, k === "digest" || k === "judge")}</select></label></div>`).join("")}
 		<div class="route"><div><b>隱私專案</b><div class="hint">隱私專案的所有工作都只用這個模型,不會用備用、也不會送到雲端。只能選本地模型。</div></div>
 			<label class="field">模型<select data-route="privacy">${routeOptions(s.routing.privacy, true)}</select></label></div>`;
 }
@@ -1491,6 +1514,7 @@ function renderSettings() {
 		while (setState.s.providers.some((p) => p.id === id)) id = `${id0}${n++}`;
 		add({ id, type: "openai-compatible", name, baseUrl: url, apiKey: "", local: true, models: [] });
 	});
+	$("addCli")?.addEventListener("change", (e) => { const p = (setModels?.cliProviders || []).filter((x) => !setState.s.providers.some((y) => y.id === x.id))[e.target.value]; if (p) add({ ...p }); });
 	$("addPi")?.addEventListener("change", (e) => { const p = (setModels?.piProviders || []).filter((x) => !setState.s.providers.some((y) => y.id === x.id))[e.target.value]; if (p) add({ ...p }); });
 	m.querySelectorAll("[data-pdel]").forEach((b) => (b.onclick = () => { collectSettings(); setState.s.providers.splice(Number(b.dataset.pdel), 1); renderSettings(); }));
 	m.querySelectorAll("[data-ptest]").forEach((b) => (b.onclick = async () => {

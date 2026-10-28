@@ -14,6 +14,7 @@ import { listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
+import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { compatInfo, fillEmptyRouting, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
@@ -155,6 +156,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (p.id !== p.builtin) return `「${p.name}」的代號必須是 ${p.builtin}`;
 			} else if (p.type === "openai-compatible") {
 				if (!/^https?:\/\//.test(p.baseUrl ?? "")) return `「${p.name}」的網址要以 http:// 或 https:// 開頭`;
+			} else if (p.type === "agent-cli") {
+				if (!isCliKind(p.cli)) return `「${p.name}」不是支援的 agent CLI`;
 			} else if (p.type !== "pi-models") return `不支援的接口類型 ${p.type}`;
 		}
 		return null;
@@ -295,6 +298,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const before = settings();
 					const prevServer = JSON.stringify({ port: before.server.port, terminalPort: before.server.terminalPort, hosts: before.server.hosts, lan: before.access.lan.enabled });
 					const incoming = stripMasked((await body(req)).settings ?? {});
+					// agent CLI 不能呼叫管家的工具:整理回報、提案檢查不能用;它也不是本地模型,隱私專案不能用
+					{
+						const provs: ProviderConfig[] = Array.isArray(incoming.providers) ? incoming.providers : before.providers;
+						const cliIds = new Set(provs.filter((p) => p.type === "agent-cli").map((p) => p.id));
+						const isCli = (ref?: string) => !!ref && cliIds.has(ref.split("/")[0]);
+						const r = incoming.routing ?? {};
+						for (const [role, label] of [["digest", "整理 agent 回報"], ["judge", "提案檢查"]] as const) {
+							if (isCli(r[role]?.primary) || isCli(r[role]?.fallback)) return send(res, 400, { error: `「${label}」需要呼叫管家的工具,不能用電腦上的 agent CLI` });
+						}
+						if (isCli(r.privacy)) return send(res, 400, { error: "「隱私專案」只能用本地模型,不能用 agent CLI" });
+					}
 					if (incoming.access) delete incoming.access.passwordHash; // 密碼只能用 /api/auth/password 改
 					// 接口清單整份取代(刪除才會生效);被遮罩的金鑰沿用原本的
 					if (Array.isArray(incoming.providers)) {
@@ -372,8 +386,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				// 路由下拉選單用:每個接口有哪些模型
 				if (req.method === "GET" && path === "/api/settings/models") {
 					return send(res, 200, {
-						providers: settings().providers.map((c) => ({ id: c.id, name: c.name, type: c.type, local: !!c.local || c.type !== "builtin", models: modelIds(c), signedIn: signedIn(c) })),
+						providers: settings().providers.map((c) => ({ id: c.id, name: c.name, type: c.type, local: !!c.local || (c.type !== "builtin" && c.type !== "agent-cli"), models: modelIds(c), signedIn: signedIn(c), cli: c.type === "agent-cli" ? c.cli : undefined })),
 						loginProviders: LOGIN_PROVIDERS,
+						cliProviders: detectCliProviders(),
+						cliNotes: Object.fromEntries(Object.entries(CLI_KINDS).map(([k, v]) => [k, v.note ?? ""])),
 						piProviders: detectPiProviders(),
 						builtins: BUILTINS,
 					});

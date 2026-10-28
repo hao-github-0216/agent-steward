@@ -11,6 +11,7 @@ import { createModels, createProvider, type MutableModels } from "@earendil-work
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
 import { deviceId, stewardAuth } from "./auth-store.ts";
+import { CLI_KINDS, CLI_ROLES, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { BUILTINS, type Builtin, defaultRouting, detectPiProviders, type ProviderConfig, type RouteRole, settings, updateSettings } from "./settings.ts";
 
 const PI_DIR = join(homedir(), ".pi", "agent");
@@ -136,6 +137,7 @@ const CHATGPT_MODELS = new Set(Object.values(OPENAI_CODEX_MODELS as Record<strin
 
 /** 某個接口的模型清單 */
 export function modelIds(c: ProviderConfig): string[] {
+	if (c.type === "agent-cli") return isCliKind(c.cli) ? CLI_KINDS[c.cli].models : [];
 	if (c.type !== "builtin") return compatInfo(c)?.models ?? [];
 	const ids = models?.getModels(c.id).map((m) => m.id) ?? [];
 	const chatgpt = c.auth === "login" || (c.auth === "pi" && piLoginType("openai") === "oauth");
@@ -203,6 +205,9 @@ export function fillEmptyRouting(): boolean {
 		if (role === "privacy") { if (!r.privacy && def.privacy) { r.privacy = def.privacy; changed = true; } continue; }
 		if (!r[role].primary && def[role].primary) { r[role] = { primary: def[role].primary, fallback: r[role].fallback || def[role].fallback }; changed = true; }
 	}
+	// 只有 agent CLI 的人:聊天、建議問題、提交訊息先用 CLI(優先 Claude Code)
+	const cli = [...s.providers].filter((p) => p.type === "agent-cli").sort((a, b) => (a.cli === "claude" ? -1 : b.cli === "claude" ? 1 : 0))[0];
+	if (cli) for (const role of CLI_ROLES) if (!r[role].primary) { r[role] = { primary: `${cli.id}/default`, fallback: r[role].fallback }; changed = true; }
 	if (changed) updateSettings({ routing: r });
 	return changed;
 }
@@ -212,10 +217,12 @@ export async function buildModels(): Promise<MutableModels> {
 	// 第一次:從 pi 偵測接口,給一組預設路由(使用者之後刪光也不會再自動加回來)
 	const s = settings();
 	if (!s.aiDetected && !s.providers.length) {
-		const providers = detectPiProviders();
+		// 這台電腦上的 pi 登入/模型設定,加上已登入的 agent CLI(Claude Code、Codex…)
+		const providers = [...detectPiProviders(), ...detectCliProviders()];
 		updateSettings({ aiDetected: true, providers });
 		await syncProviders();
 		if (providers.length) updateSettings({ routing: defaultRouting(providers, pickModel) });
+		fillEmptyRouting();
 	} else {
 		if (!s.aiDetected) updateSettings({ aiDetected: true });
 		await syncProviders();
@@ -249,6 +256,11 @@ export function hasFallback(role: RouteRole): boolean {
 export function modelLabel(ref: { provider: string; modelId: string }): string {
 	const c = settings().providers.find((p) => p.id === ref.provider);
 	return `${c?.name.replace(/[((]沿用 pi 的(登入|模型設定)[))]/, "").trim() || ref.provider} · ${ref.modelId}`;
+}
+/** 這個模型代號是不是 agent CLI(只能用在聊天、建議問題、提交訊息) */
+export function isCliRef(ref: string): boolean {
+	const p = parseRef(ref);
+	return !!p && settings().providers.some((c) => c.id === p.provider && c.type === "agent-cli");
 }
 export function providerExists(id: string): boolean {
 	return settings().providers.some((p) => p.id === id);
