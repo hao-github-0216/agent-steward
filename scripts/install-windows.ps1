@@ -180,7 +180,9 @@ if ($env:STEWARD_NO_SERVICE) { $NoService = $true }
 		$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 		$parts = @($userPath -split ";" | Where-Object { $_ })
 		$changed = $false
-		foreach ($p in @($LocalBin, $HerdrDir)) { if ($parts -notcontains $p) { $parts += $p; $changed = $true } }
+		if ($parts -notcontains $LocalBin) { $parts += $LocalBin; $changed = $true }
+		# 專案管家用的 herdr 排在最前面:電腦上已經有別的 herdr 時,打 herdr 才會用到這一支
+		if ($parts[0] -ne $HerdrDir) { $parts = @($HerdrDir) + @($parts | Where-Object { $_ -ne $HerdrDir }); $changed = $true }
 		if ($changed) {
 			[Environment]::SetEnvironmentVariable("Path", ($parts -join ";"), "User")
 			Say "已把 $LocalBin 和 herdr 加進 PATH(新開的終端機才會生效)"
@@ -202,6 +204,10 @@ if ($env:STEWARD_NO_SERVICE) { $NoService = $true }
 				if ($LASTEXITCODE -ne 0) { Warn "herdr 外掛 $($d.Name) 沒有接上(herdr 還沒啟動過?之後再跑一次安裝即可)" }
 			}
 		}
+
+		# 資料夾導覽的快捷鍵(prefix+e)與 herdr 選單項目;herdr 正在跑的話讓它重新讀設定
+		& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\herdr-setup.ts")
+		if ($Herdr) { & $Herdr server reload-config *> $null }
 
 		# ---------- 8. 已經接上專案管家的 agent:更新路徑 ----------
 		$env:STEWARD_APP_DIR = $App

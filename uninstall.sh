@@ -19,6 +19,11 @@ if [ -n "$NODE" ] && [ -f "$APP/src/refresh-agents.ts" ]; then
 	STEWARD_APP_DIR="$APP" "$NODE" --experimental-strip-types --no-warnings "$APP/src/refresh-agents.ts" --remove-all || true
 fi
 
+# 拿掉 herdr 設定裡的資料夾導覽
+if [ -n "$NODE" ] && [ -f "$APP/src/herdr-setup.ts" ]; then
+	"$NODE" --experimental-strip-types --no-warnings "$APP/src/herdr-setup.ts" --remove || true
+fi
+
 # 2. 停掉服務
 if [ "$(uname -s)" = Darwin ]; then
 	for l in com.agent-steward com.agent-steward.terminal; do

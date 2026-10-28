@@ -21,6 +21,11 @@ if ($Node -and (Test-Path (Join-Path $App "src\refresh-agents.ts"))) {
 	& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\refresh-agents.ts") --remove-all
 }
 
+# 拿掉 herdr 設定裡的資料夾導覽
+if ($Node -and (Test-Path (Join-Path $App "src\herdr-setup.ts"))) {
+	& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\herdr-setup.ts") --remove
+}
+
 # 2. 停掉並刪除排程工作、結束還在跑的程序
 foreach ($t in @("agent-steward", "agent-steward-terminal")) {
 	if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
