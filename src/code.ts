@@ -12,7 +12,10 @@ export const EDIT_LIMIT = 5 * 1024 * 1024; // 5MB 以下正常編輯
 export const VIEW_LIMIT = 50 * 1024 * 1024; // 50MB 以下唯讀(頭尾各 N 行)
 const HEADTAIL_LINES = 2000;
 const IMAGE = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
-const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".bmp": "image/bmp", ".ico": "image/x-icon", ".pdf": "application/pdf", ".ipynb": "application/json; charset=utf-8" };
+const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".bmp": "image/bmp", ".ico": "image/x-icon", ".pdf": "application/pdf", ".ipynb": "application/json; charset=utf-8",
+	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12", ".xls": "application/vnd.ms-excel", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation", ".doc": "application/msword", ".ppt": "application/vnd.ms-powerpoint" };
+/** Office 檔:網頁顯示 + 用 Office 編輯(word / excel / powerpoint) */
+export const OFFICE: Record<string, "word" | "excel" | "powerpoint"> = { ".docx": "word", ".doc": "word", ".xlsx": "excel", ".xlsm": "excel", ".xls": "excel", ".pptx": "powerpoint", ".ppt": "powerpoint" };
 
 export class CodeError extends Error {
 	status: number;
@@ -297,6 +300,7 @@ export function readFile(p: Project, rel: string, opts: { more?: number } = {}) 
 	const base = { path: rel, name: basename(abs), size: st.size, mtime: st.mtimeMs };
 	if (IMAGE.has(ext)) return { ...base, kind: "image" as const };
 	if (ext === ".pdf") return { ...base, kind: "pdf" as const };
+	if (OFFICE[ext]) return { ...base, kind: "office" as const, app: OFFICE[ext], hash: officeStamp(st) };
 	if (st.size > VIEW_LIMIT) return { ...base, kind: "toolarge" as const };
 	const buf = readFileSync(abs);
 	if (looksBinary(buf)) return { ...base, kind: "binary" as const };
@@ -315,7 +319,7 @@ export function readFile(p: Project, rel: string, opts: { more?: number } = {}) 
 export function rawFile(p: Project, rel: string): { buf: Buffer; type: string } {
 	const abs = inProject(p, rel);
 	const ext = extname(abs).toLowerCase();
-	if (!MIME[ext]) throw new CodeError(400, "只支援圖片、PDF 與 Notebook 預覽");
+	if (!MIME[ext]) throw new CodeError(400, "只支援圖片、PDF、Notebook 與 Office 預覽");
 	if (statSync(abs).size > VIEW_LIMIT) throw new CodeError(413, "檔案太大");
 	return { buf: readFileSync(abs), type: MIME[ext] };
 }
@@ -384,7 +388,10 @@ export function fileStamps(p: Project, rels: string[]) {
 				out[rel] = { gone: true };
 				continue;
 			}
-			if (statSync(abs).size > EDIT_LIMIT) continue;
+			const st = statSync(abs);
+			// Office 檔用大小 + 修改時間(檔案可能很大,不每次都讀整個檔)
+			if (OFFICE[extname(abs).toLowerCase()]) { out[rel] = { hash: officeStamp(st) }; continue; }
+			if (st.size > EDIT_LIMIT) continue;
 			out[rel] = { hash: hashOf(readFileSync(abs)) };
 		} catch {
 			out[rel] = { gone: true };
@@ -463,4 +470,9 @@ function notebookAsText(json: string): string {
 		out.push(parts.join("\n"));
 	});
 	return out.join("\n\n");
+}
+
+/** Office 檔的版本識別:大小 + 修改時間 */
+export function officeStamp(st: { size: number; mtimeMs: number }): string {
+	return `o${st.size}-${Math.round(st.mtimeMs)}`;
 }

@@ -157,7 +157,9 @@
 		g.barEl = el("div", "cv-bar"); g.barEl.hidden = true;
 		g.stageEl.append(g.editorEl, g.diffEl, g.previewEl, g.emptyEl, g.dropEl);
 		g.el.append(g.tabsEl, g.stageEl, g.barEl);
+		// 「目前檔案」以實際點選/取得焦點為準(滑鼠移過去不算)
 		g.el.addEventListener("pointerdown", () => setActiveGroup(g), true);
+		g.el.addEventListener("focusin", () => setActiveGroup(g));
 		// 編輯器有自己的右鍵選單(問管家、分割…),擋掉瀏覽器的選單免得蓋在上面
 		for (const surf of [g.editorEl, g.diffEl]) surf.addEventListener("contextmenu", (e) => e.preventDefault());
 		wireGroupEvents(g);
@@ -206,6 +208,21 @@
 		cm.activeGroup = g;
 		saveSoon();
 		for (const x of allGroups()) x.el.classList.toggle("active", x === g);
+		notifyCurrent();
+	}
+	// 浮動球的「目前檔案」= 取得焦點的群組正在顯示的檔案(一般檔、Notebook、Markdown 預覽)。
+	// 每次現算,不另外記:切群組、關分頁、換專案都不會留下舊的
+	const textKind = (t) => !!t?.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md");
+	function currentPath() {
+		const t = cm.activeGroup?.active;
+		return textKind(t) && cm.activeGroup.tabs.includes(t) ? t.path : null;
+	}
+	let notified = null;
+	function notifyCurrent() {
+		const cur = cm.pid ? currentPath() : null;
+		if (cur === notified) return;
+		notified = cur;
+		dispatchEvent(new CustomEvent("steward:codefile", { detail: { path: cur } }));
 	}
 	function ensureLayout() {
 		if (!cm.cols.length) {
@@ -459,11 +476,69 @@
 			const fit = () => { if (!img.naturalWidth) return; const r = Math.min(1, (n.clientWidth - 16) / img.naturalWidth, (n.clientHeight - 16) / img.naturalHeight); img.style.width = `${Math.round(img.naturalWidth * r)}px`; img.style.height = `${Math.round(img.naturalHeight * r)}px`; };
 			img.onload = fit;
 			attachZoom(n, wrap);
+		} else if (t.kind === "office") {
+			buildOffice(t, n, src);
 		} else if (t.kind === "pdf") {
 			if (touch()) buildPdfjs(t, n, src); // 手機/平板:內建 PDF 無法縮放,改用 PDF.js
 			else n.innerHTML = `<iframe src="${src}" title="${esc(t.label)}"></iframe>`;
 		} else {
 			n.innerHTML = `<div class="empty" style="text-align:center;padding:20px">${t.info}</div>`;
+		}
+	}
+	// ---------- Office:Word 照版面顯示(docx-preview)、Excel 顯示表格(SheetJS) ----------
+	const officeLibs = {};
+	function loadOfficeLib(which) {
+		if (officeLibs[which]) return officeLibs[which];
+		officeLibs[which] = loadMonaco().then(() => new Promise((ok, no) => {
+			window.require.config({ paths: { jszip: "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min", "docx-preview": "https://cdn.jsdelivr.net/npm/docx-preview@0.3.3/dist/docx-preview.min", xlsx: "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min" } });
+			window.require([which === "word" ? "docx-preview" : "xlsx"], (lib) => ok(lib), () => no(new Error("載入 Office 預覽元件失敗(需要能連上 cdn.jsdelivr.net)")));
+		})).catch((e) => { delete officeLibs[which]; throw e; });
+		return officeLibs[which];
+	}
+	const OFFICE_NAME = { word: "Word", excel: "Excel", powerpoint: "PowerPoint" };
+	/** 預覽:docx → 版面、xlsx/xls → 表格;其他(pptx、doc、ppt)只顯示資訊 */
+	async function buildOffice(t, n, src) {
+		const ext = (t.path.split(".").pop() || "").toLowerCase();
+		const canWord = t.app === "word" && ext === "docx";
+		const canExcel = t.app === "excel";
+		if (!canWord && !canExcel) {
+			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><div class="hint">${esc(OFFICE_NAME[t.app] || "Office")} 檔 · ${fmtSize(t.size || 0)}</div><p class="hint">這種檔案網頁上沒辦法預覽,按上面的「用 ${esc(OFFICE_NAME[t.app] || "Office")} 編輯」在你這台電腦打開。</p></div>`;
+			return;
+		}
+		n.innerHTML = '<div class="nb-msg">讀取中…</div>';
+		try {
+			const [lib, r] = await Promise.all([loadOfficeLib(canWord ? "word" : "excel"), fetch(`${src}&_=${Date.now()}`)]);
+			if (!r.ok) throw new Error(`讀不到這個檔案(${r.status})`);
+			const buf = await r.arrayBuffer();
+			if (canWord) {
+				n.innerHTML = '<div class="office-word"></div>';
+				const wrap = n.firstChild;
+				await lib.renderAsync(buf, wrap, null, { className: "docx", inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: false, renderHeaders: true, renderFooters: true, renderFootnotes: true, useBase64URL: true });
+				attachZoom(n, wrap);
+			} else {
+				const wb = lib.read(buf, { type: "array", cellDates: true, cellNF: true });
+				const names = wb.SheetNames;
+				t.sheet = names.includes(t.sheet) ? t.sheet : names[0];
+				const draw = () => {
+					const ws = wb.Sheets[t.sheet];
+					// 太大的工作表只畫前 2000 列、200 欄
+					let note = "";
+					if (ws?.["!ref"]) {
+						const rg = lib.utils.decode_range(ws["!ref"]);
+						if (rg.e.r - rg.s.r > 2000 || rg.e.c - rg.s.c > 200) {
+							note = `<div class="hint xl-note">工作表很大(${rg.e.r - rg.s.r + 1} 列 × ${rg.e.c - rg.s.c + 1} 欄),只顯示前 2000 列、200 欄。</div>`;
+							rg.e.r = Math.min(rg.e.r, rg.s.r + 1999); rg.e.c = Math.min(rg.e.c, rg.s.c + 199);
+							ws["!ref"] = lib.utils.encode_range(rg);
+						}
+					}
+					const html = ws ? lib.utils.sheet_to_html(ws, { header: "", footer: "" }) : "<p>(空的工作表)</p>";
+					n.innerHTML = `${names.length > 1 ? `<div class="xl-tabs">${names.map((nm) => `<button type="button" class="small${nm === t.sheet ? " on" : ""}" data-sheet="${esc(nm)}">${esc(nm)}</button>`).join("")}</div>` : ""}${note}<div class="office-xl">${html}</div>`;
+					n.querySelectorAll("[data-sheet]").forEach((b) => (b.onclick = () => { t.sheet = b.dataset.sheet; draw(); }));
+				};
+				draw();
+			}
+		} catch (e) {
+			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><p class="hint">預覽失敗:${esc(e.message || String(e))}</p></div>`;
 		}
 	}
 	/**
@@ -576,8 +651,7 @@
 	function activate(g, t) {
 		if (g.active && g.active !== t && g.active.kind === "file" && !g.active.conflict && g.editor) g.active.viewState = g.editor.saveViewState();
 		g.active = t;
-		// 浮動球的「目前檔案」:記住最後看的檔案(換專案時清掉)
-		if (t?.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md") && cm.lastPath !== t.path) { cm.lastPath = t.path; dispatchEvent(new CustomEvent("steward:codefile")); }
+		if (g === cm.activeGroup) notifyCurrent();
 		if (t && mobile()) document.body.classList.add("cv-editing");
 		if (!t || !g.editor && (t.kind === "file" || t.kind === "diff")) { surface(g, "emptyEl"); bar(g, ""); renderTabs(g); return; }
 		if (t.kind === "file") {
@@ -665,7 +739,8 @@
 		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
 		try {
 			const f = await api(`file?path=${encodeURIComponent(rel)}`);
-			const t = { key, group: g, kind: f.kind === "text" ? "file" : f.kind === "image" || f.kind === "pdf" ? f.kind : "info", path: rel, label: baseName(rel), title: rel, size: f.size };
+			const t = { key, group: g, kind: f.kind === "text" ? "file" : f.kind === "image" || f.kind === "pdf" || f.kind === "office" ? f.kind : "info", path: rel, label: baseName(rel), title: rel, size: f.size };
+			if (t.kind === "office") { t.app = f.app; t.hash = f.hash; }
 			if (t.kind === "file") {
 				t.model = cm.monaco.editor.createModel(f.content, langOf(rel));
 				t.hash = f.hash; t.readonly = f.readonly; t.truncated = f.truncated;
@@ -1224,11 +1299,21 @@
 		if (t.kind === "nb") { t.es?.close(); if (t.kstate !== "off") nbApi("stop", { path: t.path }).catch(() => {}); }
 		if (g.active === t) activate(g, g.tabs[i] || g.tabs[i - 1] || null); else renderTabs(g);
 		pruneGroup(g);
+		notifyCurrent();
 		saveSoon();
 	}
 	// 沒修改的分頁:磁碟上的檔案被改了就自動重新載入(agent 改檔時畫面跟著更新)
 	setInterval(async () => {
 		if (!document.body.classList.contains("code") || document.hidden || !cm.pid) return;
+		// Office 檔:被 Office 存檔或 agent 改了就重畫預覽
+		const offs = allTabs().filter((x) => x.kind === "office" && x.hash);
+		if (offs.length) {
+			const st = await api("stamps", { method: "POST", body: JSON.stringify({ paths: [...new Set(offs.map((x) => x.path))] }) }).catch(() => null);
+			for (const t of offs) {
+				const h = st?.[t.path]?.hash;
+				if (h && h !== t.hash) { t.hash = h; if (t.pv) buildOffice(t, t.pv, `/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`); }
+			}
+		}
 		// 沒修改、沒在執行的 Notebook:檔案在外面被改了(例如 agent 跑完)也重新載入
 		for (const t of allTabs().filter((x) => x.kind === "nb" && x.nb && !x.readonly && !x.dirty && !x.runs?.size && x.hash)) {
 			const st = (await api("stamps", { method: "POST", body: JSON.stringify({ paths: [t.path] }) }).catch(() => null))?.[t.path];
@@ -1260,6 +1345,7 @@
 			}
 		}
 		cm.cols = []; cm.activeGroup = null;
+		notifyCurrent();
 	}
 	async function pickProject(id) {
 		if (cm.pid === id) return true;
@@ -1282,7 +1368,7 @@
 			}
 			renderProjSelect();
 			refresh();
-		} finally { cm.restoring = false; }
+		} finally { cm.restoring = false; notifyCurrent(); }
 		window.renderDrawer?.();
 		// 記下「最後用的是這個專案」(換電腦時打開這個)
 		lastSaved = "";
@@ -1836,10 +1922,10 @@
 	function refresh() { cm.dirs = {}; renderFiles(); refreshGit(); }
 	window.codeMode = {
 		pid: () => cm.pid,
-		/** 浮動球用:最後看的檔案、開著的檔案(目前的排第一)、編輯器裡的最新內容(含沒存的) */
-		lastFile: () => cm.lastPath || null,
+		/** 浮動球用:目前取得焦點的檔案、開著的檔案(目前的排第一)、編輯器裡的最新內容(含沒存的) */
+		lastFile: () => currentPath(),
 		openFiles() {
-			const cur = cm.activeGroup?.active?.path;
+			const cur = currentPath();
 			const paths = [...new Set(allTabs().filter((t) => t.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md")).map((t) => t.path))];
 			return paths.sort((a, b) => (a === cur ? -1 : b === cur ? 1 : 0)).map((path) => ({ path, current: path === cur, dirty: allTabs().some((t) => t.path === path && t.dirty) }));
 		},
@@ -1872,5 +1958,7 @@
 			if (cm.expanded.size > 1) renderFiles();
 		},
 	};
+	// 只給回歸測試用(test/code-focus.test.mjs 設 __STEWARD_TEST__ 才有),正式頁面不會出現
+	if (window.__STEWARD_TEST__) window.codeMode._t = { cm, openFile, openNotebook, closeTab, setActiveGroup, splitWith, pickProject, allGroups, findTab };
 	addEventListener("beforeunload", (e) => { if (allTabs().some((t) => t.dirty) || cm.stash.size) { e.preventDefault(); e.returnValue = ""; } });
 })();
