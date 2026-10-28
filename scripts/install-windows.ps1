@@ -200,15 +200,17 @@ if ($env:STEWARD_NO_SERVICE) { $NoService = $true }
 			$toml = (Get-Content (Join-Path $d.FullName "herdr-plugin.toml") -Raw -Encoding UTF8).Replace('"node"', "`"$NodeToml`"")
 			[IO.File]::WriteAllText((Join-Path $dest "herdr-plugin.toml"), $toml, (New-Object Text.UTF8Encoding $false))
 			if ($Herdr) {
-				& $Herdr plugin link $dest *> $null
-				if ($LASTEXITCODE -ne 0) { Warn "herdr 外掛 $($d.Name) 沒有接上(herdr 還沒啟動過?之後再跑一次安裝即可)" }
+				$linked = $true
+				try { & $Herdr plugin link $dest 2>&1 | Out-Null; $linked = ($LASTEXITCODE -eq 0) } catch { $linked = $false }
+				if (-not $linked) { Warn "herdr 外掛 $($d.Name) 沒有接上(herdr 還沒啟動過?之後再跑一次安裝即可)" }
 			}
 		}
 
 		# 資料夾導覽的快捷鍵(prefix+e)與 herdr 選單項目;herdr 正在跑的話讓它重新讀設定
 		$env:STEWARD_NODE = $Node
 		& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\herdr-setup.ts")
-		if ($Herdr) { & $Herdr server reload-config *> $null }
+		# herdr 還沒啟動時會在錯誤輸出說 server_not_running;PowerShell 5.1 會把它當成致命錯誤,所以包起來
+		if ($Herdr) { try { & $Herdr server reload-config 2>&1 | Out-Null } catch {} }
 
 		# ---------- 8. 已經接上專案管家的 agent:更新路徑 ----------
 		$env:STEWARD_APP_DIR = $App
