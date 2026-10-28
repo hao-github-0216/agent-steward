@@ -329,6 +329,12 @@ body.cv-side-collapsed .cv-side, body.cv-side-collapsed #cvSideSash { display: n
 .xl-tabs { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 12px 0; position: sticky; top: 0; background: var(--bg); z-index: 1; }
 .xl-tabs .on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .xl-note { padding: 4px 12px; }
+.ov-box { width: min(900px, 100%); }
+.ov-list { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow: auto; margin: 8px 0; }
+.ov-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+.ov-row:hover { background: var(--chip); }
+.ov-row .sp { flex: 1; }
+.ov-pv { height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .office-info { max-width: 520px; margin: 60px auto; text-align: center; }
 .office-info .oi-name { font-size: 18px; font-weight: 600; margin-bottom: 6px; word-break: break-all; }
 /* Jupyter Notebook 預覽 */

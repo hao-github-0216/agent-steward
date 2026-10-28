@@ -496,6 +496,57 @@
 		return officeLibs[which];
 	}
 	const OFFICE_NAME = { word: "Word", excel: "Excel", powerpoint: "PowerPoint" };
+	const OFFICE_SCHEME = { word: "ms-word", excel: "ms-excel", powerpoint: "ms-powerpoint" };
+	function officeBar(g, t) {
+		const app = OFFICE_NAME[t.app] || "Office";
+		bar(g, `<span class="office-state">${t.editing ? `<b>正在 Office 編輯中</b>${t.editOwner && t.editOwner !== "Office" ? `(${esc(t.editOwner)})` : ""} · 存檔後這裡會自動更新` : `${app} 檔 · 預覽`}</span><span class="sp"></span><button class="small" data-bar="officehist">歷史版本</button><button class="small primary" data-bar="officeedit">用 ${app} 編輯</button>`);
+	}
+	/** 用這台電腦上的 Office 打開(WebDAV 專用連結),存檔直接寫回專案裡的原檔 */
+	async function officeEdit(t) {
+		const r = await api("office/link", { method: "POST", body: JSON.stringify({ path: t.path }) }).catch((e) => ({ error: e.message }));
+		if (r.error) return toast(r.error);
+		const url = `${location.origin}/dav/${r.token}/${encodeURIComponent(baseName(t.path))}`;
+		const a = document.createElement("a");
+		a.href = `${OFFICE_SCHEME[t.app] || "ms-word"}:ofe|u|${url}`;
+		document.body.appendChild(a); a.click(); a.remove();
+		toast(`正在用 ${OFFICE_NAME[t.app] || "Office"} 打開…沒反應的話,這台電腦可能沒有裝 Office`);
+	}
+	async function officeInfo(t) {
+		const r = await api(`office/info?path=${encodeURIComponent(t.path)}`).catch(() => null);
+		if (!r) return null;
+		const changed = r.editing !== !!t.editing || r.owner !== t.editOwner;
+		t.editing = r.editing; t.editOwner = r.owner;
+		if (changed && t.group.active === t) officeBar(t.group, t);
+		return r;
+	}
+	async function officeHistory(t) {
+		const r = await officeInfo(t);
+		const vs = r?.versions || [];
+		const fmt = (ms) => new Date(ms).toLocaleString("zh-TW", { hour12: false });
+		const d = dialog({
+			title: `歷史版本 · ${baseName(t.path)}`,
+			html: vs.length
+				? `<div class="hint">每次從 Office 存檔前會留下舊版本(最近 20 版、30 天內)。還原時,目前的版本也會先留一份。</div><div class="ov-list">${vs.map((v) => `<div class="ov-row"><span>${fmt(v.at)}</span><span class="hint">${fmtSize(v.size)}</span><span class="sp"></span><button class="small" data-ovp="${esc(v.id)}">預覽</button><button class="small" data-ovr="${esc(v.id)}">還原</button></div>`).join("")}</div><div class="ov-pv" hidden></div>`
+				: '<p class="hint">還沒有歷史版本。從 Office 存檔之後,每次存檔前的版本會留在這裡。</p>',
+			buttons: [],
+		});
+		d.querySelector(".box")?.classList.add("ov-box");
+		d.addEventListener("click", async (e) => {
+			const pv = e.target.closest("[data-ovp]")?.dataset.ovp, rs = e.target.closest("[data-ovr]")?.dataset.ovr;
+			if (pv) {
+				const box = d.querySelector(".ov-pv");
+				box.hidden = false;
+				buildOffice({ ...t, label: `${baseName(t.path)}(${fmt(Number(pv.split(".")[0]))})` }, box, `/api/code/${cm.pid}/office/version?path=${encodeURIComponent(t.path)}&id=${encodeURIComponent(pv)}`);
+			}
+			if (rs && (await confirmBox("還原這個版本", `把「${baseName(t.path)}」還原成 ${fmt(Number(rs.split(".")[0]))} 的版本?目前的版本會先留一份在歷史版本裡。${t.editing ? "注意:這個檔案正在 Office 編輯中,還原後請在 Office 重新打開,否則 Office 存檔時會蓋掉還原的內容。" : ""}`, "還原"))) {
+				const x = await api("office/restore", { method: "POST", body: JSON.stringify({ path: t.path, id: rs }) }).catch((err) => ({ error: err.message }));
+				if (x.error) return toast(x.error);
+				d.remove();
+				toast("已還原");
+				if (t.pv) buildOffice(t, t.pv, `/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`);
+			}
+		});
+	}
 	/** 預覽:docx → 版面、xlsx/xls → 表格;其他(pptx、doc、ppt)只顯示資訊 */
 	async function buildOffice(t, n, src) {
 		const ext = (t.path.split(".").pop() || "").toLowerCase();
@@ -699,7 +750,8 @@
 			const n = pvNode(g, t);
 			if (fresh) buildPreview(t, n); // 只有第一次(或搬到別的群組)才建立,切回來沿用
 			showPv(g, t);
-			bar(g, (t.kind === "pdf" || t.kind === "image") && touch() ? '<span>雙指縮放、點兩下放大/還原</span><span class="sp"></span><button class="small" data-bar="fullview">全螢幕</button>' : "");
+			if (t.kind === "office") officeBar(g, t);
+			else bar(g, (t.kind === "pdf" || t.kind === "image") && touch() ? '<span>雙指縮放、點兩下放大/還原</span><span class="sp"></span><button class="small" data-bar="fullview">全螢幕</button>' : "");
 		}
 		renderTabs(g);
 		saveSoon();
@@ -726,6 +778,8 @@
 		}
 		if (a === "nbraw") return openFile(t.path, g, { raw: true });
 		if (a === "fullview") return setFull(t, true);
+		if (a === "officeedit") return officeEdit(t);
+		if (a === "officehist") return officeHistory(t);
 	}
 	async function openFile(rel, g = cm.activeGroup, { quiet = false, view = null, raw = false } = {}) {
 		// .ipynb 跟 VS Code 一樣預設顯示成 Notebook;要改 JSON 用「編輯原始 JSON」
@@ -1305,8 +1359,9 @@
 	// 沒修改的分頁:磁碟上的檔案被改了就自動重新載入(agent 改檔時畫面跟著更新)
 	setInterval(async () => {
 		if (!document.body.classList.contains("code") || document.hidden || !cm.pid) return;
-		// Office 檔:被 Office 存檔或 agent 改了就重畫預覽
+		// Office 檔:被 Office 存檔或 agent 改了就重畫預覽;目前看的那個順便更新「正在 Office 編輯中」
 		const offs = allTabs().filter((x) => x.kind === "office" && x.hash);
+		for (const t of offs) if (t.group.active === t) officeInfo(t);
 		if (offs.length) {
 			const st = await api("stamps", { method: "POST", body: JSON.stringify({ paths: [...new Set(offs.map((x) => x.path))] }) }).catch(() => null);
 			for (const t of offs) {

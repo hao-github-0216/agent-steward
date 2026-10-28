@@ -6,7 +6,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, extname, join } from "node:path";
-import { inProject, OFFICE } from "./code.ts";
+import { CodeError, inProject, OFFICE } from "./code.ts";
 import { DATA_DIR } from "./settings.ts";
 import type { Project, Store } from "./store.ts";
 
@@ -66,9 +66,9 @@ export function officeVersions(p: Project, rel: string): { id: string; at: numbe
 	return readdirSync(dir).filter((f) => /^\d+\./.test(f)).sort().reverse().map((f) => ({ id: f, at: Number(f.split(".")[0]), size: statSync(join(dir, f)).size }));
 }
 export function officeVersionFile(p: Project, rel: string, id: string): string {
-	if (!/^\d+\.[A-Za-z0-9]+$/.test(id)) throw new Error("bad version");
+	if (!/^\d+\.[A-Za-z0-9]+$/.test(id)) throw new CodeError(400, "版本代號不對");
 	const f = join(histDir(p, rel), id);
-	if (!existsSync(f)) throw new Error("找不到這個版本");
+	if (!existsSync(f)) throw new CodeError(404, "找不到這個版本(可能已經超過 30 天被清掉了)");
 	return f;
 }
 /** 還原:目前的版本也先留一份 */
