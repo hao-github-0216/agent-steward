@@ -14,12 +14,13 @@ import { listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
+import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { compatInfo, fillEmptyRouting, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
-import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
+import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, inProject, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -167,6 +168,26 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 	const codeRoute = async (p: Project, sub: string, req: IncomingMessage, res: ServerResponse, url: URL) => {
 		const q = (k: string) => url.searchParams.get(k) ?? "";
 		try {
+			// ---------- Office:專用連結、編輯狀態、歷史版本 ----------
+			if (sub.startsWith("office/")) {
+				const op = sub.slice(7);
+				const ob = req.method === "GET" ? {} : await body(req).catch(() => ({}));
+				const rel = req.method === "GET" ? q("path") : String(ob.path ?? "");
+				if (!/\.(docx|doc|xlsx|xlsm|xls|pptx|ppt)$/i.test(rel)) return send(res, 400, { error: "不是 Office 檔" });
+				inProject(p, rel); // 路徑檢查(不能跑出專案)
+				if (op === "link" && req.method === "POST") return send(res, 200, { token: officeLink(p, rel) });
+				if (op === "info" && req.method === "GET") return send(res, 200, { ...officeEditing(p, rel), versions: officeVersions(p, rel) });
+				if (op === "version" && req.method === "GET") {
+					const f = officeVersionFile(p, rel, q("id"));
+					res.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "no-store" });
+					return res.end(readFileSync(f));
+				}
+				if (op === "restore" && req.method === "POST") {
+					officeRestore(p, rel, String(ob.id ?? ""));
+					return send(res, 200, { ok: true });
+				}
+				return send(res, 404, { error: "not found" });
+			}
 			if (req.method === "GET" && sub === "find") return send(res, 200, { files: findFiles(p, q("q")) });
 			if (req.method === "GET" && sub === "tree") return send(res, 200, { entries: await listDir(p, q("dir"), q("hidden") === "1"), repo: await isRepo(p) });
 			if (req.method === "GET" && sub === "file") return send(res, 200, readFile(p, q("path"), { more: Number(q("more")) || 0 }));
@@ -262,6 +283,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		const url = new URL(req.url ?? "/", "http://x");
 		const path = url.pathname;
 		try {
+			// ---------- 用 Office 編輯(WebDAV):Office 拿不到瀏覽器登入,只靠專用連結 ----------
+			if (path.startsWith("/dav/") && (await handleDav(req, res, store))) return;
 			// ---------- 登入 ----------
 			if (path.startsWith("/api/auth/")) {
 				if (req.method === "GET" && path === "/api/auth/status") {
