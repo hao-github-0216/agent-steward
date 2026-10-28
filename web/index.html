@@ -511,6 +511,13 @@ body.term #ballWrap[data-corner^="t"] #ballPanel { top: 158px; }
 #ballPanel.dropping { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .msg .mimgs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .msg .mimgs img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; }
+#bpForm .bp-btns { display: flex; flex-direction: column; gap: 6px; }
+.msg.draft { align-self: stretch; max-width: none; display: flex; flex-direction: column; gap: 6px; background: var(--chip); border: 1px solid var(--line); }
+.msg.draft .dh { font-weight: 600; }
+.msg.draft label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.msg.draft input, .msg.draft select, .msg.draft textarea { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; resize: vertical; }
+.msg.draft .dbtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.msg.draft.done { gap: 4px; }
 .msg .mfiles { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .msg .mfiles span { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.22); }
 .msg.bot .mfiles span { background: var(--chip); }
@@ -632,7 +639,7 @@ form.tool { flex-direction: row; }
 		<div class="bp-quote" id="bpQuote" hidden></div>
 		<div class="bp-ctx" id="bpCtx"></div>
 		<div class="bp-pick" id="bpPick" hidden></div>
-		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><button class="small primary">送出</button></form>
+		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><div class="bp-btns"><button class="small primary">送出</button><button type="button" class="small" id="bpDraft" title="根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡">開工作卡</button></div></form>
 	</div>
 	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
 		<path d="M11 27 L13 6 L28 17 Z" fill="#f6a04d"/><path d="M53 27 L51 6 L36 17 Z" fill="#f6a04d"/>
@@ -2006,6 +2013,7 @@ function toggleBall(open = !ball.open) {
 	$("stewardBall").classList.toggle("on", open);
 	if (open) {
 		$("stewardBall").classList.remove("unread");
+		loadAgents().then(() => renderBall());
 		ball.pid = null; // 每次打開都重新載入(別的裝置可能問過)
 		syncBall();
 		renderCtx();
@@ -2036,7 +2044,25 @@ async function loadBall(older) {
 	log.scrollTop = older ? log.scrollHeight - prevH + prevTop : 1e9;
 }
 const quoteLabel = (q) => `${q.path ?? ""}${q.from ? ` 第 ${q.from}${q.to && q.to !== q.from ? `–${q.to}` : ""} 行` : ""}`;
+const DRAFT_STATUS = { proposed: "已放進看板的「提案」", dispatched: "已派工" };
+function draftHtml(e) {
+	const d = e.draft;
+	const agentName = (id) => (ball.agents || []).find((a) => a.id === id)?.name || id;
+	if (d.status !== "draft") {
+		return `<div class="msg bot draft done"><div class="dh">📋 ${esc(d.title)}</div><div class="hint">交給 ${esc(agentName(d.agent))} · ${DRAFT_STATUS[d.status] || d.status}</div><button class="small" data-dview="${esc(d.cardId || "")}">在看板查看</button></div>`;
+	}
+	const opts = (ball.agents?.length ? ball.agents : [{ id: d.agent, name: d.agent }]).map((a) => `<option value="${esc(a.id)}" ${a.id === d.agent ? "selected" : ""}>${esc(a.name)}</option>`).join("");
+	return `<div class="msg bot draft" data-draft="${esc(e.id)}">
+		<div class="dh">📋 工作卡草稿(可以直接改)</div>
+		<label>標題<input data-df="title" value="${esc(d.title)}"></label>
+		<label>交給<select data-df="agent">${opts}</select></label>
+		<label>工作說明<textarea data-df="instructions" rows="5">${esc(d.instructions)}</textarea></label>
+		<label>完成條件<textarea data-df="doneCriteria" rows="2">${esc(d.doneCriteria)}</textarea></label>
+		<div class="dbtns"><button class="small primary" data-dact="propose">放進提案</button><button class="small" data-dact="dispatch">直接派工</button><button class="small" data-dact="revise" title="說明要怎麼改,管家重擬一張">修改</button></div>
+	</div>`;
+}
 function msgHtml(e) {
+	if (e.draft) return draftHtml(e);
 	const files = e.files?.length ? `<div class="mfiles">${e.files.map((f) => `<span title="${esc(f)}">📎 ${esc(f.split("/").pop())}</span>`).join("")}</div>` : "";
 	const imgs = e.images?.length ? `<div class="mimgs">${e.images.map((u) => `<img src="${esc(u)}" alt="">`).join("")}</div>` : "";
 	const q = imgs + files + (e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
@@ -2215,6 +2241,68 @@ $("bpForm").onsubmit = (e) => {
 	$("bpInput").value = ""; ball.quote = null; renderQuote();
 	askBall(text, quote);
 };
+// ---- 開工作卡 ----
+async function loadAgents() {
+	if (ball.agents) return;
+	const r = await fetch("/api/agents").then((x) => (x.ok ? x.json() : null)).catch(() => null);
+	ball.agents = r?.agents || [];
+}
+$("bpDraft").onclick = async () => {
+	const pid = sel;
+	if (!pid) return;
+	const text = $("bpInput").value.trim();
+	const reviseOf = ball.revise || null;
+	$("bpInput").value = ""; ball.revise = null; $("bpInput").placeholder = "問管家這個專案的事…(⌘/Ctrl+Enter 送出)";
+	await loadAgents();
+	const temp = { id: `tmp-${Date.now()}`, role: "me", text: `${reviseOf ? "修改工作卡" : "開工作卡"}${text ? `:${text}` : ""}`, files: [...ball.files] };
+	if (ball.pid === pid) ball.items.push(temp);
+	ball.pending.set(pid, (ball.pending.get(pid) || 0) + 1);
+	renderBall(); $("bpLog").scrollTop = 1e9;
+	const r = await post(`/api/chat/${encodeURIComponent(pid)}/draft`, { message: text, files: ball.files, reviseOf }).catch((err) => ({ error: `連不上管家:${err}` }));
+	ball.pending.set(pid, Math.max(0, (ball.pending.get(pid) || 1) - 1));
+	if (ball.pid === pid) {
+		const i = ball.items.indexOf(temp);
+		if (i >= 0 && r.me) ball.items[i] = r.me;
+		ball.items.push(r.bot || { id: `tmp-${Date.now()}`, role: "bot", text: r.error || "沒有回應", error: true });
+		renderBall(); $("bpLog").scrollTop = 1e9;
+	}
+	if (!ball.open || ball.pid !== pid) $("stewardBall").classList.add("unread");
+};
+// 草稿欄位:改了就記下來(延遲存到伺服器)
+$("bpLog").addEventListener("input", (e) => {
+	const box = e.target.closest("[data-draft]"), k = e.target.dataset?.df;
+	if (!box || !k) return;
+	const it = ball.items.find((x) => x.id === box.dataset.draft);
+	if (!it?.draft) return;
+	it.draft[k] = e.target.value;
+	clearTimeout(it._saveT);
+	it._saveT = setTimeout(() => post(`/api/chat/${encodeURIComponent(ball.pid)}/draft/${it.id}`, { action: "save", draft: it.draft }).catch(() => {}), 600);
+});
+$("bpLog").addEventListener("change", (e) => { if (e.target.dataset?.df === "agent") e.target.dispatchEvent(new Event("input", { bubbles: true })); });
+$("bpLog").addEventListener("click", async (e) => {
+	const view = e.target.closest("[data-dview]");
+	if (view) { toggleBall(false); setMode("board"); const id = view.dataset.dview; if (id) setTimeout(() => { if (state.cards?.some?.((c) => c.id === id) ?? true) openCard(id); }, 400); return; }
+	const act = e.target.closest("[data-dact]")?.dataset.dact;
+	if (!act) return;
+	const box = e.target.closest("[data-draft]");
+	const it = ball.items.find((x) => x.id === box?.dataset.draft);
+	if (!it?.draft) return;
+	if (act === "revise") {
+		ball.revise = it.id;
+		$("bpInput").placeholder = "說明要怎麼改這張卡,再按「開工作卡」…";
+		$("bpInput").focus();
+		return toast("在輸入框說明要怎麼改,再按「開工作卡」");
+	}
+	if (act === "dispatch" && !(await window.confirmBox("直接派工", `馬上把「${it.draft.title}」交給 ${(ball.agents || []).find((a) => a.id === it.draft.agent)?.name || it.draft.agent} 開工?`, "派工"))) return;
+	box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+	clearTimeout(it._saveT);
+	const r = await post(`/api/chat/${encodeURIComponent(ball.pid)}/draft/${it.id}`, { action: act, draft: it.draft }).catch((err) => ({ error: String(err) }));
+	if (r.error) { toast(r.error); box.querySelectorAll("button").forEach((b) => (b.disabled = false)); return; }
+	Object.assign(it, r.bot);
+	renderBall();
+	toast(act === "dispatch" ? "已派工,進度看看板「進行中」" : "已放進看板的「提案」");
+	load();
+});
 // 失敗的回答:「改用雲端回答這一題」→ 用前一則問題重問
 $("bpLog").addEventListener("click", (e) => {
 	const id = e.target.closest("[data-retry]")?.dataset.retry;

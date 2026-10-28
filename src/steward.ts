@@ -381,6 +381,41 @@ export class Steward {
 		return `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
 	}
 
+	/**
+	 * 浮動球「開工作卡」:根據專案狀態、最近的問答、附加的檔案路徑和使用者的指示擬一張草稿。
+	 * 用「提案檢查」的模型(隱私專案用隱私模型);previous 有給就是依指示修改那張草稿。
+	 */
+	async draftCard(p: Project, opts: { instruction: string; files: string[]; agents: string[]; previous?: { title: string; agent: string; instructions: string; doneCriteria: string } }): Promise<{ title: string; agent: string; instructions: string; doneCriteria: string }> {
+		const system = `${this.chatSystem(p)}
+
+現在使用者要你擬一張「工作卡」,之後會交給一個 AI agent 去做。規則:
+- 標題簡短具體(30 字以內)。
+- instructions 要讓一個完全沒背景的 agent 也能開工:寫清楚專案位置(${p.root})、要做什麼、要先讀哪些檔案(只寫路徑,不要貼檔案內容)、有什麼限制;遵守專案狀態裡的重要決定與卡點。
+- done_criteria 要可驗證。
+- agent 從這些裡面選最適合的一個:${opts.agents.join(" / ") || "pi"}。
+- 只輸出一個 JSON 物件:{"title": "…", "agent": "…", "instructions": "…", "done_criteria": "…"},不要其他文字。`;
+		const user = [
+			opts.previous ? `目前的草稿:\n${JSON.stringify(opts.previous, null, 1)}\n\n請依照使用者的意見修改:${opts.instruction || "(沒有說明,請讓它更清楚完整)"}` : `使用者的指示:${opts.instruction || "(沒有特別說明,請根據最近的問答判斷要做什麼)"}`,
+			opts.files.length ? `使用者附上的檔案(請在 instructions 裡要 agent 先讀):\n${opts.files.map((f) => `- ${f}`).join("\n")}` : "",
+		].filter(Boolean).join("\n\n");
+		const tryRef = async (fallback: boolean) => {
+			const ref = routeFor("judge", { private: p.private, fallback });
+			const text = await this.oneShotWith(system, user, ref, 4000);
+			const m = text.match(/\{[\s\S]*\}/);
+			if (!m) throw new Error("模型沒有給出草稿");
+			const j = JSON.parse(m[0]) as Record<string, unknown>;
+			const str = (k: string) => String(j[k] ?? "").trim();
+			if (!str("title") || !str("instructions")) throw new Error("草稿缺少標題或指示");
+			const agent = opts.agents.includes(str("agent")) ? str("agent") : (opts.agents[0] ?? "pi");
+			return { title: str("title").slice(0, 80), agent, instructions: str("instructions"), doneCriteria: str("done_criteria") || "完成上述要求並說明改了什麼" };
+		};
+		try { return await tryRef(false); }
+		catch (e) {
+			if (p.private || !hasFallback("judge")) throw e;
+			return tryRef(true);
+		}
+	}
+
 	/** 有圖片的提問:用看得懂圖片的模型單次回答(不寫進管家的對話) */
 	async askWithImages(p: Project, content: string, images: { data: string; mimeType: string }[], ref: { provider: string; modelId: string }, timeoutMs = 180_000): Promise<string> {
 		if (!this.models) throw new StewardUnanswered("管家還沒準備好");

@@ -13,6 +13,7 @@ export interface ChatQuote {
 	to?: number;
 	text: string;
 }
+export interface CardDraft { title: string; agent: string; instructions: string; doneCriteria: string; status: "draft" | "proposed" | "dispatched"; cardId?: string }
 export interface ChatEntry {
 	id: string; // 時間排序用:毫秒時間戳 + 亂數
 	role: "me" | "bot";
@@ -22,6 +23,8 @@ export interface ChatEntry {
 	files?: string[];
 	/** 附的圖片縮圖(data URL;原圖不存) */
 	images?: string[];
+	/** 管家擬的工作卡草稿:status draft=還沒決定、proposed=放進提案、dispatched=直接派工 */
+	draft?: CardDraft;
 	at: string;
 	error?: boolean;
 	cloud?: boolean; // (舊)使用者按「改用雲端回答這一題」得到的回答
@@ -64,6 +67,18 @@ export function readChat(pid: string, before: string | undefined, limit = 30): {
 	}
 	const start = Math.max(0, end - Math.max(1, Math.min(200, limit)));
 	return { items: all.slice(start, end), more: start > 0, total: all.length };
+}
+
+/** 改一則紀錄(工作卡草稿的欄位、狀態) */
+export function updateChat(pid: string, id: string, patch: Partial<ChatEntry>): ChatEntry | undefined {
+	const all = readAll(pid);
+	const i = all.findIndex((e) => e.id === id);
+	if (i < 0) return undefined;
+	all[i] = { ...all[i], ...patch, id: all[i].id, at: all[i].at };
+	const f = file(pid);
+	writeFileSync(`${f}.tmp`, all.map((e) => JSON.stringify(e)).join("\n") + "\n");
+	renameSync(`${f}.tmp`, f);
+	return all[i];
 }
 
 /** 清除畫面上的紀錄:改名保存(不影響管家記得的專案進度) */

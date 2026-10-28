@@ -64,6 +64,7 @@
 			d.querySelector("[data-x]").addEventListener("click", () => resolve(false));
 		});
 	}
+	window.confirmBox = confirmBox; // 看板頁(浮動球)也用同一個確認對話框
 	function menu(x, y, items) {
 		document.querySelector(".cv-menu")?.remove();
 		const m = el("div", "cv-menu");

@@ -18,7 +18,7 @@ import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKer
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { compatInfo, fillEmptyRouting, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
-import { appendChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
+import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
@@ -646,6 +646,55 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const bot = appendChat(p.id, { role: "bot", text: `${who}沒有回應:${why}`, error: true, retryable: !useFallback && !p.private && hasFallback("chat") });
 					return send(res, 200, { error: bot.text, me: mine, bot });
 				}
+			}
+			// ---------- 浮動球「開工作卡」:擬草稿、改欄位、放進提案、直接派工 ----------
+			const mdraft = path.match(/^\/api\/chat\/([^/]+)\/draft(?:\/([^/]+))?$/);
+			if (mdraft && req.method === "POST") {
+				const p = store.project(decodeURIComponent(mdraft[1]));
+				if (!p) return send(res, 404, { error: "unknown project" });
+				if (p.kind !== "project") return send(res, 400, { error: "「雜務」和「總覽」不能開工作卡,請先選一個專案" });
+				const b = await body(req);
+				const agents = listAgents().filter((a) => a.installed && a.dispatch).map((a) => a.id);
+				if (!mdraft[2]) {
+					// 擬一張新的(或依意見修改 reviseOf 那張)
+					const message = String(b.message ?? "").trim();
+					const files: string[] = (Array.isArray(b.files) ? b.files : []).filter((f: unknown) => typeof f === "string").slice(0, 10);
+					const prevEntry = b.reviseOf ? readChat(p.id, undefined, 200).items.find((e) => e.id === b.reviseOf && e.draft) : undefined;
+					const mine = appendChat(p.id, { role: "me", text: `${prevEntry ? "修改工作卡" : "開工作卡"}${message ? `:${message}` : ""}`, ...(files.length ? { files } : {}) });
+					try {
+						const d = await steward.draftCard(p, { instruction: message, files, agents, previous: prevEntry?.draft });
+						const bot = appendChat(p.id, { role: "bot", text: `工作卡草稿:${d.title}`, draft: { ...d, status: "draft" } });
+						return send(res, 200, { me: mine, bot });
+					} catch (e) {
+						const bot = appendChat(p.id, { role: "bot", text: `擬工作卡失敗:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`, error: true });
+						return send(res, 200, { error: bot.text, me: mine, bot });
+					}
+				}
+				// 對一張草稿動作:save(只存欄位)/ propose(放進提案)/ dispatch(直接派工)
+				const entry = readChat(p.id, undefined, 200).items.find((e) => e.id === mdraft[2] && e.draft);
+				if (!entry?.draft) return send(res, 404, { error: "找不到這張草稿" });
+				if (entry.draft.status !== "draft") return send(res, 409, { error: "這張草稿已經處理過了" });
+				const f = b.draft ?? {};
+				const draft = {
+					...entry.draft,
+					title: String(f.title ?? entry.draft.title).trim().slice(0, 80),
+					agent: agents.includes(String(f.agent)) ? String(f.agent) : entry.draft.agent,
+					instructions: String(f.instructions ?? entry.draft.instructions).trim(),
+					doneCriteria: String(f.doneCriteria ?? entry.draft.doneCriteria).trim(),
+				};
+				if (!draft.title || !draft.instructions) return send(res, 400, { error: "標題和工作說明不能空白" });
+				if (b.action === "save") return send(res, 200, { bot: updateChat(p.id, entry.id, { draft }) });
+				if (b.action !== "propose" && b.action !== "dispatch") return send(res, 400, { error: "bad action" });
+				const card = store.addCard({ projectId: p.id, title: draft.title, agent: draft.agent, instructions: draft.instructions, doneCriteria: draft.doneCriteria || "完成上述要求並說明改了什麼" });
+				if (b.action === "dispatch") {
+					// 跟看板上「提案 → 已核准」一樣:派工並追蹤
+					store.updateCard(card.id, { column: "approved", note: "派工中…" });
+					dispatchCard(store, watcher, store.card(card.id)!)
+						.then((c) => (c.column === "running" && c.paneId ? steward.watchCard(c.id, c.paneId, c.terminalId) : undefined))
+						.catch((e) => store.updateCard(card.id, { column: "blocked", note: `派工失敗:${e}` }));
+				}
+				const bot = updateChat(p.id, entry.id, { draft: { ...draft, status: b.action === "dispatch" ? "dispatched" : "proposed", cardId: card.id } });
+				return send(res, 200, { bot, card: store.card(card.id) });
 			}
 			// 建議問題:GET 讀(ensure=1 且還沒有就先產生)、POST 重新產生
 			const msug = path.match(/^\/api\/chat\/([^/]+)\/suggest$/);
