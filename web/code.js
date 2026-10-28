@@ -608,8 +608,8 @@
 			// 原始 JSON 開著而且改過,切回來時用最新內容重畫
 			const src = findTab(`file:${t.path}`);
 			const ver = src?.model && !src.model.isDisposed() ? src.model.getAlternativeVersionId() : null;
-			if (fresh || (ver !== null && ver !== t.srcVer)) renderNb(t);
-			bar(g, `<span>Notebook 預覽(唯讀,不能執行程式)</span><span class="sp"></span><button class="small" data-bar="nbreload">重新載入</button><button class="small" data-bar="nbraw">${mobile() ? "原始 JSON" : "編輯原始 JSON"}</button>`);
+			if (fresh || (ver !== null && ver !== t.srcVer && !t.dirty)) renderNb(t);
+			bar(g, `<span>${t.readonly ? "Notebook(檔案太大,唯讀)" : "Notebook · 點程式碼編輯,Shift+Enter 執行"}</span><span class="sp"></span><button class="small" data-bar="nbreload">重新載入</button><button class="small" data-bar="nbraw">${mobile() ? "原始 JSON" : "編輯原始 JSON"}</button>`);
 		} else if (t.kind === "md") {
 			surface(g, "previewEl");
 			pvNode(g, t).classList.add("md");
@@ -643,7 +643,10 @@
 		if (a === "term") { setMode("term"); return jumpTo(cm.pid); }
 		if (a === "openfile") return openFile(t.path);
 		if (a === "mdprev") return openPreview(t.path);
-		if (a === "nbreload") return renderNb(t, true);
+		if (a === "nbreload") {
+			if (t.dirty && !(await confirmBox("重新載入", "網頁上還沒存的修改會不見,確定嗎?", "重新載入"))) return;
+			return renderNb(t, true);
+		}
 		if (a === "nbraw") return openFile(t.path, g, { raw: true });
 		if (a === "fullview") return setFull(t, true);
 	}
@@ -741,7 +744,7 @@
 		}
 		box.scrollTop = scroll;
 	}
-	// ---------- Jupyter Notebook(.ipynb)預覽 ----------
+	// ---------- Jupyter Notebook(.ipynb):顯示、編輯、用 kernel 執行 ----------
 	async function openNotebook(rel, g = cm.activeGroup, { quiet = false } = {}) {
 		await loadMonaco().catch(fail);
 		if (!cm.monaco) return;
@@ -750,91 +753,132 @@
 		const key = `nb:${rel}`;
 		const existing = findTab(key);
 		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
-		const t = { key, group: g, kind: "nb", path: rel, label: baseName(rel), title: `${rel}(Notebook)` };
+		const t = { key, group: g, kind: "nb", path: rel, label: baseName(rel), title: `${rel}(Notebook)`, kstate: "off", runs: new Map() };
 		g.tabs.push(t);
 		setActiveGroup(g);
 		activate(g, t);
-		if (!quiet) return;
+		if (quiet) return;
 	}
 	const nbText = (x) => (Array.isArray(x) ? x.join("") : typeof x === "string" ? x : "");
+	const nbLines = (s) => (s ? s.split(/(?<=\n)/) : []);
 	const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-	/** 把 Notebook 畫出來;force = 重新從磁碟讀 */
-	async function renderNb(t, force = false) {
-		const box = pvNode(t.group, t);
-		const scroll = box.scrollTop;
+	let nbUid = 0;
+	/** 讀檔(force = 不管原始 JSON 分頁,直接讀磁碟) */
+	async function loadNb(t, force = false) {
 		const src = findTab(`file:${t.path}`);
 		let text;
-		if (src?.model && !src.model.isDisposed() && !force) { text = src.model.getValue(); t.srcVer = src.model.getAlternativeVersionId(); }
+		t.readonly = false;
+		if (src?.model && !src.model.isDisposed() && !force) { text = src.model.getValue(); t.srcVer = src.model.getAlternativeVersionId(); t.hash = src.hash; }
 		else {
-			if (!box.childElementCount) box.innerHTML = '<div class="nb-msg">讀取中…</div>';
-			const r = await fetch(`/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`).catch(() => null);
-			if (!r?.ok) { box.innerHTML = `<div class="nb-msg">讀不到這個檔案${r ? `(${r.status})` : ""}</div>`; return; }
-			text = await r.text();
+			// 5MB 以下用一般讀檔(拿得到版本 hash,才能存檔);更大的唯讀
+			const f = await api(`file?path=${encodeURIComponent(t.path)}`).catch((e) => ({ error: e }));
+			if (f.kind === "text" && !f.truncated) { text = f.content; t.hash = f.hash; }
+			else {
+				const r = await fetch(`/api/code/${cm.pid}/raw?path=${encodeURIComponent(t.path)}`).catch(() => null);
+				if (!r?.ok) throw new Error(`讀不到這個檔案${r ? `(${r.status})` : ""}`);
+				text = await r.text();
+				t.readonly = true;
+			}
 			t.srcVer = null;
 		}
-		let nb;
-		try { nb = JSON.parse(text); } catch (e) { box.innerHTML = `<div class="nb-msg">這不是有效的 Notebook(JSON 格式錯誤:${esc(e.message)})。可以用「編輯原始 JSON」修正。</div>`; return; }
-		const [md, math] = await Promise.all([loadMd().catch(() => null), loadMath()]);
-		const lang = String(nb.metadata?.language_info?.name || nb.metadata?.kernelspec?.language || "python").toLowerCase();
-		const cells = Array.isArray(nb.cells) ? nb.cells : (nb.worksheets?.[0]?.cells ?? []); // nbformat 3 也試著顯示
-		const root = el("article", "nb-body");
-		const kernel = nb.metadata?.kernelspec?.display_name;
-		if (kernel) root.appendChild(el("div", "nb-kernel", esc(`${kernel} · ${cells.length} 個儲存格`)));
-		const sanitize = (html) => (md ? md.purify.sanitize(html) : esc(html));
-		const mdHtml = (s, attachments) => {
-			let h = md ? md.marked.parse(s, { gfm: true }) : `<pre>${esc(s)}</pre>`;
-			h = sanitize(h);
-			if (attachments) h = h.replace(/src="attachment:([^"]+)"/g, (m, name) => {
-				const a = attachments[decodeURIComponent(name)];
-				const mime = a && Object.keys(a)[0];
-				return mime ? `src="data:${mime};base64,${nbText(a[mime]).replace(/\s/g, "")}"` : m;
-			});
-			return h;
-		};
-		for (const c of cells) {
-			const cell = el("section", `nb-cell nb-${c.cell_type}`);
-			const source = nbText(c.source ?? c.input);
-			if (c.cell_type === "markdown") {
-				const body = el("div", "nb-md md-body");
-				body.innerHTML = mdHtml(source, c.attachments);
-				cell.appendChild(body);
-			} else if (c.cell_type === "code") {
-				const n = c.execution_count ?? c.prompt_number;
-				const inRow = el("div", "nb-row");
-				inRow.appendChild(el("div", "nb-prompt", n != null ? `[${n}]` : "[ ]"));
-				const pre = el("pre", "nb-code");
-				pre.dataset.lang = lang;
-				pre.textContent = source;
-				inRow.appendChild(pre);
-				cell.appendChild(inRow);
-				for (const o of c.outputs || []) {
-					const out = nbOutput(o, sanitize, mdHtml);
-					if (!out) continue;
-					const row = el("div", "nb-row nb-outrow");
-					row.appendChild(el("div", "nb-prompt nb-outprompt", o.output_type === "execute_result" && o.execution_count != null ? `[${o.execution_count}]` : ""));
-					row.appendChild(out);
-					cell.appendChild(row);
-				}
-			} else {
-				const pre = el("pre", "nb-raw");
-				pre.textContent = source;
-				cell.appendChild(pre);
-			}
-			root.appendChild(cell);
-		}
-		if (!cells.length) root.appendChild(el("div", "nb-msg", "這個 Notebook 沒有儲存格"));
+		const nb = JSON.parse(text);
+		if (!Array.isArray(nb.cells)) nb.cells = nb.worksheets?.[0]?.cells ?? [];
+		for (const c of nb.cells) c._id = `c${++nbUid}`;
+		t.nb = nb;
+		t.dirty = false;
+		renderTabs(t.group);
+	}
+	async function renderNb(t, force = false) {
+		const box = pvNode(t.group, t);
+		if (!box.childElementCount) box.innerHTML = '<div class="nb-msg">讀取中…</div>';
+		try { await loadNb(t, force); }
+		catch (e) { box.innerHTML = `<div class="nb-msg">${e instanceof SyntaxError ? `這不是有效的 Notebook(JSON 格式錯誤:${esc(e.message)})。可以用「編輯原始 JSON」修正。` : esc(e.message || String(e))}</div>`; return; }
+		[t.mdLib, t.math] = await Promise.all([loadMd().catch(() => null), loadMath()]);
+		drawNb(t);
+		nbConnect(t);
+		nbLoadPythons(t);
+	}
+	const nbLang = (t) => String(t.nb?.metadata?.language_info?.name || t.nb?.metadata?.kernelspec?.language || "python").toLowerCase();
+	function nbMarkDirty(t) { if (!t.dirty) { t.dirty = true; renderTabs(t.group); } nbToolbar(t); }
+	function drawNb(t) {
+		const box = pvNode(t.group, t);
+		const scroll = box.scrollTop;
+		const root = el("div", "nb-wrap");
+		root.appendChild(el("div", "nb-toolbar"));
+		const body = el("article", "nb-body");
+		for (const c of t.nb.cells) body.appendChild(nbCellEl(t, c));
+		const add = el("div", "nb-addrow");
+		add.innerHTML = '<button class="small" data-nbadd="code">+ 程式碼</button><button class="small" data-nbadd="markdown">+ Markdown</button>';
+		add.onclick = (e) => { const k = e.target.closest("[data-nbadd]")?.dataset.nbadd; if (k) nbInsert(t, t.nb.cells.length, k); };
+		body.appendChild(add);
+		root.appendChild(body);
 		box.replaceChildren(root);
-		// 程式碼上色(Monaco)、數學式排版(KaTeX)
-		for (const pre of root.querySelectorAll("pre.nb-code")) {
-			cm.monaco.editor.colorize(pre.textContent, langOf(`x.${pre.dataset.lang === "python" ? "py" : pre.dataset.lang}`) || pre.dataset.lang, { tabSize: 4 }).then((h) => { pre.innerHTML = h; }).catch(() => {});
+		box.scrollTop = scroll;
+		box.tabIndex = -1;
+		box.onkeydown = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveNb(t); } };
+		nbToolbar(t);
+	}
+	/** 一個儲存格的畫面(c._el 記住對應的 DOM) */
+	function nbCellEl(t, c) {
+		const cell = el("section", `nb-cell nb-${c.cell_type}`);
+		cell.dataset.id = c._id;
+		c._el = cell;
+		const tools = el("div", "nb-celltools");
+		tools.innerHTML = `${c.cell_type === "code" ? '<button class="small" data-ct="run" title="執行(Shift+Enter)">▶ 執行</button>' : '<button class="small" data-ct="edit">編輯</button>'}<button class="small" data-ct="up" title="上移">↑</button><button class="small" data-ct="down" title="下移">↓</button><button class="small" data-ct="addcode" title="在下面加程式碼">+ 程式碼</button><button class="small" data-ct="addmd" title="在下面加 Markdown">+ MD</button><button class="small" data-ct="del" title="刪除">刪除</button>`;
+		tools.onclick = (e) => {
+			const a = e.target.closest("[data-ct]")?.dataset.ct;
+			const i = t.nb.cells.indexOf(c);
+			if (a === "run") nbRun(t, [c]);
+			else if (a === "edit") nbEdit(t, c);
+			else if (a === "up" && i > 0) { t.nb.cells.splice(i, 1); t.nb.cells.splice(i - 1, 0, c); cell.previousElementSibling.before(cell); nbMarkDirty(t); }
+			else if (a === "down" && i < t.nb.cells.length - 1) { t.nb.cells.splice(i, 1); t.nb.cells.splice(i + 1, 0, c); cell.nextElementSibling.after(cell); nbMarkDirty(t); }
+			else if (a === "addcode") nbInsert(t, i + 1, "code");
+			else if (a === "addmd") nbInsert(t, i + 1, "markdown");
+			else if (a === "del") { t.nb.cells.splice(i, 1); cell.remove(); nbMarkDirty(t); }
+		};
+		if (!t.readonly) cell.appendChild(tools);
+		const source = nbText(c.source);
+		if (c.cell_type === "markdown") {
+			const md = el("div", "nb-md md-body");
+			nbFillMd(t, md, source, c.attachments);
+			md.ondblclick = () => nbEdit(t, c);
+			cell.appendChild(md);
+		} else if (c.cell_type === "code") {
+			const row = el("div", "nb-row");
+			const prompt = el("div", "nb-prompt");
+			prompt.textContent = c.execution_count != null ? `[${c.execution_count}]` : "[ ]";
+			row.appendChild(prompt);
+			const pre = el("pre", "nb-code");
+			pre.textContent = source;
+			nbColor(t, pre, source);
+			pre.onclick = () => nbEdit(t, c);
+			row.appendChild(pre);
+			cell.appendChild(row);
+			const outs = el("div", "nb-outs");
+			cell.appendChild(outs);
+			for (const o of c.outputs || []) nbAppendOutput(t, outs, o);
+		} else {
+			const pre = el("pre", "nb-raw");
+			pre.textContent = source;
+			cell.appendChild(pre);
 		}
-		if (math?.auto) {
-			for (const m of root.querySelectorAll(".nb-md, .nb-latex")) {
-				try { math.auto(m, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true }, { left: "$", right: "$", display: false }, { left: "\\(", right: "\\)", display: false }], throwOnError: false }); } catch { /* 排版失敗就顯示原文 */ }
-			}
-		}
-		// Markdown 裡的相對路徑圖片
-		for (const img of root.querySelectorAll(".nb-md img[src]")) {
+		return cell;
+	}
+	function nbColor(t, pre, source) {
+		const lang = nbLang(t);
+		cm.monaco.editor.colorize(source, langOf(`x.${lang === "python" ? "py" : lang}`) || lang, { tabSize: 4 }).then((h) => { if (pre.isConnected || !pre.parentNode) pre.innerHTML = h; }).catch(() => {});
+	}
+	function nbSanitize(t, html) { return t.mdLib ? t.mdLib.purify.sanitize(html) : esc(html); }
+	function nbFillMd(t, box, source, attachments) {
+		let h = t.mdLib ? t.mdLib.marked.parse(source, { gfm: true }) : `<pre>${esc(source)}</pre>`;
+		h = nbSanitize(t, h);
+		if (attachments) h = h.replace(/src="attachment:([^"]+)"/g, (m, name) => {
+			const a = attachments[decodeURIComponent(name)];
+			const mime = a && Object.keys(a)[0];
+			return mime ? `src="data:${mime};base64,${nbText(a[mime]).replace(/\s/g, "")}"` : m;
+		});
+		box.innerHTML = h || '<span class="nb-empty">(空白的 Markdown,點兩下編輯)</span>';
+		for (const img of box.querySelectorAll("img[src]")) {
 			const u = img.getAttribute("src");
 			if (u && !/^([a-z]+:|\/\/|#|\/)/i.test(u)) {
 				const parts = `${dirOf(t.path) ? `${dirOf(t.path)}/` : ""}${decodeURI(u.split(/[?#]/)[0])}`.split("/");
@@ -843,11 +887,61 @@
 				img.src = `/api/code/${cm.pid}/raw?path=${encodeURIComponent(outp.join("/"))}`;
 			}
 		}
-		for (const a of root.querySelectorAll("a[href]")) if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
-		box.scrollTop = scroll;
+		for (const a of box.querySelectorAll("a[href]")) if (!a.getAttribute("href").startsWith("#")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+		nbMath(t, box);
+	}
+	function nbMath(t, box) {
+		if (!t.math?.auto) return;
+		try { t.math.auto(box, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true }, { left: "$", right: "$", display: false }, { left: "\\(", right: "\\)", display: false }], throwOnError: false }); } catch { /* 排版失敗就顯示原文 */ }
+	}
+	/** 編輯一個儲存格:換成文字框;Shift+Enter 執行(程式碼)或完成(Markdown),Esc / 點別處結束 */
+	function nbEdit(t, c) {
+		if (t.readonly || c._editing) return;
+		const cell = c._el;
+		const view = cell.querySelector(c.cell_type === "code" ? ".nb-code" : ".nb-md");
+		if (!view) return;
+		c._editing = true;
+		const ta = el("textarea", "nb-edit");
+		ta.value = nbText(c.source);
+		ta.spellcheck = false;
+		const fit = () => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
+		view.replaceWith(ta);
+		fit(); ta.focus();
+		const finish = () => {
+			if (!c._editing) return;
+			c._editing = false;
+			const v = ta.value;
+			if (v !== nbText(c.source)) { c.source = nbLines(v); nbMarkDirty(t); }
+			const fresh = nbCellEl(t, c);
+			cell.replaceWith(fresh);
+		};
+		ta.oninput = fit;
+		ta.onblur = finish;
+		ta.onkeydown = (e) => {
+			if (e.key === "Tab" && !e.shiftKey) { e.preventDefault(); ta.setRangeText("    ", ta.selectionStart, ta.selectionEnd, "end"); fit(); }
+			else if (e.key === "Escape") { e.preventDefault(); ta.blur(); }
+			else if (e.key === "Enter" && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+				e.preventDefault();
+				finish();
+				if (c.cell_type === "code") nbRun(t, [c]);
+				// Shift+Enter 跳到下一格(跟 Jupyter 一樣)
+				if (e.shiftKey) { const next = t.nb.cells[t.nb.cells.indexOf(c) + 1]; if (next) setTimeout(() => nbEdit(t, next), 0); }
+			} else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); finish(); saveNb(t); }
+		};
+	}
+	function nbInsert(t, at, type) {
+		const c = type === "code" ? { cell_type: "code", execution_count: null, metadata: {}, source: [], outputs: [] } : { cell_type: "markdown", metadata: {}, source: [] };
+		c._id = `c${++nbUid}`;
+		t.nb.cells.splice(at, 0, c);
+		const body = t.pv.querySelector(".nb-body");
+		const elc = nbCellEl(t, c);
+		const ref = t.nb.cells[at + 1]?._el;
+		if (ref?.isConnected) ref.before(elc); else body.querySelector(".nb-addrow").before(elc);
+		nbMarkDirty(t);
+		nbEdit(t, c);
 	}
 	/** 一個輸出:圖片 > HTML > Markdown > LaTeX > 純文字(跟 Jupyter 的優先順序一樣) */
-	function nbOutput(o, sanitize, mdHtml) {
+	function nbOutputEl(t, o) {
 		if (o.output_type === "stream") {
 			const pre = el("pre", `nb-out nb-stream${o.name === "stderr" ? " nb-stderr" : ""}`);
 			pre.textContent = stripAnsi(nbText(o.text));
@@ -863,14 +957,204 @@
 		for (const mime of ["image/png", "image/jpeg", "image/gif"]) {
 			if (d[mime]) { box.innerHTML = `<img alt="" src="data:${mime};base64,${nbText(d[mime]).replace(/\s/g, "")}">`; return box; }
 		}
-		if (d["image/svg+xml"]) { box.innerHTML = sanitize(nbText(d["image/svg+xml"])); return box; }
-		if (d["text/html"]) { box.classList.add("nb-html"); box.innerHTML = sanitize(nbText(d["text/html"])); return box; }
-		if (d["text/markdown"]) { box.classList.add("nb-md", "md-body"); box.innerHTML = mdHtml(nbText(d["text/markdown"])); return box; }
-		if (d["text/latex"]) { box.classList.add("nb-latex"); box.textContent = nbText(d["text/latex"]); return box; }
+		if (d["image/svg+xml"]) { box.innerHTML = nbSanitize(t, nbText(d["image/svg+xml"])); return box; }
+		if (d["text/html"]) { box.classList.add("nb-html"); box.innerHTML = nbSanitize(t, nbText(d["text/html"])); return box; }
+		if (d["text/markdown"]) { box.classList.add("nb-md", "md-body"); nbFillMd(t, box, nbText(d["text/markdown"])); return box; }
+		if (d["text/latex"]) { box.classList.add("nb-latex"); box.textContent = nbText(d["text/latex"]); nbMath(t, box); return box; }
 		if (d["text/plain"]) { const pre = el("pre", "nb-out nb-stream"); pre.textContent = stripAnsi(nbText(d["text/plain"])); return pre; }
 		const kinds = Object.keys(d);
-		if (kinds.length) { box.classList.add("nb-note"); box.textContent = `(互動式輸出 ${kinds.join(", ")},網頁預覽無法顯示)`; return box; }
+		if (kinds.length) { box.classList.add("nb-note"); box.textContent = `(互動式輸出 ${kinds.join(", ")},網頁無法顯示)`; return box; }
 		return null;
+	}
+	function nbAppendOutput(t, outs, o) {
+		const node = nbOutputEl(t, o);
+		if (!node) return;
+		const row = el("div", "nb-row nb-outrow");
+		row.appendChild(el("div", "nb-prompt nb-outprompt", o.output_type === "execute_result" && o.execution_count != null ? `[${o.execution_count}]` : ""));
+		row.appendChild(node);
+		outs.appendChild(row);
+	}
+
+	// ---- kernel ----
+	const nbApi = (op, b) => api(`nb/${op}`, { method: "POST", body: JSON.stringify({ path: b.path, ...b }) });
+	function nbConnect(t) {
+		if (t.es) return;
+		const es = new EventSource(`/api/code/${cm.pid}/nb/events?path=${encodeURIComponent(t.path)}`);
+		t.es = es;
+		es.onmessage = (m) => { let ev; try { ev = JSON.parse(m.data); } catch { return; } nbEvent(t, ev); };
+	}
+	async function nbLoadPythons(t) {
+		const r = await api(`nb/pythons?path=${encodeURIComponent(t.path)}`).catch(() => null);
+		if (!r) return;
+		t.envs = r.envs;
+		let saved = null;
+		try { saved = localStorage.getItem(`steward.nbPy:${cm.pid}:${t.path}`); } catch { /* 無痕模式 */ }
+		t.python = (r.kernel.running && r.kernel.python) || (r.envs.find((e) => e.python === saved) || r.envs.find((e) => e.ready) || r.envs[0])?.python;
+		if (r.kernel.running) t.kstate = r.kernel.state || "idle";
+		nbToolbar(t);
+	}
+	const KSTATE = { off: "kernel 未啟動", starting: "kernel 啟動中…", idle: "kernel 閒置", busy: "執行中…", dead: "kernel 停止了" };
+	function nbToolbar(t) {
+		const bar = t.pv?.querySelector(".nb-toolbar");
+		if (!bar) return;
+		const env = t.envs?.find((e) => e.python === t.python);
+		const opts = (t.envs || []).map((e) => `<option value="${esc(e.python)}" ${e.python === t.python ? "selected" : ""}>${esc(e.label)}${e.version ? ` · Python ${esc(e.version)}` : ""}${e.ready ? "" : `(${esc(e.why || "不能用")})`}</option>`).join("");
+		const busy = t.kstate === "busy" || t.kstate === "starting";
+		bar.innerHTML = `<select class="nb-py" title="用哪個 Python 環境執行">${opts || "<option>偵測 Python 環境中…</option>"}</select>
+			${env && !env.ready ? `<button class="small primary" data-nb="install">${env.own ? "建立並安裝 ipykernel" : "在這個環境安裝 ipykernel"}</button>` : ""}
+			<span class="nb-kstate nb-k-${t.kstate}">${KSTATE[t.kstate] || t.kstate}</span>
+			<span class="sp"></span>
+			<button class="small" data-nb="runall" ${t.readonly ? "disabled" : ""}>▶ 全部執行</button>
+			<button class="small" data-nb="interrupt" ${busy ? "" : "disabled"}>■ 中斷</button>
+			<button class="small" data-nb="restart" ${t.kstate === "off" ? "disabled" : ""}>↻ 重新啟動</button>
+			<button class="small" data-nb="clear" ${t.readonly ? "disabled" : ""}>清除輸出</button>
+			<button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled title=\"檔案太大,唯讀\"" : ""}>${t.dirty ? "● 存檔" : "存檔"}</button>`;
+		bar.querySelector(".nb-py").onchange = (e) => {
+			t.python = e.target.value;
+			try { localStorage.setItem(`steward.nbPy:${cm.pid}:${t.path}`, t.python); } catch { /* 無痕模式 */ }
+			if (t.kstate !== "off") nbApi("stop", { path: t.path }).catch(() => {});
+			t.kstate = "off";
+			nbToolbar(t);
+		};
+		bar.onclick = async (e) => {
+			const a = e.target.closest("[data-nb]")?.dataset.nb;
+			if (!a) return;
+			if (a === "install") {
+				e.target.disabled = true; e.target.textContent = "安裝中(約 1 分鐘)…";
+				const r = await nbApi("install", { path: t.path, python: t.python }).catch((err) => ({ error: err.message }));
+				if (r.error) toast(r.error); else { toast("已安裝 ipykernel"); t.python = r.python; }
+				return nbLoadPythons(t);
+			}
+			if (a === "runall") return nbRun(t, t.nb.cells.filter((c) => c.cell_type === "code"));
+			if (a === "interrupt") return nbApi("interrupt", { path: t.path }).catch(fail);
+			if (a === "restart") {
+				if (!(await confirmBox("重新啟動 kernel", "所有變數都會清空,確定嗎?", "重新啟動"))) return;
+				t.kstate = "starting"; nbToolbar(t);
+				for (const [, c] of t.runs) nbFinishRun(t, c, true);
+				return nbApi("restart", { path: t.path }).catch(fail);
+			}
+			if (a === "clear") {
+				for (const c of t.nb.cells) if (c.cell_type === "code") { c.outputs = []; c.execution_count = null; }
+				drawNb(t); nbMarkDirty(t);
+				return;
+			}
+			if (a === "save") return saveNb(t);
+		};
+	}
+	/** 確保 kernel 在跑(沒有就用選的 Python 啟動,等到 ready) */
+	async function nbEnsureKernel(t) {
+		if (t.kstate !== "off" && t.kstate !== "dead") return true;
+		const env = t.envs?.find((e) => e.python === t.python);
+		if (!env) { toast("找不到可以用的 Python 環境"); return false; }
+		if (!env.ready) { toast("這個 Python 環境還沒有 ipykernel:按上面的「安裝 ipykernel」"); return false; }
+		t.kstate = "starting"; nbToolbar(t);
+		const ready = new Promise((ok) => { t.onReady = ok; });
+		const r = await nbApi("start", { path: t.path, python: t.python }).catch((e) => ({ error: e.message }));
+		if (r.error) { t.kstate = "off"; nbToolbar(t); toast(r.error); return false; }
+		const ok = await Promise.race([ready, new Promise((x) => setTimeout(() => x(false), 120_000))]);
+		if (!ok) { toast("kernel 啟動失敗或太久沒回應"); t.kstate = "off"; nbToolbar(t); }
+		return !!ok;
+	}
+	async function nbRun(t, cells) {
+		cells = cells.filter((c) => c.cell_type === "code");
+		if (!cells.length || t.readonly) return;
+		for (const c of cells) if (c._editing) c._el.querySelector("textarea.nb-edit")?.blur();
+		// 先把要跑的格子標成排隊中([*]),清掉舊輸出
+		for (const c of cells) {
+			if (t.runs.has(c._runId)) continue;
+			c._runId = `r${++nbUid}`;
+			t.runs.set(c._runId, c);
+			c.outputs = []; c.execution_count = null; c._started = false; c._clearNext = false;
+			c._el.querySelector(".nb-outs")?.replaceChildren();
+			const pr = c._el.querySelector(".nb-row .nb-prompt"); if (pr) pr.textContent = "[*]";
+			c._el.classList.add("nb-running");
+		}
+		nbMarkDirty(t);
+		if (!(await nbEnsureKernel(t))) { for (const c of cells) nbFinishRun(t, c, true); return; }
+		for (const c of cells) {
+			if (!t.runs.has(c._runId) || c._sent) continue;
+			c._sent = true;
+			await nbApi("exec", { path: t.path, id: c._runId, code: nbText(c.source) }).catch((e) => { toast(e.message); nbFinishRun(t, c, true); });
+		}
+	}
+	function nbFinishRun(t, c, aborted = false) {
+		if (!c) return;
+		t.runs.delete(c._runId);
+		c._sent = false;
+		c._el?.classList.remove("nb-running");
+		const pr = c._el?.querySelector(".nb-row .nb-prompt");
+		if (pr) pr.textContent = c.execution_count != null ? `[${c.execution_count}]` : "[ ]";
+		if ((aborted || !c._started) && c._el && !c.outputs?.length) {
+			const outs = c._el.querySelector(".nb-outs");
+			outs?.appendChild(el("div", "nb-row nb-outrow", `<div class="nb-prompt"></div><div class="nb-out nb-note">${aborted ? "沒有執行" : "沒有執行(前面的儲存格出錯或被中斷)"}</div>`));
+		}
+	}
+	function nbEvent(t, ev) {
+		const c = ev.id ? t.runs.get(ev.id) : null;
+		if (ev.ev === "hello") { if (ev.running) t.kstate = ev.state || "idle"; nbToolbar(t); return; }
+		if (ev.ev === "ready") { t.kstate = "idle"; t.onReady?.(true); t.onReady = null; nbToolbar(t); if (ev.restarted) toast("kernel 已重新啟動"); return; }
+		if (ev.ev === "status") {
+			if (!ev.id && ev.state) { t.kstate = ev.state === "starting" ? "starting" : t.kstate; }
+			else if (ev.state === "busy" || ev.state === "idle") t.kstate = ev.state === "busy" ? "busy" : (t.runs.size > 1 ? "busy" : "idle");
+			nbToolbar(t);
+			return;
+		}
+		if (ev.ev === "exit" || ev.ev === "dead") {
+			for (const [, rc] of t.runs) nbFinishRun(t, rc, true);
+			t.kstate = ev.ev === "dead" ? "dead" : "off";
+			t.onReady?.(false); t.onReady = null;
+			if (ev.message) toast(`kernel 結束了:${ev.message}`);
+			nbToolbar(t);
+			return;
+		}
+		if (ev.ev === "error" && !c) { toast(ev.message || "kernel 發生錯誤"); return; }
+		if (!c) return; // 別的瀏覽器跑的
+		if (ev.ev === "started") {
+			c._started = true; c.execution_count = ev.execution_count;
+			const pr = c._el?.querySelector(".nb-row .nb-prompt"); if (pr) pr.textContent = "[*]";
+		} else if (ev.ev === "output") {
+			const outs = c._el?.querySelector(".nb-outs");
+			if (c._clearNext) { c.outputs = []; outs?.replaceChildren(); c._clearNext = false; }
+			const o = ev.output;
+			// 連續的同一種串流輸出合併成一塊(跟 Jupyter 一樣)
+			const last = c.outputs[c.outputs.length - 1];
+			if (o.output_type === "stream" && last?.output_type === "stream" && last.name === o.name) {
+				last.text = nbText(last.text) + o.text;
+				const pre = outs?.lastElementChild?.querySelector("pre.nb-stream");
+				if (pre) { pre.textContent = stripAnsi(last.text); return; }
+			} else c.outputs.push(o);
+			if (outs) nbAppendOutput(t, outs, o);
+		} else if (ev.ev === "clear") {
+			if (ev.wait) c._clearNext = true;
+			else { c.outputs = []; c._el?.querySelector(".nb-outs")?.replaceChildren(); }
+		} else if (ev.ev === "done") {
+			nbFinishRun(t, c);
+			if (!t.runs.size) { t.kstate = "idle"; nbToolbar(t); }
+		} else if (ev.ev === "error") { toast(ev.message || "執行失敗"); nbFinishRun(t, c, true); }
+	}
+	/** 存檔:輸出、執行編號都寫回 .ipynb(跟 Jupyter 存的格式一樣) */
+	async function saveNb(t, force = false) {
+		if (!t.nb || t.readonly) return;
+		for (const c of t.nb.cells) if (c._editing) c._el?.querySelector("textarea.nb-edit")?.blur();
+		const clean = { ...t.nb, cells: t.nb.cells.map((c) => {
+			const o = { cell_type: c.cell_type, metadata: c.metadata || {}, source: Array.isArray(c.source) ? c.source : nbLines(nbText(c.source)) };
+			if (c.id) o.id = c.id;
+			if (c.attachments) o.attachments = c.attachments;
+			if (c.cell_type === "code") { o.execution_count = c.execution_count ?? null; o.outputs = (c.outputs || []).map((x) => (x.output_type === "stream" ? { ...x, text: nbLines(nbText(x.text)) } : x)); }
+			return o;
+		}) };
+		delete clean.worksheets;
+		try {
+			const r = await api("file", { method: "PUT", body: JSON.stringify({ path: t.path, content: `${JSON.stringify(clean, null, 1)}\n`, baseHash: t.hash, force }) });
+			t.hash = r.hash; t.dirty = false;
+			renderTabs(t.group); nbToolbar(t);
+			toast("已存檔");
+			cm.dirs = {}; renderFiles(); refreshGit();
+		} catch (e) {
+			if (e.status === 409) {
+				if (await confirmBox("檔案在外面被改過", "這個 notebook 在你開啟之後被別的程式改過了。要用網頁上的版本覆蓋嗎?(取消就保留磁碟上的版本,你可以按「重新載入」看最新內容)", "用網頁的版本覆蓋")) return saveNb(t, true);
+			} else fail(e);
+		}
 	}
 	async function reloadTab(t) {
 		const f = await api(`file?path=${encodeURIComponent(t.path)}${t.more ? `&more=${t.more}` : ""}`).catch(fail);
@@ -882,6 +1166,7 @@
 	}
 	async function save(g = cm.activeGroup, force = false) {
 		const t = g?.active;
+		if (t?.kind === "nb") return saveNb(t, force);
 		if (!t || t.kind !== "file" || t.readonly) return;
 		try {
 			const r = await api("file", { method: "PUT", body: JSON.stringify({ path: t.path, content: t.model.getValue(), baseHash: t.hash, force }) });
@@ -911,6 +1196,8 @@
 		g.tabs.splice(i, 1);
 		t.model?.dispose(); t.orig?.dispose(); t.mod?.dispose(); t.conflict?.model.dispose(); t.sub?.dispose();
 		t.pv?.remove(); t.pdfDoc?.destroy?.();
+		// Notebook:關掉分頁就停掉它的 kernel
+		if (t.kind === "nb") { t.es?.close(); if (t.kstate !== "off") nbApi("stop", { path: t.path }).catch(() => {}); }
 		if (g.active === t) activate(g, g.tabs[i] || g.tabs[i - 1] || null); else renderTabs(g);
 		pruneGroup(g);
 		saveSoon();
@@ -918,6 +1205,11 @@
 	// 沒修改的分頁:磁碟上的檔案被改了就自動重新載入(agent 改檔時畫面跟著更新)
 	setInterval(async () => {
 		if (!document.body.classList.contains("code") || document.hidden || !cm.pid) return;
+		// 沒修改、沒在執行的 Notebook:檔案在外面被改了(例如 agent 跑完)也重新載入
+		for (const t of allTabs().filter((x) => x.kind === "nb" && x.nb && !x.readonly && !x.dirty && !x.runs?.size && x.hash)) {
+			const st = (await api("stamps", { method: "POST", body: JSON.stringify({ paths: [t.path] }) }).catch(() => null))?.[t.path];
+			if (st?.hash && st.hash !== t.hash) renderNb(t, true);
+		}
 		const watch = allTabs().filter((t) => t.kind === "file" && !t.readonly);
 		if (!watch.length) return;
 		const stamps = await api("stamps", { method: "POST", body: JSON.stringify({ paths: [...new Set(watch.map((t) => t.path))] }) }).catch(() => null);

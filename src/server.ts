@@ -14,6 +14,7 @@ import { listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
+import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { compatInfo, fillEmptyRouting, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
@@ -188,6 +189,35 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 			// 上傳:請求本文就是檔案內容(串流寫入,不經 JSON)
 			if (req.method === "PUT" && sub === "upload") return send(res, 200, await uploadFile(p, q("path"), req, q("overwrite") === "1", Number(req.headers["content-length"]) || 0));
+			// ---------- Notebook 執行(Jupyter kernel) ----------
+			if (sub.startsWith("nb/")) {
+				const op = sub.slice(3);
+				if (req.method === "GET" && op === "events") return subscribeKernel(p, q("path"), res);
+				if (req.method === "GET" && op === "pythons") return send(res, 200, { envs: await pythonEnvs(p, q("path")), kernel: kernelInfo(p, q("path")) });
+				if (req.method === "POST") {
+					const b = await body(req);
+					const rel = String(b.path ?? "");
+					if (!/\.ipynb$/i.test(rel)) return send(res, 400, { error: "只能執行 .ipynb" });
+					// 只能用偵測到的 Python(不接受任意執行檔路徑)
+					const pick = async () => (await pythonEnvs(p, rel)).find((e) => e.python === String(b.python ?? ""));
+					if (op === "install") {
+						const env = await pick();
+						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
+						try { return send(res, 200, { python: await installKernel(env.python, !!env.own) }); }
+						catch (e) { return send(res, 500, { error: `安裝失敗:${(e as Error).message}` }); }
+					}
+					if (op === "start") {
+						const env = await pick();
+						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
+						if (!env.ready) return send(res, 400, { error: "這個 Python 環境還沒有 ipykernel" });
+						return send(res, 200, startKernel(p, rel, env.python));
+					}
+					if (op === "exec") return sendKernel(p, rel, { op: "execute", id: String(b.id ?? ""), code: String(b.code ?? "") }) ? send(res, 200, { ok: true }) : send(res, 409, { error: "kernel 沒有在跑" });
+					if (op === "interrupt" || op === "restart") return sendKernel(p, rel, { op }) ? send(res, 200, { ok: true }) : send(res, 409, { error: "kernel 沒有在跑" });
+					if (op === "stop") { stopKernelFor(p, rel); return send(res, 200, { ok: true }); }
+				}
+				return send(res, 404, { error: "not found" });
+			}
 			if (req.method === "GET" && sub === "session") return send(res, 200, getSession(p.id) ?? {});
 			if (req.method === "PUT" && sub === "session") {
 				const b = await body(req);

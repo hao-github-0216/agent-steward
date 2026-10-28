@@ -337,6 +337,26 @@ pre.nb-out { white-space: pre-wrap; word-break: break-word; padding: 4px 2px; }
 .nb-html th, .nb-html td { border: 1px solid var(--line); padding: 3px 8px; text-align: right; }
 .nb-note { color: var(--muted); font-style: italic; }
 .nb-md.md-body { max-width: none; padding: 4px 12px 4px 54px; }
+.nb-wrap { min-height: 100%; }
+.nb-toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.nb-toolbar .sp { flex: 1; }
+.nb-toolbar select { max-width: min(360px, 100%); }
+.nb-kstate { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+.nb-kstate::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #9aa0a6; }
+.nb-k-idle::before { background: #2da44e; } .nb-k-busy::before, .nb-k-starting::before { background: #d4a72c; animation: ballPulse 1s infinite; } .nb-k-dead::before { background: #e5484d; }
+.nb-cell { position: relative; border: 1px solid transparent; padding: 6px 0 4px; }
+.nb-cell:hover, .nb-cell:focus-within { border-color: var(--line); }
+.nb-cell.nb-running { border-color: #d4a72c; }
+.nb-celltools { position: absolute; top: -12px; right: 8px; display: none; gap: 4px; z-index: 1; }
+.nb-celltools .small { padding: 1px 7px; font-size: 11px; background: var(--panel); }
+.nb-cell:hover .nb-celltools, .nb-cell:focus-within .nb-celltools { display: flex; }
+@media (pointer: coarse) { .nb-celltools { position: static; display: flex; flex-wrap: wrap; justify-content: flex-end; margin: 0 8px 4px; } }
+.nb-code { cursor: text; }
+textarea.nb-edit { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--panel); color: var(--ink); font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; resize: none; overflow: hidden; tab-size: 4; }
+.nb-markdown textarea.nb-edit { margin-left: 54px; width: calc(100% - 66px); }
+.nb-empty { color: var(--muted); font-style: italic; }
+.nb-addrow { display: flex; gap: 6px; justify-content: center; padding: 10px 0; opacity: .7; }
+.nb-addrow:hover { opacity: 1; }
 .nb-raw { margin: 0 0 0 54px; padding: 8px; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
 .md-body h1, .md-body h2 { border-bottom: 1px solid var(--line); padding-bottom: .3em; }
 .md-body h1 { font-size: 1.8em; } .md-body h2 { font-size: 1.4em; } .md-body h3 { font-size: 1.15em; }
