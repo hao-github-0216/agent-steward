@@ -42,6 +42,7 @@ jobs:
           test -x "$FRESH_HOME/.local/bin/steward"
           ls "$FRESH_HOME/.config/herdr/plugins-local"
           env -i HOME="$FRESH_HOME" "$FRESH_HOME/.local/bin/herdr" plugin list
+          grep -q "folder_nav.mjs" "$FRESH_HOME/.config/herdr/config.toml"
           # macOS 沒有 Homebrew → 要看到補裝網頁終端機的說明;Linux 要下載到 ttyd
           if [ "$RUNNER_OS" = macOS ]; then grep -q "Homebrew" install.log; else test -x "$FRESH_HOME/.agent-steward/bin/ttyd"; fi
       - name: Start and health check
@@ -92,6 +93,10 @@ jobs:
           if (-not (Test-Path "$HOME\.local\bin\steward.cmd")) { throw "沒有 steward.cmd" }
           Get-ChildItem "$env:APPDATA\herdr\plugins-local"
           & "$r\bin\herdr\herdr.exe" plugin list
+          if (-not (Select-String -Quiet -Path "$env:APPDATA\herdr\config.toml" -Pattern "folder-nav.cmd")) { throw "herdr 設定裡沒有資料夾導覽" }
+          Get-Content "$r\bin\folder-nav.cmd"
+          $first = ([Environment]::GetEnvironmentVariable("Path", "User") -split ";")[0]
+          if ($first -ne "$r\bin\herdr") { throw "PATH 第一個不是專案管家的 herdr:$first" }
       - name: Start and health check
         shell: pwsh
         run: |
