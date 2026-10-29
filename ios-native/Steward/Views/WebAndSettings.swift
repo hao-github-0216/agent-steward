@@ -9,14 +9,15 @@ struct WebPanelView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let url = model.server {
+                // ?app=1:管家網頁的 app 模式,藏掉網頁自己的專案切換和看板/程式碼/終端機按鈕,只留終端機和工具列
+                if let base = model.server, let url = URL(string: "?app=1#terminal", relativeTo: base)?.absoluteURL {
                     WebView(url: url, reloadToken: reloadToken)
                         .ignoresSafeArea(edges: .bottom)
                 } else {
                     ContentUnavailableView("還沒設定管家網址", systemImage: "link")
                 }
             }
-            .navigationTitle("網頁版")
+            .navigationTitle("終端機")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 Button { reloadToken += 1 } label: { Image(systemName: "arrow.clockwise") }

@@ -4,6 +4,11 @@ options:
   bundleIdPrefix: io.github.haogithub0216
   deploymentTarget:
     iOS: "17.0"
+packages:
+  # 原生排數學式(LaTeX → 圖),問管家的回答用
+  SwiftMath:
+    url: https://github.com/mgriebling/SwiftMath
+    exactVersion: 1.7.3
 settings:
   base:
     DEVELOPMENT_TEAM: N8XLCRL5GL
@@ -17,6 +22,8 @@ targets:
     platform: iOS
     sources:
       - Steward
+    dependencies:
+      - package: SwiftMath
     settings:
       base:
         # 跟 Tauri 版(io.github.haogithub0216.agentsteward)分開,兩個可以同時裝在手機上比較
