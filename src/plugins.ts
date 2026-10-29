@@ -49,9 +49,13 @@ function tarExe(): string {
 	return existsSync(sys) ? sys : "tar";
 }
 async function latestTag(repo: string): Promise<string> {
-	const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { "user-agent": "agent-steward", accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(20_000) });
-	if (!r.ok) throw new Error(`查不到 ${repo} 的最新版本(${r.status})`);
-	return ((await r.json()) as { tag_name: string }).tag_name;
+	const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { "user-agent": "agent-steward", accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(20_000) }).catch(() => undefined);
+	if (r?.ok) return ((await r.json()) as { tag_name: string }).tag_name;
+	// GitHub API 沒登入每小時只能查 60 次(同一個網路的人共用):改看網頁版「最新版」會轉到哪個版本,不算次數
+	const page = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: "manual", headers: { "user-agent": "agent-steward" }, signal: AbortSignal.timeout(20_000) }).catch(() => undefined);
+	const tag = page?.headers.get("location")?.match(/\/releases\/tag\/([^/?#]+)/)?.[1];
+	if (tag) return decodeURIComponent(tag);
+	throw new Error(`查不到 ${repo} 的最新版本(${r?.status ?? "連不上 GitHub"})`);
 }
 
 // ---------- LaTeX:TinyTeX ----------
