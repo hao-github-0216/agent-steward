@@ -7,6 +7,7 @@ import SwiftUI
 struct AppShell: View {
     @Environment(AppModel.self) private var model
     @State private var chatDetent: PresentationDetent = .large
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         @Bindable var model = model
@@ -51,6 +52,7 @@ struct AppShell: View {
             if case .split(let p) = sheet { SplitProjectView(projectId: p) } else { WebSheetView(sheet: sheet) }
         }
         .sheet(isPresented: $model.showProjectPicker, onDismiss: { model.drainPending() }) { ProjectPicker() }
+        .onChange(of: sizeClass, initial: true) { _, c in model.compact = c != .regular }
         .alert("這個專案還沒有 herdr space", isPresented: Binding(get: { model.mode == .terminal && model.needSpace != nil && model.needSpace == model.currentProjectId }, set: { if !$0 { model.needSpace = nil } })) {
             Button("建立並跳過去") { model.web.createSpace(); model.needSpace = nil }
             Button("先不要", role: .cancel) { model.needSpace = nil }
@@ -149,30 +151,26 @@ struct WebModeTab: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
+            Group {
                 if model.current != nil {
                     WebContainer(token: attachToken)
                         .overlay { BallLayer() }
                 } else {
                     ContentUnavailableView("還沒有專案", systemImage: "tray")
                 }
-                if model.drawerOpen {
-                    StewardDrawer()
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
             }
-            .animation(.snappy, value: model.drawerOpen)
             .modifier(ProjectChrome())
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if mode == .terminal { branchTools }
                     Button(model.drawerOpen ? "收起管家" : "管家") { model.drawerOpen.toggle() }
-                        .accessibilityHint("打開或收起下面的管家側欄")
+                        .accessibilityHint("打開或收起管家側欄")
                 }
             }
         }
         // 程式碼和終端機共用同一個網頁:這一頁出現時把網頁搬過來
         .onAppear { attachToken += 1 }
+        .modifier(DrawerInspector(mode: mode))
     }
 
     /// 終端機的支線工具(跟網頁一樣:herdr 停在 agent 上才能開支線;停在支線上換成「帶回」)
@@ -293,58 +291,108 @@ struct CatBall: View {
 
 // MARK: - 管家側欄(程式碼/終端機下面,網頁的 #drawer)
 
+/// 管家側欄用 Apple 的 inspector:iPhone(窄畫面)是從底下升起、疊在程式碼/終端機上面的視窗,
+/// 預設半個螢幕、往上拖展開,半高時後面還可以操作;iPad(寬畫面)是右邊一欄,跟程式碼/終端機並排
+struct DrawerInspector: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let mode: Mode
+    @State private var detent: PresentationDetent = .medium
+
+    func body(content: Content) -> some View {
+        content.inspector(isPresented: Binding(get: { model.drawerOpen && model.mode == mode }, set: { if !$0 { model.drawerCardId = nil; model.drawerOpen = false } })) {
+            StewardDrawer()
+                .presentationDetents([.medium, .large], selection: $detent)
+                .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .inspectorColumnWidth(min: 300, ideal: 360, max: 480)
+                .onAppear { detent = .medium }
+        }
+    }
+}
+
+/// 管家側欄(跟網頁的管家側欄一樣:待核准/進行中/卡住的工作卡、目前進度、下一步、卡住的地方)。
+/// iPhone 上點工作卡在側欄上面再疊一層;iPad 上照常打開工作卡視窗
 struct StewardDrawer: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 0) {
-            Capsule().fill(.tertiary).frame(width: 36, height: 5).padding(.top, 6)
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(model.current?.name ?? "管家").font(.headline)
-                    Text("目前的專案").font(.caption).foregroundStyle(.secondary)
+        NavigationStack {
+            Group {
+                if let p = model.current {
+                    List { sections(p) }
+                        .listStyle(.insetGrouped)
+                } else {
+                    ContentUnavailableView("還沒有專案", systemImage: "tray", description: Text("在看板、程式碼頁面或 herdr 選一個專案"))
                 }
-                Spacer()
-                Button("收起") { model.drawerOpen = false }.buttonStyle(.bordered).controlSize(.small)
             }
-            .padding(.horizontal, 16).padding(.vertical, 6)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    if let p = model.current { drawerBody(p) } else { Text("在看板、程式碼頁面或 herdr 選一個專案").foregroundStyle(.secondary) }
+            .navigationTitle(model.current?.name ?? "管家")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { model.present(.chat) } label: { Label("問管家", systemImage: "bubble.left.and.bubble.right") }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).padding(.bottom, 12)
+                ToolbarItem(placement: .confirmationAction) { Button("完成") { model.drawerCardId = nil; model.drawerOpen = false } }
             }
         }
-        .frame(height: 260)
-        .background(.regularMaterial)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
-        .shadow(color: .black.opacity(0.12), radius: 8, y: -2)
+        // 收好了:排隊的視窗(問管家、換專案…)接著打開
+        .onDisappear { model.drainPending() }
+        .sheet(item: Binding(get: { model.drawerCardId.map(CardRef.init) }, set: { model.drawerCardId = $0?.id })) { ref in
+            CardPopup(cardId: ref.id)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     @ViewBuilder
-    private func drawerBody(_ p: Project) -> some View {
+    private func sections(_ p: Project) -> some View {
         let s = p.state
         let groups: [(String, [String])] = [("待核准", ["proposed"]), ("進行中", ["approved", "running"]), ("卡住", ["blocked"])]
         ForEach(groups, id: \.0) { label, cols in
             let list = model.cards.filter { $0.projectId == p.id && cols.contains($0.column) }
             if !list.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(label) \(list.count)").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                    ForEach(list) { c in KCard(card: c) }
+                Section("\(label) \(list.count)") {
+                    ForEach(list) { c in
+                        Button { model.present(.card(c.id)) } label: { DrawerCardRow(card: c) }
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
         }
-        if let progress = s?.progress, !progress.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("目前進度 · \(Fmt.ago(Fmt.date(s?.updatedAt)))").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+        Section {
+            if let progress = s?.progress, !progress.isEmpty {
                 MarkdownText(progress, fixEscapes: true).font(.subheadline)
+            } else {
+                Text("還沒有紀錄").foregroundStyle(.secondary)
             }
-        } else {
-            Text("還沒有紀錄").foregroundStyle(.secondary)
+        } header: {
+            Text(s?.updatedAt != nil ? "目前進度 · \(Fmt.ago(Fmt.date(s?.updatedAt)))" : "目前進度")
         }
-        BulletList(title: "下一步", items: s?.nextSteps)
-        BulletList(title: "卡住的地方", items: s?.blockers)
+        if let next = s?.nextSteps, !next.isEmpty {
+            Section("下一步") {
+                ForEach(Array(next.enumerated()), id: \.offset) { _, t in MarkdownText(t, fixEscapes: true).font(.subheadline) }
+            }
+        }
+        if let blockers = s?.blockers, !blockers.isEmpty {
+            Section("卡住的地方") {
+                ForEach(Array(blockers.enumerated()), id: \.offset) { _, t in MarkdownText(t, fixEscapes: true).font(.subheadline) }
+            }
+        }
+    }
+}
+
+/// 管家側欄裡的一張工作卡:欄位顏色點、標題、交給誰 · 多久前
+private struct DrawerCardRow: View {
+    let card: Card
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(columnColor(card.column)).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.title).lineLimit(2)
+                let meta = [card.agent, card.lastChanged.map { Fmt.ago($0) }].compactMap { $0 }
+                if !meta.isEmpty { Text(meta.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
+            }
+        }
     }
 }
 

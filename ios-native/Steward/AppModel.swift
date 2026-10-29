@@ -86,9 +86,14 @@ final class AppModel {
     var showChat = false
     var showSettings = false
     /// 程式碼/終端機下面的管家側欄展開了沒(網頁的 body.drawer)
-    var drawerOpen = UserDefaults.standard.object(forKey: "drawer") as? Bool ?? false {
-        didSet { UserDefaults.standard.set(drawerOpen, forKey: "drawer") }
-    }
+    /// 管家側欄:從底下升起的視窗(程式碼、終端機才有;每次開 app 都是收著的)
+    var drawerOpen = false
+    /// 管家側欄裡點開的工作卡(疊在側欄上面一層)
+    var drawerCardId: String?
+    /// 窄畫面(iPhone、iPad 分割畫面的窄邊):管家側欄是從底下升起的視窗;寬畫面(iPad)是右邊一欄
+    var compact = true
+    /// 管家側欄是不是正用「從底下升起的視窗」開著(這時其他視窗要等它收好才開得起來)
+    var drawerShown: Bool { drawerOpen && mode != .board && compact }
     var allCards = UserDefaults.standard.bool(forKey: "allCards") {
         didSet { UserDefaults.standard.set(allCards, forKey: "allCards") }
     }
@@ -346,12 +351,21 @@ final class AppModel {
         // 從問管家裡的工作卡來的:先收工作卡,下一輪再收問管家(同時收兩層會卡住)
         chatCardId = nil
         openCardId = nil
+        drawerCardId = nil
         DispatchQueue.main.async { self.showChat = false }
         mode = .terminal
     }
 
     /// 有視窗開著:等它收好再打開這個;沒有就馬上打開
     func present(_ p: Presentation) {
+        // 管家側欄開著:工作卡疊在側欄上面;其他視窗先把側欄收起來,收好再開
+        if drawerShown {
+            if case .card(let id) = p { drawerCardId = id; return }
+            pendingPresentation = p
+            drawerCardId = nil
+            drawerOpen = false
+            return
+        }
         if anySheetShown { pendingPresentation = p } else { show(p) }
     }
 
@@ -365,7 +379,7 @@ final class AppModel {
     }
 
     private var anySheetShown: Bool {
-        showChat || openCardId != nil || showSettings || webSheet != nil || showProjectPicker || snap.result != nil
+        showChat || openCardId != nil || showSettings || webSheet != nil || showProjectPicker || snap.result != nil || drawerShown
     }
 
     private func show(_ p: Presentation) {

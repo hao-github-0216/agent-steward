@@ -22,19 +22,13 @@ struct CodeTab: View {
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.codePath) {
-            VStack(spacing: 0) {
-                Group {
-                    if let p = model.current {
-                        CodeHome(project: p).id(p.id)
-                    } else {
-                        ContentUnavailableView("還沒有專案", systemImage: "tray")
-                    }
-                }
-                if model.drawerOpen {
-                    StewardDrawer().transition(.move(edge: .bottom).combined(with: .opacity))
+            Group {
+                if let p = model.current {
+                    CodeHome(project: p).id(p.id)
+                } else {
+                    ContentUnavailableView("還沒有專案", systemImage: "tray")
                 }
             }
-            .animation(.snappy, value: model.drawerOpen)
             .modifier(ProjectChrome())
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -61,6 +55,8 @@ struct CodeTab: View {
         // 浮動球和圈選鈕掛在整個程式碼分頁上:點進檔案、差異、提交紀錄也都在
         .overlay { BallLayer().padding(.top, 50) }
         .modifier(UploadConflictDialog())
+        // 管家側欄掛在最外層:iPad 是右邊獨立一欄(有自己的標題列),iPhone 是從底下升起的視窗
+        .modifier(DrawerInspector(mode: .code))
     }
 }
 
@@ -68,6 +64,7 @@ struct CodeTab: View {
 struct CodeHome: View {
     @Environment(AppModel.self) private var model
     let project: Project
+    @State private var query = ""
 
     var body: some View {
         @Bindable var model = model
@@ -81,7 +78,10 @@ struct CodeHome: View {
             if model.codeSection == "git" {
                 GitView(project: project)
             } else {
-                FolderView(project: project, dir: "")
+                // 找檔名(搜整個專案)放在「檔案|版本控制」下面
+                SearchField(prompt: "找檔名", text: $query)
+                    .padding(.horizontal).padding(.bottom, 6)
+                FolderView(project: project, dir: "", rootQuery: $query)
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -96,7 +96,9 @@ struct FolderView: View {
     let dir: String
     @State private var entries: [FileEntry]?
     @State private var error: String?
-    @State private var query = ""
+    /// 最上層的找檔名(搜尋框在 CodeHome,點進資料夾就沒有)
+    var rootQuery: Binding<String>?
+    private var query: String { rootQuery?.wrappedValue ?? "" }
     @State private var results: [String] = []
     @State private var naming: NameAction?
     @State private var newName = ""
@@ -152,8 +154,6 @@ struct FolderView: View {
         }
         .listStyle(.insetGrouped)
         .overlay { if entries == nil && error == nil { ProgressView() } }
-        // 只有最上層有搜尋(搜的是整個專案);點進資料夾不再疊一條搜尋列
-        .modifier(SearchIfRoot(isRoot: dir.isEmpty, query: $query))
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
             guard !q.isEmpty else { results = []; return }
@@ -326,11 +326,35 @@ struct FolderView: View {
     }
 }
 
-struct SearchIfRoot: ViewModifier {
-    let isRoot: Bool
-    @Binding var query: String
-    func body(content: Content) -> some View {
-        if isRoot { content.searchable(text: $query, prompt: "找檔名") } else { content }
+/// 系統樣式的搜尋框(系統的 .searchable 只能放在導覽列,這個可以放在「檔案|版本控制」下面)
+struct SearchField: View {
+    let prompt: String
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(prompt, text: $text)
+                    .focused($focused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                if !text.isEmpty {
+                    Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("清除")
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Color(.tertiarySystemFill), in: Capsule())
+            if focused {
+                Button("取消") { text = ""; focused = false }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: focused)
     }
 }
 
@@ -758,9 +782,29 @@ struct CodeText: View {
         return lines.indices.filter { lines[$0].range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
     }
 
+    /// 程式碼的字型(跟下面的 .footnote 等寬字一樣,量寬度用)
+    private static var uiFont: UIFont { UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular) }
+    private static let widthCache = NSCache<NSString, NSNumber>()
+
+    /// 最長那一行的寬度:先用字數挑出最長的幾行(中日韓字、emoji 算兩格、tab 算四格),再實際量
+    static func longestLineWidth(_ lines: [String], text: String) -> CGFloat {
+        let font = uiFont
+        let key = "\(text.hashValue)-\(text.utf16.count)-\(font.pointSize)" as NSString
+        if let w = widthCache.object(forKey: key) { return CGFloat(w.doubleValue) }
+        let cols = lines.map { line in
+            line.unicodeScalars.reduce(0) { n, u in n + (u.value == 9 ? 4 : (u.value >= 0x2E80 || u.properties.isEmojiPresentation) ? 2 : 1) }
+        }
+        let top = cols.indices.sorted { cols[$0] > cols[$1] }.prefix(6)
+        let w = top.map { (lines[$0] as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        widthCache.setObject(NSNumber(value: Double(w)), forKey: key)
+        return w
+    }
+
     var body: some View {
         let lines = text.components(separatedBy: "\n")
         let width = String(lines.count).count
+        let gutter = ("0" as NSString).size(withAttributes: [.font: Self.uiFont]).width * CGFloat(width) + 8 + 12
+        let contentWidth = ceil(gutter + Self.longestLineWidth(lines, text: text) + 12)
         let hits = Self.matches(lines, find)
         let hitSet = Set(hits)
         let current = hits.isEmpty ? nil : hits[min(findIndex, hits.count - 1)]
@@ -790,12 +834,14 @@ struct CodeText: View {
                                 }
                                 .font(.system(.footnote, design: .monospaced))
                                 .fixedSize(horizontal: true, vertical: false)
-                                .frame(minWidth: max(geo.size.width - 24, 0), alignment: .leading)
+                                // 每一行都跟最長那一行一樣寬:清單才會比螢幕寬,手指才拖得動
+                                .frame(width: max(contentWidth, geo.size.width - 24), alignment: .leading)
                                 .background(background(i, sel: sel, hit: hitSet.contains(i), current: i == current))
                                 .id(i)
                             }
                         }
                     }
+                    .frame(width: max(contentWidth, geo.size.width - 24), alignment: .leading)
                     .padding(.vertical)
                     .padding(.horizontal, 12)
                 }

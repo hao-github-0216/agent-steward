@@ -32,6 +32,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2" # iPhone + iPad
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: Steward/Steward.entitlements
+    scheme:
+      testTargets:
+        - StewardUITests
     info:
       path: Steward/Info.plist
       properties:
@@ -49,3 +52,16 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: io.github.haogithub0216.agentsteward.native
             CFBundleURLSchemes: [agentsteward]
+  # 模擬器手勢測試(見 StewardUITests/GestureTests.swift)
+  StewardUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - StewardUITests
+    dependencies:
+      - target: Steward
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Steward
