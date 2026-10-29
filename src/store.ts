@@ -6,7 +6,9 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 export type ProjectKind = "project" | "misc" | "overview";
-export type ProjectStatus = "active" | "pending" | "ignored";
+// closed = herdr 的 space 被關掉而收起來(之後在資料夾裡開 agent 或從看板點開就自動恢復);
+// ignored = 使用者明確「停止追蹤」(不會自動恢復)
+export type ProjectStatus = "active" | "pending" | "ignored" | "closed";
 
 export interface ProjectState {
 	goal: string;
@@ -32,6 +34,8 @@ export interface Project {
 	// 一對一綁定的 herdr space(ID 可能在 herdr 重啟後改變,所以也記名稱,用來找回)
 	spaceId?: string;
 	spaceLabel?: string;
+	/** 收起來的時間(status = closed) */
+	closedAt?: string;
 	createdAt: string;
 }
 

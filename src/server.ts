@@ -673,11 +673,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				// 每個專案附上 space 綁定資訊(名稱、是否不同名、有幾個窗格跑到別的 space)
 				const spaces = listWorkspaces();
 				const panes = listPanes() ?? [];
-				const spaceInfo: Record<string, { label?: string; nameDiffers: boolean; strays: number }> = {};
+				const spaceInfo: Record<string, { label?: string; nameDiffers: boolean; strays: number; panes: number; working: number }> = {};
 				for (const p of store.projects()) {
 					if (p.kind !== "project" || p.status !== "active") continue;
 					const w = boundSpace(store, p, spaces);
-					spaceInfo[p.id] = { label: w?.label, nameDiffers: !!w && (w.label ?? "").trim() !== p.name.trim(), strays: w ? strayPanes(store, p, panes).length : 0 };
+					const inside = w ? panes.filter((x) => x.workspace_id === w.workspace_id) : [];
+					spaceInfo[p.id] = { label: w?.label, nameDiffers: !!w && (w.label ?? "").trim() !== p.name.trim(), strays: w ? strayPanes(store, p, panes).length : 0, panes: inside.length, working: inside.filter((x) => x.agent && (x.agent_status === "working" || x.agent_status === "blocked")).length };
 				}
 				return send(res, 200, { projects: store.projects(), cards: store.cards(), spaceInfo, watcher: watcher.status() });
 			}
@@ -907,8 +908,21 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (b.status === "active" || b.status === "ignored") patch.status = b.status;
 				if (typeof b.private === "boolean") patch.private = b.private;
 				if (typeof b.name === "string" && b.name.trim()) patch.name = b.name.trim();
-				// 停止追蹤:只解除綁定,space 和窗格都不動
-				if (patch.status === "ignored") Object.assign(patch, { spaceId: undefined, spaceLabel: undefined });
+				// 停止追蹤:解除綁定;closeSpace = 一起關掉 herdr 的 space(使用者在確認框勾選)
+				let closedSpace: string | undefined;
+				if (patch.status === "ignored") {
+					if (b.closeSpace === true && p.kind === "project") {
+						const w = boundSpace(store, p);
+						if (w) {
+							const r = herdrCli(["workspace", "close", w.workspace_id]);
+							if (r?.error) return send(res, 502, { error: `herdr 的 space 沒關成:${String(r.error.message ?? "").slice(0, 200)}` });
+							closedSpace = w.label ?? w.workspace_id;
+							for (const c of store.cards(p.id)) if (c.column === "running") store.updateCard(c.id, { column: "blocked", note: `停止追蹤時一起關掉了 space「${closedSpace}」,agent 已經停止。` });
+						}
+					}
+					Object.assign(patch, { spaceId: undefined, spaceLabel: undefined, closedAt: undefined });
+				}
+				if (patch.status === "active") patch.closedAt = undefined;
 				const updated = store.updateProject(p.id, patch);
 				if (typeof b.goal === "string") store.updateState(p.id, { goal: b.goal });
 				if ("private" in patch && updated.conversationId) await steward.syncModel(updated);
@@ -920,7 +934,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 						store.updateProject(p.id, { spaceLabel: patch.name });
 					}
 				}
-				return send(res, 200, store.project(p.id));
+				return send(res, 200, { ...store.project(p.id), closedSpace });
 			}
 			// 使用者自己建的工作卡(例如在編輯器選一段程式碼「建立工作卡」):一律進「提案」,等核准
 			if (req.method === "POST" && path === "/api/cards") {

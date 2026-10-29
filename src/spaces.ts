@@ -51,6 +51,7 @@ export function boundSpace(store: Store, p: Project, spaces: HerdrWorkspace[] = 
 		store.updateProject(p.id, { spaceId: byLabel.workspace_id });
 		return byLabel;
 	}
+	if (!spaces.length) return undefined; // 讀不到 herdr(或剛重啟):先別解除綁定
 	store.updateProject(p.id, { spaceId: undefined, spaceLabel: undefined }); // space 被關掉了:解除綁定
 	return undefined;
 }
@@ -261,4 +262,37 @@ export async function runTidy(store: Store, rows: TidyRow[]): Promise<string[]> 
 		}
 	}
 	return log;
+}
+
+/** 一輪 space 快照:id → 名稱與當時綁定的專案 */
+export type SpaceSnapshot = Map<string, { label: string; projectId?: string }>;
+
+/**
+ * herdr 裡的 space 被關掉 → 綁定的專案「收起來」(status = closed),派工中的卡片改成卡住。
+ * 只認「上一輪還在、這一輪不見」的 space;herdr 讀不到、或全部 space 一起消失(herdr 重啟)都不算。
+ * 快照記下當時綁的專案:看板重新整理可能先把綁定解除,這樣仍然找得到是哪個專案。
+ */
+export function syncClosedSpaces(store: Store, prev: SpaceSnapshot | undefined, panes: HerdrPane[]): SpaceSnapshot | undefined {
+	const res = herdrCli(["workspace", "list"]);
+	const list: HerdrWorkspace[] | undefined = res?.result?.workspaces;
+	if (!Array.isArray(list)) return prev; // herdr 沒回應:什麼都不做
+	const now: SpaceSnapshot = new Map(list.map((w) => [w.workspace_id, { label: w.label ?? "", projectId: projectOfSpace(store, w.workspace_id)?.id }]));
+	if (!prev || (prev.size > 0 && now.size === 0)) return now;
+	const labels = new Set(list.map((w) => norm(w.label)));
+	const alive = new Set(panes.map((x) => x.terminal_id).filter(Boolean));
+	for (const [id, { label, projectId }] of prev) {
+		if (now.has(id) || !projectId) continue;
+		if (label && labels.has(norm(label))) continue; // 同名 space 還在(ID 換了):交給 boundSpace 找回
+		const p = store.project(projectId);
+		if (!p || p.kind !== "project" || p.status !== "active") continue;
+		if (p.spaceId && p.spaceId !== id) continue; // 這期間已經綁到別的 space
+		store.updateProject(p.id, { status: "closed", closedAt: new Date().toISOString(), spaceId: undefined, spaceLabel: undefined });
+		for (const c of store.cards(p.id)) {
+			if (c.column !== "running") continue;
+			if (c.terminalId && alive.has(c.terminalId)) continue; // 窗格之前就搬到別的 space,還在跑
+			store.updateCard(c.id, { column: "blocked", note: `herdr 的 space「${label || id}」被關掉了,agent 已經停止。要繼續請重新派工。` });
+		}
+		console.log(new Date().toISOString(), `[spaces] space「${label || id}」關閉 → 專案「${p.name}」收起來`);
+	}
+	return now;
 }

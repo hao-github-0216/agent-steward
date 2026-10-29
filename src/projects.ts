@@ -55,7 +55,7 @@ export function resolveProject(store: Store, cwd: string): Project {
 	// 已登記的資料夾(含它的子資料夾),取最長的那個
 	const registered = store
 		.projects()
-		.filter((p) => p.kind === "project" && p.status === "active" && pathInside(cwd, p.root))
+		.filter((p) => p.kind === "project" && (p.status === "active" || p.status === "closed") && pathInside(cwd, p.root))
 		.sort((a, b) => b.root.length - a.root.length)[0];
 
 	const root = gitRoot(cwd);
@@ -86,6 +86,8 @@ export function ownerOf(store: Store, cwd: string): Project | undefined {
 }
 
 function active(store: Store, p: Project): Project {
+	// 收起來的專案:又有 agent 在裡面做事 → 自動恢復追蹤(space 由跳轉 / 派工 / 整理 spaces 重新綁)
+	if (p.status === "closed") return store.updateProject(p.id, { status: "active", closedAt: undefined });
 	if (p.status === "ignored") return ensureSpecial(store, MISC_ROOT);
 	if (p.status === "pending") return ensureSpecial(store, MISC_ROOT);
 	return p;

@@ -4,6 +4,7 @@ import { statSync } from "node:fs";
 import { pathInside, samePath } from "./platform.ts";
 import { listPanes, type HerdrPane } from "./herdr.ts";
 import { resolveProject } from "./projects.ts";
+import { syncClosedSpaces, type SpaceSnapshot } from "./spaces.ts";
 import type { Steward } from "./steward.ts";
 import type { Project, Store } from "./store.ts";
 import { deliverHandoffs } from "./branch.ts";
@@ -30,6 +31,8 @@ export class Watcher {
 	private timer?: NodeJS.Timeout;
 	lastPollAt?: string;
 	lastError?: string;
+	/** 上一輪看到的 herdr space(id → 名稱):用來發現 space 被關掉 */
+	private spaces?: SpaceSnapshot;
 	/** 派工後的窗格:agent 一啟動就算在工作,不用等狀態先變 working */
 	expectWork = new Set<string>();
 
@@ -61,6 +64,8 @@ export class Watcher {
 		}
 		this.lastPollAt = new Date().toISOString();
 		this.lastError = undefined;
+		// herdr 關掉 space → 綁定的專案收起來
+		try { this.spaces = syncClosedSpaces(this.store, this.spaces, panes); } catch (e) { console.error("[spaces] 同步失敗", e); }
 		const seen = new Set<string>();
 		const now = Date.now();
 		// 窗格被搬到別的 space(不論是管家或使用者搬的)後 ID 會變:用終端機 ID 校正派工中的卡片

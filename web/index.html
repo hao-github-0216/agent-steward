@@ -105,6 +105,7 @@ nav h2 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 4p
 .badge { float: right; font-size: 11px; background: var(--warn); color: #fff; border-radius: 9px; padding: 0 6px; }
 .pending { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 12px; }
 .pending b { display: block; word-break: break-all; }
+.pending .hint { display: block; word-break: break-all; }
 .pending .row { display: flex; gap: 6px; margin-top: 6px; }
 button.small { font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
 button.small.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -457,6 +458,9 @@ textarea.nb-edit { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; m
 .modal .mbody { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 .modal .mfoot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
 .modal label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.modal label.field.check { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 8px 0; }
+.modal label.field.check input { width: auto; margin: 0; }
+.modal .mbody .warn { color: var(--warn); font-size: 12px; margin: 0 0 8px; }
 .modal input[type=text], .modal select { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .crumb { font-size: 12px; color: var(--muted); word-break: break-all; }
 .dirlist { border: 1px solid var(--line); border-radius: 10px; max-height: 260px; overflow: auto; }
@@ -846,10 +850,13 @@ function renderNav() {
 	const pending = state.projects.filter((p) => p.status === "pending");
 	// 停止追蹤的專案(資料都還在):只列出有內容的,沒紀錄的「略過」資料夾不列
 	const stopped = state.projects.filter((p) => p.status === "ignored" && p.kind === "project" && (p.state?.updatedAt || state.cards.some((c) => c.projectId === p.id)));
+	// herdr 的 space 被關掉而收起來的專案:在資料夾裡開 agent 或按「打開」就回來
+	const closed = state.projects.filter((p) => p.status === "closed" && p.kind === "project").sort((a, b) => String(b.closedAt).localeCompare(String(a.closedAt)));
 	$("nav").innerHTML = `<div class="navacts"><button class="small primary" id="newProject">＋ 建立專案</button><button class="small" id="tidySpaces">整理 spaces</button></div>
 		<h2>專案</h2>${active.map(item).join("") || '<div class="empty">還沒有專案</div>'}
 		<h2>其他</h2>${special.map(item).join("")}
 		${pending.length ? `<h2>要登記成專案嗎?</h2>${pending.map((p) => `<div class="pending"><b>${esc(p.root)}</b><div class="row"><button class="small primary" data-reg="${p.id}">登記</button><button class="small" data-ign="${p.id}">略過</button></div></div>`).join("")}` : ""}
+		${closed.length ? `<details class="stopped"><summary><h2 style="display:inline">已收起(${closed.length})</h2></summary><p class="hint">herdr 的 space 被關掉的專案。在它的資料夾裡開 agent 就會自動回來。</p>${closed.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.closedAt ? ` · ${ago(p.closedAt)}收起` : ""}</span><div class="row"><button class="small primary" data-reopen="${p.id}" title="恢復追蹤並在終端機開一個新的 space">打開</button><button class="small" data-ign="${p.id}" title="不再追蹤:之後在這個資料夾開 agent 也不會自動回來">停止追蹤</button></div></div>`).join("")}</details>` : ""}
 		${stopped.length ? `<details class="stopped"><summary><h2 style="display:inline">已停止追蹤(${stopped.length})</h2></summary>${stopped.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.state?.updatedAt ? ` · 紀錄保留到 ${ago(p.state.updatedAt)}` : ""}</span><div class="row"><button class="small primary" data-reg="${p.id}" title="恢復追蹤:之前的進度、工作卡、管家記憶都會回來">恢復追蹤</button></div></div>`).join("")}</details>` : ""}`;
 }
 
@@ -954,11 +961,18 @@ function projMenu(p, x, y) {
 		}) },
 		{ label: "停止追蹤", danger: true, run: () => miniDialog({
 			title: `停止追蹤「${p.name}」?`, okLabel: "停止追蹤", danger: true,
-			html: `<p>之後在這個資料夾做的事會改記到「雜務」。</p><p class="hint">進度、工作卡、管家記憶都會保留;herdr 的 space 和窗格不會被動到。隨時可以從左側最下面的「已停止追蹤」恢復。</p>`,
-			onOk: async () => {
-				await post(`/api/projects/${p.id}`, { status: "ignored" });
+			html: (() => {
+				const si = state.spaceInfo?.[p.id];
+				// 有 agent 正在工作時預設不勾,免得把跑到一半的工作關掉
+				const box = si?.label ? `<label class="field check"><input type="checkbox" data-closespace ${si.working ? "" : "checked"}> 同時關閉 herdr 的 space「${esc(si.label)}」(${si.panes} 個窗格)</label>${si.working ? `<p class="warn">裡面有 ${si.working} 個 agent 正在工作,勾選會讓它們停止。</p>` : ""}` : "";
+				return `<p>之後在這個資料夾做的事會改記到「雜務」,在這裡開 agent 也不會自動恢復。</p>${box}<p class="hint">進度、工作卡、管家記憶都會保留,資料夾和檔案不會被動到。隨時可以從左側最下面的「已停止追蹤」恢復。</p>`;
+			})(),
+			onOk: async (w) => {
+				const closeSpace = !!w.querySelector("[data-closespace]")?.checked;
+				const r = await post(`/api/projects/${p.id}`, { status: "ignored", closeSpace });
+				if (r.error) { toast(r.error); load(); return; }
 				if (sel === p.id) sel = null;
-				toast(`已停止追蹤「${p.name}」`);
+				toast(r.closedSpace ? `已停止追蹤「${p.name}」,並關閉 space「${r.closedSpace}」` : `已停止追蹤「${p.name}」`);
 				load();
 			},
 		}) },
@@ -1228,6 +1242,15 @@ document.addEventListener("click", (e) => {
 	if (t.closest(".proj")) { $("nav").classList.remove("open"); syncMenuLabel(); selectProject(t.closest(".proj").dataset.id, document.body.classList.contains("code") ? "程式碼頁面" : document.body.classList.contains("term") ? "終端機" : "看板"); }
 	if (t.dataset.reg) post(`/api/projects/${t.dataset.reg}`, { status: "active" }).then(load);
 	if (t.dataset.ign) post(`/api/projects/${t.dataset.ign}`, { status: "ignored" }).then(load);
+	// 打開收起的專案:恢復追蹤,並在 herdr 開一個新的 space 綁上
+	if (t.dataset.reopen) {
+		const id = t.dataset.reopen;
+		post(`/api/projects/${id}`, { status: "active" }).then(async () => {
+			const f = await post("/api/terminal/focus", { project: id, create: true }).catch(() => ({}));
+			toast(f.ok ? `已打開,herdr space:${f.where}` : `已恢復追蹤${f.reason ? `(${f.reason})` : ""}`);
+			await load(); selectProject(id, "看板");
+		});
+	}
 	if (t.dataset.move) { const id = t.closest("[data-card]")?.dataset.card; if (t.closest("#cardPop")) closeCard(); if (id) move(id, t.dataset.move); }
 	if (t.closest("[data-jumpcard]")) jumpToCard(t.closest("[data-card]").dataset.card);
 	if (t.closest("[data-moredone]")) { showAllDone = !showAllDone; renderBoard(); }
