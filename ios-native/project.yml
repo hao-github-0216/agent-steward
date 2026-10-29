@@ -41,6 +41,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: 連到你電腦上的專案管家
+        NSCameraUsageDescription: 拍照附在問管家的問題裡
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: [remote-notification]
         CFBundleURLTypes:

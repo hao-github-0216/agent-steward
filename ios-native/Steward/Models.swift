@@ -155,8 +155,19 @@ struct ChatEntry: Codable, Hashable, Identifiable {
     var error: Bool?
     var alt: String?
     var draft: CardDraft?
+    var images: [String]? // 附的圖片縮圖(data URL)
 
     var isMine: Bool { role == "me" }
+}
+
+struct FileEntry: Codable, Hashable, Identifiable {
+    var name: String
+    var rel: String
+    var type: String // dir | file
+    var size: Int?
+    var ignored: Bool?
+    var id: String { rel }
+    var isDir: Bool { type == "dir" }
 }
 
 struct ChatPage: Codable {

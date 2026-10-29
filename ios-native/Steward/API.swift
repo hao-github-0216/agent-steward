@@ -107,8 +107,46 @@ struct API {
         return try await call(request(path))
     }
 
-    func ask(project: String, message: String) async throws -> ChatReply {
-        try await call(request("api/chat", method: "POST", body: ["project": project, "message": message]), slow: true)
+    func ask(project: String, message: String, attachments: [Attachment] = []) async throws -> ChatReply {
+        var body: [String: Any] = ["project": project, "message": message]
+        let files: [[String: String]] = attachments.compactMap {
+            switch $0.kind {
+            case .projectFile(let rel): ["path": rel]
+            case .phoneFile(let name, let content): ["path": "iPhone/\(name)", "content": content]
+            case .image: nil
+            }
+        }
+        let images: [(data: String, mime: String, thumb: String)] = attachments.compactMap {
+            if case .image(let data, let mime, let thumb) = $0.kind { return (data, mime, thumb) }
+            return nil
+        }
+        if !files.isEmpty { body["files"] = files }
+        if !images.isEmpty {
+            body["images"] = images.map { ["data": $0.data, "mimeType": $0.mime] }
+            body["thumbs"] = images.map(\.thumb)
+        }
+        return try await call(request("api/chat", method: "POST", body: body), slow: true)
+    }
+
+    // MARK: 專案檔案(附檔案用)
+
+    private func codePath(_ project: String, _ op: String, _ q: [URLQueryItem]) -> String {
+        var c = URLComponents()
+        c.path = "api/code/\(project)/\(op)"
+        c.queryItems = q
+        return c.string ?? ""
+    }
+
+    func tree(project: String, dir: String) async throws -> [FileEntry] {
+        struct R: Decodable { var entries: [FileEntry] }
+        let r: R = try await call(request(codePath(project, "tree", [URLQueryItem(name: "dir", value: dir)])))
+        return r.entries
+    }
+
+    func findFiles(project: String, query: String) async throws -> [String] {
+        struct R: Decodable { var files: [String] }
+        let r: R = try await call(request(codePath(project, "find", [URLQueryItem(name: "q", value: query)])))
+        return r.files
     }
 
     // MARK: 工作卡
