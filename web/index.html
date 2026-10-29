@@ -684,7 +684,16 @@ form.tool { flex-direction: row; }
 	.bdots button { width: 8px; height: 8px; padding: 0; border-radius: 50%; border: 0; background: var(--line); }
 	.bdots button.on { background: var(--accent); width: 18px; border-radius: 4px; }
 }
+/* iPhone 原生 app 裡(?app=1):專案和模式切換由 app 自己的畫面負責,這裡只留終端機和它的工具列 */
+html.inapp header #menu, html.inapp header .seg { display: none; }
 </style>
+<script>
+// app 模式要在畫面出現前決定;記在這個分頁裡,網址被改掉(切模式、重新整理)也維持
+try {
+	if (new URLSearchParams(location.search).has("app")) sessionStorage.setItem("steward.inapp", "1");
+	if (sessionStorage.getItem("steward.inapp") === "1") document.documentElement.classList.add("inapp");
+} catch {}
+</script>
 </head>
 <body>
 <header>
@@ -844,7 +853,7 @@ function showLogin(d = {}) {
 // 從 Tailscale 的 http 網址打開時,轉到設定的 https 網址(瀏覽器只在安全來源開放剪貼簿 API)
 const PUBLIC_URL = "__STEWARD_PUBLIC_URL__";
 if (location.protocol === "http:" && /^100\./.test(location.hostname) && PUBLIC_URL.startsWith("https://")) {
-	location.replace(`${PUBLIC_URL.replace(/\/$/, "")}/${location.hash}`);
+	location.replace(`${PUBLIC_URL.replace(/\/$/, "")}/${location.search}${location.hash}`);
 }
 try { fetch("/api/clientlog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "load", proto: location.protocol, secure: isSecureContext, ua: navigator.userAgent }), keepalive: true }); } catch {}
 const COLS = [["proposed", "提案"], ["approved", "已核准"], ["running", "進行中"], ["blocked", "卡住"], ["done", "完成"]];
