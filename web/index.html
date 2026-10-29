@@ -684,8 +684,11 @@ form.tool { flex-direction: row; }
 	.bdots button { width: 8px; height: 8px; padding: 0; border-radius: 50%; border: 0; background: var(--line); }
 	.bdots button.on { background: var(--accent); width: 18px; border-radius: 4px; }
 }
-/* iPhone 原生 app 裡(?app=1):專案和模式切換由 app 自己的畫面負責,這裡只留終端機和它的工具列 */
-html.inapp header #menu, html.inapp header .seg { display: none; }
+/* iPhone 原生 app 裡(?app=1):標題列(專案、看板/程式碼/終端機、支線、管家側欄、設定)、專案欄、看板、
+   問管家浮動球和圈選鈕、管家側欄、工作卡視窗都由 app 自己的原生畫面照同樣的排版負責;
+   網頁只負責程式碼和終端機本身,免得同一個功能出現兩個入口。按鈕還在頁面裡,app 透過指令碼按 */
+html.inapp header, html.inapp nav, html.inapp main > section.content, html.inapp #ballWrap, html.inapp #drawer, html.inapp #cardPop { display: none !important; }
+html.inapp #termView, html.inapp #codeView { height: var(--appH, 100dvh); }
 </style>
 <script>
 // app 模式要在畫面出現前決定;記在這個分頁裡,網址被改掉(切模式、重新整理)也維持
@@ -861,6 +864,9 @@ let state = { projects: [], cards: [], watcher: {} };
 let sel = null;
 try { sel = localStorage.getItem("steward.sel"); } catch {}
 const $ = (id) => document.getElementById(id);
+// ---------- iPhone 原生 app 的橋(?app=1):問管家、工作卡、專案切換、設定交給 app 自己的畫面 ----------
+const inApp = () => document.documentElement.classList.contains("inapp") && !!window.webkit?.messageHandlers?.steward;
+const toApp = (msg) => { try { window.webkit.messageHandlers.steward.postMessage(msg); return true; } catch { return false; } };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const ago = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : `${Math.round(m / 1440)} 天前`; };
 const post = (url, data) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json());
@@ -873,6 +879,7 @@ function selectProject(id, source, { push = true } = {}) {
 	const changed = id !== sel;
 	sel = id; selSource = source || selSource;
 	try { localStorage.setItem("steward.sel", sel); } catch {}
+	if (changed && source !== "app" && inApp()) toApp({ type: "project", id });
 	if (push) fetch("/api/current", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: id, source }) }).catch(() => {});
 	if (changed) editing = null;
 	render();
@@ -1640,7 +1647,7 @@ async function openSettings(tab = "general", wizard = false) {
 	m.hidden = false;
 	renderSettings();
 }
-function closeSettings() { $("setModal")?.remove(); setState = null; }
+function closeSettings() { $("setModal")?.remove(); setState = null; if (inApp()) toApp({ type: "settingsClosed" }); }
 const lines = (v) => String(v || "").split("\n").map((x) => x.trim()).filter(Boolean);
 function renderSettings() {
 	const { s, detected, tab } = setState;
@@ -2151,7 +2158,7 @@ async function enterTerminal({ create = false } = {}) {
 		termNeedCreate = null;
 		if (now?.project !== sel || create) {
 			const r = await post("/api/terminal/focus", { project: sel, create }).catch(() => ({ ok: false }));
-			if (r.needCreate) { termNeedCreate = sel; toast("這個專案還沒有 herdr space:打開右邊的管家側欄可以「建立並跳過去」"); }
+			if (r.needCreate) { termNeedCreate = sel; if (inApp()) toApp({ type: "needSpace", project: sel }); else toast("這個專案還沒有 herdr space:打開右邊的管家側欄可以「建立並跳過去」"); }
 			else if (r.ok) toast(`herdr 已跳到 ${r.where}`);
 		}
 		termCurrent = (await fetchTermCurrent()) || termCurrent;
@@ -2179,8 +2186,14 @@ async function pollTerminalCurrent() {
 }
 setInterval(pollTerminalCurrent, 2000);
 // ---------- 支線:herdr 焦點在 agent 上就能開支線;焦點在支線上就能帶回主線 ----------
+let lastTermKey = "";
 function renderBranchBtns() {
 	const c = termCurrent || {};
+	if (inApp()) {
+		const b0 = c.branch;
+		const key = JSON.stringify([!!c.agent, b0 ? [b0.mainLabel, !!b0.mainAlive] : null]);
+		if (key !== lastTermKey) { lastTermKey = key; toApp({ type: "termState", agent: !!c.agent, branch: b0 ? { mainLabel: b0.mainLabel ?? "", mainAlive: !!b0.mainAlive } : null }); }
+	}
 	$("branchBtn").hidden = !c.agent;
 	$("branchMore").hidden = !c.agent;
 	const b = c.branch;
@@ -2356,6 +2369,7 @@ setBallCorner();
 	el.addEventListener("pointercancel", end);
 })();
 function toggleBall(open = !ball.open) {
+	if (open && inApp()) { toApp({ type: "chat", project: sel }); return; }
 	ball.open = open;
 	$("ballPanel").hidden = !open;
 	$("stewardBall").classList.toggle("on", open);
@@ -2706,6 +2720,7 @@ $("bpSugg").addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ball.open && !document.querySelector(".modal:not([hidden]):not(#cardPop)") && !$("cardPop")) toggleBall(false); });
 /** 給程式碼頁面用:帶著選取的程式打開面板 */
 window.openStewardChat = ({ quote } = {}) => {
+	if (inApp()) { toApp({ type: "chat", project: sel, quote }); return; }
 	if (quote) { ball.quote = quote; renderQuote(); }
 	if (!ball.open) toggleBall(true); else setTimeout(() => $("bpInput").focus(), 30);
 };
@@ -2713,6 +2728,14 @@ window.openStewardChat = ({ quote } = {}) => {
 load().then(() => {
 	// ?project=<id>:直接打開某個專案(iPhone app 從專案頁點「程式碼」用)
 	try { const want = new URLSearchParams(location.search).get("project"); if (want) selectProject(want, "app"); } catch {}
+	try { const st = new URLSearchParams(location.search).get("settings"); if (st) openSettings(st); } catch {}
+	try {
+		const op = new URLSearchParams(location.search).get("open");
+		const watchClose = (id) => { const el = $(id); if (!el) return; new MutationObserver(() => { if (el.hidden) toApp({ type: "dialogClosed" }); }).observe(el, { attributes: true, attributeFilter: ["hidden"] }); };
+		if (op === "create") { openCreate(); watchClose("createDlg"); }
+		if (op === "tidy") { openTidy(); watchClose("tidyDlg"); }
+		if (op === "split") { const p = state.projects.find((x) => x.id === sel); if (p) showSplit(p); }
+	} catch {}
 	if (location.hash === "#terminal") setMode("term");
 	if (location.hash === "#code") setMode("code");
 }); connect();
