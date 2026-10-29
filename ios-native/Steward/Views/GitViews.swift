@@ -11,6 +11,7 @@ struct GitView: View {
     @State private var message = ""
     @State private var busy: String?
     @State private var discarding: [String]?
+    @State private var newBranch: String?
 
     var body: some View {
         List {
@@ -33,10 +34,23 @@ struct GitView: View {
         .overlay { if status == nil && error == nil { ProgressView() } }
         .task { await load() }
         .refreshable { await load() }
-        .confirmationDialog("捨棄這些變更?", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } }), titleVisibility: .visible) {
+        .onChange(of: model.uploads.refresh) { Task { await load() } }
+        .confirmationDialog(discarding.map { $0.count > 1 ? "捨棄 \($0.count) 個檔案的變更?" : "捨棄這些變更?" } ?? "", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } }), titleVisibility: .visible) {
             Button("捨棄", role: .destructive) { if let paths = discarding { Task { await run("discard", ["paths": paths]) } } }
         } message: {
             Text("改過的檔案會還原成上次提交的內容;新檔案會移到電腦的垃圾桶(救得回來)。")
+        }
+        .alert("建立新分支", isPresented: Binding(get: { newBranch != nil }, set: { if !$0 { newBranch = nil } })) {
+            TextField("分支名稱", text: Binding(get: { newBranch ?? "" }, set: { newBranch = $0 }))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("建立並切換") {
+                let name = (newBranch ?? "").trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty { Task { await run("checkout", ["branch": name, "create": true], done: "已建立並切換到 \(name)") } }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("從目前的分支開一個新分支,然後切過去。")
         }
     }
 
@@ -51,6 +65,8 @@ struct GitView: View {
                         }
                         .disabled(b.current)
                     }
+                    Divider()
+                    Button { newBranch = "" } label: { Label("建立新分支…", systemImage: "plus") }
                 } label: {
                     Label(s.branch ?? "(沒有分支)", systemImage: "arrow.triangle.branch").font(.headline)
                 }
@@ -132,9 +148,12 @@ struct GitView: View {
                     if which == "staged" {
                         Button("全部取消暫存") { Task { await run("unstage", ["all": true]) } }.font(.caption).textCase(nil)
                     } else if title != "衝突" {
+                        Button("全部捨棄") { discarding = list.map(\.path) }.font(.caption).textCase(nil).tint(.red)
                         Button("全部暫存") { Task { await run("stage", ["paths": list.map(\.path)]) } }.font(.caption).textCase(nil)
                     }
                 }
+            } footer: {
+                if title == "衝突" { Text("合併衝突請到終端機處理。") }
             }
         }
     }

@@ -106,6 +106,19 @@ final class AppModel {
         didSet { UserDefaults.standard.set(codeSection, forKey: "codeSection") }
     }
     var codePath: [CodeRoute] = []
+    /// 程式碼頁正在看(或編輯中)的檔案:圈選時用來對回檔名和行號
+    @ObservationIgnored var openCodeFile: (path: String, content: String)?
+    /// 連結帶的「打開檔案後選這幾行」「打開後尋找」(檔案畫面載好時拿走)
+    @ObservationIgnored var codeOpenLines: (path: String, lines: ClosedRange<Int>)?
+    @ObservationIgnored var codeOpenFind: (path: String, text: String)?
+    /// 程式碼頁編輯中還沒存的內容(問管家的「目前檔案」帶這份)
+    @ObservationIgnored var openCodeDraft: (path: String, text: String)?
+    /// 程式碼頁:顯示 . 開頭的檔案(跟網頁檔案樹的「顯示 .」一樣)
+    var showHiddenFiles = UserDefaults.standard.bool(forKey: "showHiddenFiles") {
+        didSet { UserDefaults.standard.set(showHiddenFiles, forKey: "showHiddenFiles") }
+    }
+    /// 上傳這台裝置的檔案到專案
+    let uploads = UploadCenter()
     /// 看板要捲到哪一欄(連結 agentsteward://cards/<欄位>)
     var scrollToColumn: String?
     /// 打開的工作卡視窗
@@ -122,7 +135,7 @@ final class AppModel {
     /// 終端機:這個專案還沒有 herdr space,問要不要建立
     var needSpace: String?
     var termState = TermState()
-    /// 一次性的網頁畫面(建立專案、整理 spaces、拆出子資料夾、設定)
+    /// 一次性的畫面:建立專案、整理 spaces、設定各頁是網頁;拆出子資料夾是原生(SplitProjectView)
     var webSheet: WebSheet?
 
     /// 圈選提問(原生畫面用;程式碼和終端機用網頁自己的圈選)
@@ -141,9 +154,17 @@ final class AppModel {
         snap.terminalText = { [weak self] rect in await self?.web.terminalText(in: rect) }
     }
 
-    /// 開始圈選:終端機時把網頁畫面一起截進來
+    /// 開始圈選:終端機時把網頁畫面一起截進來;程式碼頁打開檔案時,圈到的字對回檔名和行號
     func beginSnap() {
+        snap.codeFile = mode == .code ? openCodeFile : nil
         snap.begin(web: mode == .terminal ? web.mainView : nil)
+    }
+
+    /// 圈選的種類:終端機 / 程式碼(有打開檔案)/ 其他畫面
+    var snapKind: String {
+        if mode == .terminal { return "terminal" }
+        if mode == .code, openCodeFile != nil, case .file = codePath.last { return "code" }
+        return "page"
     }
 
     // MARK: 專案清單(分組跟網頁的專案欄一樣)
@@ -371,6 +392,9 @@ final class AppModel {
         switch url.host() {
         case "nav":
             present(.projectPicker)
+        case "split":
+            // 拆出子資料夾(目前專案)
+            if let id = currentProjectId { present(.web(.split(id))) }
         case "snap":
             // 圈選提問(跟按圈選鈕一樣);等畫面畫好再截圖。?all=1:直接圈整個畫面(捷徑用)
             let all = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "all" } == true
@@ -380,7 +404,7 @@ final class AppModel {
                 if all {
                     // 終端機的網頁截圖是非同步的:等它合成好再圈整個畫面
                     try? await Task.sleep(for: .milliseconds(800))
-                    if let img = snap.screen { snap.finish(CGRect(origin: .zero, size: img.size), label: screenLabel, kind: mode == .terminal ? "terminal" : "page") }
+                    if let img = snap.screen { snap.finish(CGRect(origin: .zero, size: img.size), label: screenLabel, kind: snapKind) }
                 }
             }
         case "cards":
@@ -402,7 +426,22 @@ final class AppModel {
                 mode = .code
                 let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let v = { (k: String) in q.first { $0.name == k }?.value }
-                if let f = v("file") { codeSection = "files"; codePath = [.file(f)] }
+                if let f = v("file") {
+                    codeSection = "files"; codePath = [.file(f)]
+                    // &line=12 或 &line=12-20:打開後選好這幾行並捲過去;&find=字:打開後在檔案中尋找
+                    let parts = (v("line") ?? "").split(separator: "-").compactMap { Int($0) }
+                    if let a = parts.first, a > 0 { codeOpenLines = (f, a...max(a, parts.last ?? a)) }
+                    if let q = v("find"), !q.isEmpty { codeOpenFind = (f, q) }
+                    // &snap=1:打開後直接圈整個畫面問管家
+                    if v("snap") != nil {
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(2500))
+                            beginSnap()
+                            try? await Task.sleep(for: .milliseconds(300))
+                            if let img = snap.screen { snap.finish(CGRect(origin: .zero, size: img.size), label: screenLabel, kind: snapKind) }
+                        }
+                    }
+                }
                 else if let d = v("diff") { codeSection = "git"; codePath = [.diff(path: d, which: v("which") ?? "unstaged", commit: nil)] }
                 else if v("git") != nil { codeSection = "git"; codePath = [] }
             case "terminal": mode = .terminal

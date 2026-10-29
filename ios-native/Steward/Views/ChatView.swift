@@ -299,7 +299,7 @@ private struct ChatContent: View {
         loading = false
         model.chatUnread = false
         // 在程式碼頁打開:正在看的檔案當「目前檔案」
-        if model.mode == .code, case .file(let p) = model.codePath.last { currentFile = (p, nil) }
+        if model.mode == .code, case .file(let p) = model.codePath.last { currentFile = (p, model.openCodeDraft?.path == p ? model.openCodeDraft?.text : nil) }
         suggestions = (try? await api.suggestions(project: project.id)) ?? []
     }
 
@@ -394,7 +394,12 @@ private struct ChatContent: View {
     /// 開工作卡:根據目前的對話、加入的檔案和輸入框的話,請管家擬一張草稿
     private func startDraft(_ message: String) {
         guard let api = model.api, !sending else { return }
-        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 有引用一段程式:一起交給管家擬卡
+        if let q = quote, let t = q.text, !t.isEmpty {
+            text = "依照這段程式碼開工作卡\(text.isEmpty ? "" : "\n要做的事:\(text)")\n出處:\(quoteLabel(q))\n內容:\n```\n\(t.prefix(3000))\n```"
+            quote = nil
+        }
         let files = attachments.compactMap { switch $0.kind { case .projectFile(let r), .editorFile(let r, _): r; default: nil } }
         draft = ""
         sending = true

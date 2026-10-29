@@ -139,11 +139,11 @@ struct API {
     /// 圈選提問:讀得到字送文字(整個畫面的字當周圍內容),讀不到才送截圖
     func askSnap(project: String, message: String, snap: SnapResult) async throws -> ChatReply {
         let text = snap.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        var body: [String: Any] = [
-            "project": project,
-            "message": message,
-            "snap": ["kind": snap.kind, "label": snap.label, "text": text, "context": String(snap.context.prefix(12_000))],
-        ]
+        var info: [String: Any] = ["kind": snap.kind, "label": snap.label, "text": text, "context": String(snap.context.prefix(12_000))]
+        if let p = snap.path { info["path"] = p }
+        if let f = snap.from { info["from"] = f }
+        if let t = snap.to { info["to"] = t }
+        var body: [String: Any] = ["project": project, "message": message, "snap": info]
         if text.isEmpty, let a = await MainActor.run(body: { Attachment.image(snap.image) }), case .image(let data, let mime, let thumb) = a.kind {
             body["images"] = [["data": data, "mimeType": mime]]
             body["thumbs"] = [thumb]
@@ -166,10 +166,35 @@ struct API {
         return c.string ?? ""
     }
 
-    func tree(project: String, dir: String) async throws -> [FileEntry] {
+    /// hidden:連 . 開頭的檔案一起列(跟網頁檔案樹的「顯示 .」一樣)
+    func tree(project: String, dir: String, hidden: Bool = false) async throws -> [FileEntry] {
         struct R: Decodable { var entries: [FileEntry] }
-        let r: R = try await call(request(codePath(project, "tree", [URLQueryItem(name: "dir", value: dir)])))
+        var q = [URLQueryItem(name: "dir", value: dir)]
+        if hidden { q.append(URLQueryItem(name: "hidden", value: "1")) }
+        let r: R = try await call(request(codePath(project, "tree", q)))
         return r.entries
+    }
+
+    // MARK: 拆出子資料夾
+
+    struct Subdir: Decodable, Hashable, Identifiable {
+        var name: String
+        var root: String
+        var project: Bool?
+        var id: String { root }
+    }
+
+    func subdirs(project: String) async throws -> [Subdir] {
+        struct R: Decodable { var dirs: [Subdir] }
+        let r: R = try await call(request("api/projects/\(project)/subdirs"))
+        return r.dirs
+    }
+
+    /// 把一個資料夾登記成專案,回傳新專案的 id
+    func registerProject(root: String) async throws -> String {
+        struct R: Decodable { var id: String }
+        let r: R = try await call(request("api/projects", method: "POST", body: ["root": root]))
+        return r.id
     }
 
     func findFiles(project: String, query: String) async throws -> [String] {

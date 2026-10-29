@@ -18,6 +18,8 @@ final class SnapState {
     private var webFrame: CGRect?
     /// 終端機:給網頁座標的範圍,回傳那一塊終端機的原文(AppModel 接上 WebStore)
     @ObservationIgnored var terminalText: ((CGRect) async -> String?)?
+    /// 程式碼頁打開的檔案(圈選開始時記下來)
+    @ObservationIgnored var codeFile: (path: String, content: String)?
 
     /// web:終端機的網頁畫面。一般截圖截不到網頁內容,另外截下來合成進凍結的畫面
     func begin(web: WKWebView? = nil) {
@@ -57,8 +59,48 @@ final class SnapState {
             if kind == "terminal", let wf, rect.intersects(wf), let exact = await terminalText?(rect.intersection(wf).offsetBy(dx: -wf.minX, dy: -wf.minY)), !exact.isEmpty {
                 text = exact
             }
-            result = SnapResult(image: crop, text: text, context: around, label: label, kind: kind)
+            var r = SnapResult(image: crop, text: text, context: around, label: label, kind: kind)
+            // 圈到程式碼:讀到的字對回檔案的行號,改用檔案原文 + 前後 30 行(跟網頁版圈選一樣)
+            if kind == "code", let f = codeFile, let m = Self.matchLines(ocr: text, in: f.content) {
+                let lines = f.content.components(separatedBy: "\n")
+                r.text = lines[(m.from - 1)...(m.to - 1)].joined(separator: "\n")
+                r.path = f.path
+                r.from = m.from
+                r.to = m.to
+                r.label = "\(f.path) 第 \(m.from)\(m.to != m.from ? "–\(m.to)" : "") 行"
+                let a = max(0, m.from - 31), b = min(lines.count, m.to + 30)
+                r.context = lines[a..<b].enumerated().map { "\(a + $0.offset + 1): \($0.element)" }.joined(separator: "\n")
+            } else if kind == "code" {
+                r.kind = "page"
+            }
+            result = r
         }
+    }
+
+    /// 圈到的字 → 檔案的第幾行到第幾行:先看行首的行號(檢視模式左邊有行號),
+    /// 沒有就拿那一行的文字去檔案裡找(編輯模式沒有行號)
+    nonisolated static func matchLines(ocr: String, in content: String) -> (from: Int, to: Int)? {
+        let lines = content.components(separatedBy: "\n")
+        let norm = { (s: String) in s.filter { !$0.isWhitespace } }
+        let normLines = lines.map(norm)
+        var hits: [Int] = []
+        for raw in ocr.components(separatedBy: "\n") {
+            let t = raw.trimmingCharacters(in: .whitespaces)
+            if t.isEmpty { continue }
+            // 行首是行號:「12 import SwiftUI」或只有「12」
+            let head = t.prefix { $0.isNumber }
+            if let n = Int(head), n >= 1, n <= lines.count {
+                let rest = norm(String(t.dropFirst(head.count)))
+                if rest.isEmpty || normLines[n - 1].contains(rest.prefix(12)) || rest.count < 4 { hits.append(n); continue }
+            }
+            // 拿文字去找(至少 6 個字,免得太常見的短字亂對)
+            let key = norm(t)
+            if key.count >= 6, let i = normLines.firstIndex(where: { $0.contains(key) || (key.count > 12 && $0.contains(key.prefix(12))) }) {
+                hits.append(i + 1)
+            }
+        }
+        guard let lo = hits.min(), let hi = hits.max(), hi - lo < 400 else { return nil }
+        return (lo, hi)
     }
 
     /// iPhone 內建的文字辨識(繁中、簡中、英文),照閱讀順序接起來
@@ -85,10 +127,14 @@ final class SnapState {
 struct SnapResult: Identifiable {
     let id = UUID()
     let image: UIImage
-    let text: String
-    let context: String
-    let label: String
+    var text: String
+    var context: String
+    var label: String
     var kind = "page"
+    /// 程式碼:檔案路徑和第幾行到第幾行
+    var path: String?
+    var from: Int?
+    var to: Int?
 }
 
 extension UIImage {

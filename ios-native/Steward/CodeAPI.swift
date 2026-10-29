@@ -62,6 +62,32 @@ struct DiffSides: Decodable {
     var modified: String
 }
 
+struct FileStamp: Decodable {
+    var hash: String?
+    var gone: Bool?
+}
+
+struct OfficeVersion: Decodable, Hashable, Identifiable {
+    var id: String
+    var at: Double // 毫秒
+    var size: Int?
+}
+
+struct OfficeInfo: Decodable {
+    var editing: Bool?
+    var owner: String?
+    var versions: [OfficeVersion]?
+}
+
+/// 上傳進度(URLSession 每送一段就回報)
+final class UploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let onProgress: @Sendable (Double) -> Void
+    init(_ onProgress: @escaping @Sendable (Double) -> Void) { self.onProgress = onProgress }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        if totalBytesExpectedToSend > 0 { onProgress(Double(totalBytesSent) / Double(totalBytesExpectedToSend)) }
+    }
+}
+
 /// 存檔時檔案已經被別人改過(409)
 struct SaveConflict: Error {
     let message: String
@@ -77,8 +103,66 @@ extension API {
         return c.string ?? ""
     }
 
-    func readFile(project: String, path: String) async throws -> CodeFile {
-        try await call(request(codePath(project, "file", [URLQueryItem(name: "path", value: path)])), slow: true)
+    /// more:很大的檔案只給頭尾各一段,more 多載入幾行(跟網頁「載入更多」一樣每次多 2000 行)
+    func readFile(project: String, path: String, more: Int = 0) async throws -> CodeFile {
+        var q = [URLQueryItem(name: "path", value: path)]
+        if more > 0 { q.append(URLQueryItem(name: "more", value: String(more))) }
+        return try await call(request(codePath(project, "file", q)), slow: true)
+    }
+
+    /// 檔案現在的指紋(看檔案在電腦上有沒有被改過、被刪掉)
+    func stamps(project: String, paths: [String]) async throws -> [String: FileStamp] {
+        try await call(request(codePath(project, "stamps"), method: "POST", body: ["paths": paths]))
+    }
+
+    // MARK: Office 歷史版本(從 Office 存檔前留下的舊版本)
+
+    func officeInfo(project: String, path: String) async throws -> OfficeInfo {
+        try await call(request(codePath(project, "office/info", [URLQueryItem(name: "path", value: path)])))
+    }
+
+    func officeVersion(project: String, path: String, id: String) async throws -> Data {
+        let r = try request(codePath(project, "office/version", [URLQueryItem(name: "path", value: path), URLQueryItem(name: "id", value: id)]))
+        let (data, resp) = try await API.slowSession.data(for: r)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else { throw APIError.server(code, "讀不到這個版本") }
+        return data
+    }
+
+    func officeRestore(project: String, path: String, id: String) async throws {
+        struct R: Decodable { var ok: Bool? }
+        let _: R = try await call(request(codePath(project, "office/restore"), method: "POST", body: ["path": path, "id": id]))
+    }
+
+    // MARK: 上傳(跟網頁一樣一個檔案一個 PUT;同名檔案要 overwrite 才蓋,舊檔先移到電腦的垃圾桶)
+
+    enum UploadResult { case ok, exists }
+
+    /// 上傳大檔可能很久:另外一個不會 30 秒就逾時的連線
+    static let uploadSession: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest = 120
+        c.timeoutIntervalForResource = 6 * 3600
+        c.httpCookieStorage = .shared
+        return URLSession(configuration: c)
+    }()
+
+    func upload(project: String, path: String, file: URL, overwrite: Bool, progress: @escaping @Sendable (Double) -> Void) async throws -> UploadResult {
+        var r = try request(codePath(project, "upload", [URLQueryItem(name: "path", value: path), URLQueryItem(name: "overwrite", value: overwrite ? "1" : "0")]), method: "PUT")
+        r.setValue("application/octet-stream", forHTTPHeaderField: "content-type")
+        let data: Data
+        let resp: URLResponse
+        do {
+            (data, resp) = try await API.uploadSession.upload(for: r, fromFile: file, delegate: UploadProgress(progress))
+        } catch {
+            throw APIError.network(error.localizedDescription)
+        }
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if code == 409, json?["exists"] as? Bool == true { return .exists }
+        if code == 401 || code == 403 { throw APIError.needLogin(json?["error"] as? String ?? "請先登入") }
+        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? "上傳失敗") }
+        return .ok
     }
 
     /// 圖片、PDF、Notebook、Office 的原始內容

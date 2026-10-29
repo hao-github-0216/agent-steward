@@ -188,7 +188,7 @@ struct WebPage: View {
         case .settings(let s, _): c?.queryItems = [.init(name: "app", value: "1"), .init(name: "settings", value: s)]
         case .create: c?.queryItems = [.init(name: "app", value: "1"), .init(name: "open", value: "create")]
         case .tidy: c?.queryItems = [.init(name: "app", value: "1"), .init(name: "open", value: "tidy")]
-        // 拆出子資料夾畫在看板的專案說明裡:用完整網頁版(不進 app 模式)
+        // 拆出子資料夾已經是原生畫面(SplitProjectView);這裡留著網頁版當備用
         case .split(let p): c?.queryItems = [.init(name: "project", value: p), .init(name: "open", value: "split")]
         case .codeEditor:
             c?.queryItems = [.init(name: "app", value: "1")] + (model.currentProjectId.map { [.init(name: "project", value: $0)] } ?? [])

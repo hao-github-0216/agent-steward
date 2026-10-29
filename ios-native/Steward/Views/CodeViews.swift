@@ -4,6 +4,7 @@
 //   版本控制:見 GitViews.swift
 // 編譯 LaTeX、執行 Notebook、分割編輯器這些重的功能留在網頁:「在網頁版編輯器打開」
 import PDFKit
+import PhotosUI
 import QuickLook
 import SwiftUI
 
@@ -29,7 +30,6 @@ struct CodeTab: View {
                         ContentUnavailableView("還沒有專案", systemImage: "tray")
                     }
                 }
-                .overlay { BallLayer() }
                 if model.drawerOpen {
                     StewardDrawer().transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -56,6 +56,11 @@ struct CodeTab: View {
                 }
             }
         }
+        // 上傳進度(在浮動球下面一層,球不會被蓋住)
+        .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
+        // 浮動球和圈選鈕掛在整個程式碼分頁上:點進檔案、差異、提交紀錄也都在
+        .overlay { BallLayer().padding(.top, 50) }
+        .modifier(UploadConflictDialog())
     }
 }
 
@@ -96,13 +101,22 @@ struct FolderView: View {
     @State private var naming: NameAction?
     @State private var newName = ""
     @State private var trashing: FileEntry?
+    // 上傳:傳到哪個資料夾、從哪裡挑
+    @State private var uploadBase = ""
+    @State private var importing = false
+    @State private var importFolder = false
+    @State private var pickingPhotos = false
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var takingPhoto = false
+    @State private var dropTargeted = false
 
+    /// 新檔案/新資料夾帶著要建在哪個資料夾(長按資料夾「在這裡新增」)
     enum NameAction: Identifiable {
-        case newFile, newFolder, rename(FileEntry)
+        case newFile(String), newFolder(String), rename(FileEntry)
         var id: String {
             switch self {
-            case .newFile: "newFile"
-            case .newFolder: "newFolder"
+            case .newFile(let d): "newFile-\(d)"
+            case .newFolder(let d): "newFolder-\(d)"
             case .rename(let e): "rename-\(e.rel)"
             }
         }
@@ -146,17 +160,56 @@ struct FolderView: View {
             try? await Task.sleep(for: .milliseconds(250))
             results = (try? await model.api?.findFiles(project: project.id, query: q)) ?? []
         }
-        .task { await load() }
+        .task(id: model.showHiddenFiles) { await load() }
         .refreshable { await load() }
+        .onChange(of: model.uploads.refresh) { Task { await load() } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { newName = ""; naming = .newFile } label: { Label("新檔案", systemImage: "doc.badge.plus") }
-                    Button { newName = ""; naming = .newFolder } label: { Label("新資料夾", systemImage: "folder.badge.plus") }
+                    Section {
+                        Button { newName = ""; naming = .newFile(dir) } label: { Label("新檔案", systemImage: "doc.badge.plus") }
+                        Button { newName = ""; naming = .newFolder(dir) } label: { Label("新資料夾", systemImage: "folder.badge.plus") }
+                    }
+                    Section(dir.isEmpty ? "上傳到專案最上層" : "上傳到「\((dir as NSString).lastPathComponent)」") { uploadButtons(to: dir) }
+                    Section {
+                        Toggle(isOn: Binding(get: { model.showHiddenFiles }, set: { model.showHiddenFiles = $0 })) {
+                            Label("顯示 . 開頭的檔案", systemImage: "eye")
+                        }
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("新增檔案或資料夾")
+                .accessibilityLabel("新增、上傳檔案")
+            }
+        }
+        // 上傳:從「檔案」挑(檔案或整個資料夾)、從照片挑、拍照、iPad 拖進來
+        .fileImporter(isPresented: $importing, allowedContentTypes: importFolder ? [.folder] : [.item], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result, !urls.isEmpty else { return }
+            let base = uploadBase
+            Task { await startUpload(to: base) { await model.uploads.importPicked(urls) } }
+        }
+        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 30, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]), preferredItemEncoding: .compatible)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems = []
+            let base = uploadBase
+            Task { await startUpload(to: base) { await model.uploads.importPhotos(items) } }
+        }
+        .fullScreenCover(isPresented: $takingPhoto) {
+            CameraPicker(onPick: { img in
+                let base = uploadBase
+                Task { await startUpload(to: base) { model.uploads.importPhoto(img) } }
+            })
+            .ignoresSafeArea()
+        }
+        .onDrop(of: [.item], isTargeted: $dropTargeted) { providers in
+            let base = dir
+            Task { await startUpload(to: base) { await model.uploads.importDropped(providers) } }
+            return true
+        }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.accent, lineWidth: 3).padding(6).allowsHitTesting(false)
             }
         }
         .alert(alertTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
@@ -175,11 +228,30 @@ struct FolderView: View {
 
     private var alertTitle: String {
         switch naming {
-        case .newFile: "新檔案"
-        case .newFolder: "新資料夾"
+        case .newFile(let d): d == dir ? "新檔案" : "在「\((d as NSString).lastPathComponent)」新增檔案"
+        case .newFolder(let d): d == dir ? "新資料夾" : "在「\((d as NSString).lastPathComponent)」新增資料夾"
         case .rename: "重新命名"
         case nil: ""
         }
+    }
+
+    /// 上傳的四個來源(+ 選單和長按資料夾共用)
+    @ViewBuilder
+    private func uploadButtons(to base: String) -> some View {
+        Button { uploadBase = base; importFolder = false; importing = true } label: { Label("從「檔案」上傳…", systemImage: "arrow.up.doc") }
+        Button { uploadBase = base; importFolder = true; importing = true } label: { Label("上傳整個資料夾…", systemImage: "folder") }
+        Button { uploadBase = base; pickingPhotos = true } label: { Label("從照片上傳…", systemImage: "photo.on.rectangle") }
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            Button { uploadBase = base; takingPhoto = true } label: { Label("拍照上傳", systemImage: "camera") }
+        }
+    }
+
+    private func startUpload(to base: String, _ gather: () async -> [UploadItem]) async {
+        guard let api = model.api else { return }
+        guard !model.uploads.running else { model.uploads.notice("還有檔案在上傳,等它傳完"); return }
+        let items = await gather()
+        let pid = project.id
+        await model.uploads.upload(items, to: base, project: pid, api: api) { model.currentProjectId == pid }
     }
 
     @ViewBuilder
@@ -210,6 +282,10 @@ struct FolderView: View {
     private func menu(_ e: FileEntry) -> some View {
         if !e.isDir {
             Button { model.pendingChat = .file(e.rel); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
+        } else {
+            Menu { uploadButtons(to: e.rel) } label: { Label("上傳到這個資料夾", systemImage: "square.and.arrow.up") }
+            Button { newName = ""; naming = .newFile(e.rel) } label: { Label("在這裡新增檔案", systemImage: "doc.badge.plus") }
+            Button { newName = ""; naming = .newFolder(e.rel) } label: { Label("在這裡新增資料夾", systemImage: "folder.badge.plus") }
         }
         Button { newName = e.name; naming = .rename(e) } label: { Label("重新命名", systemImage: "pencil") }
         Button { UIPasteboard.general.string = e.rel } label: { Label("複製路徑", systemImage: "doc.on.doc") }
@@ -218,7 +294,7 @@ struct FolderView: View {
 
     private func load() async {
         do {
-            entries = try await model.api?.tree(project: project.id, dir: dir)
+            entries = try await model.api?.tree(project: project.id, dir: dir, hidden: model.showHiddenFiles)
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -228,10 +304,10 @@ struct FolderView: View {
     private func commitName() async {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        let join = { (n: String) in dir.isEmpty ? n : "\(dir)/\(n)" }
+        let join = { (d: String, n: String) in d.isEmpty ? n : "\(d)/\(n)" }
         switch naming {
-        case .newFile: await op("mkfile", join(name))
-        case .newFolder: await op("mkdir", join(name))
+        case .newFile(let d): await op("mkfile", join(d, name))
+        case .newFolder(let d): await op("mkdir", join(d, name))
         case .rename(let e):
             let parent = (e.rel as NSString).deletingLastPathComponent
             await op("rename", e.rel, to: parent.isEmpty ? name : "\(parent)/\(name)")
@@ -326,6 +402,19 @@ struct FileView: View {
     @State private var quickLookURL: URL?
     @State private var saveError: String?
     @State private var quickLookedOnce = false
+    /// 很大的檔案多載入的行數(跟網頁「載入更多」一樣每次多 2000 行)
+    @State private var more = 0
+    /// 目前顯示的內容的指紋:電腦上的檔案改了(agent 改檔)就自動重新載入
+    @State private var stamp: String?
+    @State private var gone = false
+    @State private var note: String?
+    /// 點行號選取的行(問管家、開工作卡、複製)
+    @State private var lineSel: ClosedRange<Int>?
+    @State private var finding = false
+    @State private var findText = ""
+    @State private var findIndex = 0
+    @FocusState private var findFocused: Bool
+    @State private var showHistory = false
 
     private var ext: String { (path as NSString).pathExtension.lowercased() }
     private var isMarkdown: Bool { ["md", "markdown"].contains(ext) }
@@ -344,8 +433,26 @@ struct FileView: View {
         .navigationTitle((path as NSString).lastPathComponent)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .safeAreaInset(edge: .top, spacing: 0) { topBars }
         .task { await load() }
+        // 沒在編輯時每 4 秒看一次電腦上的檔案有沒有被改(跟網頁一樣)
+        .task(id: editing) { await watch() }
+        .onChange(of: file?.content) { _, c in if file?.kind == "text", let c { model.openCodeFile = (path, c) } }
+        .onChange(of: draft) { _, d in
+            guard editing else { return }
+            model.openCodeFile = (path, d)
+            model.openCodeDraft = d != file?.content ? (path, d) : nil
+        }
+        .onChange(of: editing) { _, e in if !e { model.openCodeDraft = nil } }
+        .onChange(of: findText) { findIndex = 0 }
+        .onDisappear {
+            if model.openCodeFile?.path == path { model.openCodeFile = nil }
+            if model.openCodeDraft?.path == path { model.openCodeDraft = nil }
+        }
         .quickLookPreview($quickLookURL)
+        .sheet(isPresented: $showHistory) {
+            OfficeHistoryView(project: project, path: path) { Task { await reloadFromDisk(note: "已還原") } }
+        }
         .alert("存檔失敗", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
             Button("好") {}
         } message: {
@@ -354,7 +461,7 @@ struct FileView: View {
         .alert("檔案在你打開之後被改過了", isPresented: Binding(get: { conflict != nil }, set: { if !$0 { conflict = nil } })) {
             Button("用我的覆蓋", role: .destructive) { Task { await save(force: true) } }
             Button("放棄我的、載入新版") {
-                if let c = conflict { file?.content = c.diskContent; file?.hash = c.diskHash; draft = c.diskContent }
+                if let c = conflict { file?.content = c.diskContent; file?.hash = c.diskHash; stamp = c.diskHash; draft = c.diskContent }
                 editing = false
             }
             Button("取消", role: .cancel) {}
@@ -374,12 +481,21 @@ struct FileView: View {
                     .textInputAutocapitalization(.never)
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, 8)
-            } else if isNotebook, let d = (f.content ?? "").data(using: .utf8) {
+                    .findNavigator(isPresented: $finding)
+            } else if isNotebook && showPreview, let d = (f.content ?? "").data(using: .utf8) {
                 NotebookView(json: d)
             } else if isMarkdown && showPreview {
                 ScrollView { MarkdownText(f.content ?? "").padding() }
             } else {
-                CodeText(text: f.content ?? "", truncated: f.truncated.map { "檔案太大,只顯示開頭和結尾各 \($0.shown) 行(共 \($0.total) 行)" })
+                CodeText(
+                    text: f.content ?? "",
+                    truncated: f.truncated.map { "檔案太大,只顯示開頭和結尾各 \($0.shown) 行(共 \($0.total) 行)" },
+                    onMore: f.truncated == nil ? nil : { more += 2000; Task { await reloadFromDisk(note: nil) } },
+                    find: finding ? findText : "",
+                    findIndex: findIndex,
+                    // 只顯示頭尾的大檔行號不連續:不給選
+                    selection: f.truncated == nil ? $lineSel : nil
+                )
             }
         case "image":
             if let data, let img = UIImage(data: data) { ZoomableImage(image: img) } else { ProgressView() }
@@ -390,6 +506,7 @@ struct FileView: View {
                 Image(systemName: fileIcon(path)).font(.system(size: 56)).foregroundStyle(.secondary)
                 Text((path as NSString).lastPathComponent).font(.headline)
                 Button("用 Quick Look 預覽") { Task { await openQuickLook() } }.buttonStyle(.borderedProminent)
+                Button { showHistory = true } label: { Label("歷史版本", systemImage: "clock.arrow.circlepath") }.buttonStyle(.bordered)
                 Text("要編輯 Word / Excel / PowerPoint,在電腦上用 Office 打開").font(.footnote).foregroundStyle(.secondary)
             }
             .padding()
@@ -410,11 +527,17 @@ struct FileView: View {
                 Button { Task { await save(force: false) } } label: {
                     if saving { ProgressView() } else { Text("儲存").bold() }
                 }
+                .keyboardShortcut("s", modifiers: .command)
                 .disabled(saving || draft == file?.content)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { finding.toggle() } label: { Image(systemName: "magnifyingglass") }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .accessibilityLabel("在檔案中尋找")
             }
         } else {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let f = file, f.kind == "text", isMarkdown {
+                if let f = file, f.kind == "text", isMarkdown || isNotebook {
                     Picker("檢視", selection: $showPreview) {
                         Text("預覽").tag(true)
                         Text("原文").tag(false)
@@ -422,11 +545,20 @@ struct FileView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 120)
                 }
-                if let f = file, f.kind == "text", f.readonly != true, !isNotebook {
-                    Button("編輯") { draft = f.content ?? ""; editing = true; showPreview = false }
+                if let f = file, f.kind == "text", f.readonly != true, !isNotebook || !showPreview {
+                    Button("編輯") { draft = f.content ?? ""; lineSel = nil; editing = true; showPreview = false }
                 }
                 Menu {
                     Button { model.pendingChat = .file(path); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
+                    if let f = file, f.kind == "text", !(isMarkdown && showPreview), !(isNotebook && showPreview) {
+                        Button { finding = true; findFocused = true } label: { Label("在檔案中尋找", systemImage: "magnifyingglass") }
+                        if f.truncated == nil {
+                            Button { lineSel = 1...1 } label: { Label("選取幾行來問管家或開工作卡", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                        }
+                    }
+                    if file?.kind == "office" {
+                        Button { showHistory = true } label: { Label("歷史版本", systemImage: "clock.arrow.circlepath") }
+                    }
                     Button { UIPasteboard.general.string = path } label: { Label("複製路徑", systemImage: "doc.on.doc") }
                     Button { model.present(.web(.codeEditor)) } label: { Label("在網頁版編輯器打開", systemImage: "safari") }
                 } label: {
@@ -440,8 +572,11 @@ struct FileView: View {
     private func load() async {
         guard let api = model.api else { return }
         do {
-            let f = try await api.readFile(project: project.id, path: path)
+            let f = try await api.readFile(project: project.id, path: path, more: more)
             file = f
+            stamp = f.hash
+            if let o = model.codeOpenLines, o.path == path { model.codeOpenLines = nil; if f.kind == "text", f.truncated == nil { lineSel = o.lines; showPreview = false } }
+            if let o = model.codeOpenFind, o.path == path { model.codeOpenFind = nil; if f.kind == "text" { findText = o.text; finding = true; showPreview = false } }
             if f.kind == "image" || f.kind == "pdf" { data = try await api.rawFile(project: project.id, path: path) }
             // Office 檔第一次打開時自動用 Quick Look 預覽(只一次;之後用按鈕)
             if f.kind == "office", !quickLookedOnce { quickLookedOnce = true; await openQuickLook() }
@@ -463,6 +598,129 @@ struct FileView: View {
         }
     }
 
+    /// 電腦上的檔案被改了(agent 改檔、Office 存檔、LaTeX 重新產生 PDF)就重新載入;被刪掉就提示
+    private func watch() async {
+        guard !editing else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled, !editing, model.mode == .code, let api = model.api, let f = file, ["text", "image", "pdf", "office"].contains(f.kind) else { continue }
+            guard let st = try? await api.stamps(project: project.id, paths: [path])[path] else { continue }
+            if st.gone == true { gone = true; continue }
+            gone = false
+            guard let h = st.hash else { continue }
+            if stamp == nil { stamp = h } else if h != stamp { await reloadFromDisk(note: "電腦上的檔案改過了,已更新") }
+        }
+    }
+
+    private func reloadFromDisk(note msg: String?) async {
+        guard let api = model.api else { return }
+        do {
+            let f = try await api.readFile(project: project.id, path: path, more: more)
+            guard !editing else { return }
+            if f.kind == "image" || f.kind == "pdf" { data = try await api.rawFile(project: project.id, path: path) }
+            file = f
+            if let h = f.hash { stamp = h } else if let h = try? await api.stamps(project: project.id, paths: [path])[path]?.hash { stamp = h }
+            if let msg { flash(msg) }
+        } catch {}
+    }
+
+    private func flash(_ msg: String) {
+        withAnimation { note = msg }
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            if note == msg { withAnimation { note = nil } }
+        }
+    }
+
+    /// 上面的提示列:檔案被刪了、已更新、尋找、選取的行
+    @ViewBuilder
+    private var topBars: some View {
+        VStack(spacing: 0) {
+            if gone {
+                Label("這個檔案已經被刪除或改名了", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote).foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity).padding(8).background(.bar)
+            } else if let note {
+                Label(note, systemImage: "arrow.triangle.2.circlepath")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity).padding(8).background(.bar)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if finding && !editing { findBar }
+            if let sel = lineSel, !editing { selectionBar(sel) }
+        }
+    }
+
+    private var findHits: [Int] { CodeText.matches((file?.content ?? "").components(separatedBy: "\n"), findText) }
+
+    private var findBar: some View {
+        let hits = findHits
+        return HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("在檔案中尋找", text: $findText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($findFocused)
+                .onSubmit { if !hits.isEmpty { findIndex = (findIndex + 1) % hits.count } }
+            if !findText.isEmpty {
+                Text(hits.isEmpty ? "找不到" : "\(min(findIndex, hits.count - 1) + 1)/\(hits.count)")
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            Button { findIndex = (findIndex - 1 + hits.count) % max(hits.count, 1) } label: { Image(systemName: "chevron.up") }
+                .disabled(hits.isEmpty).accessibilityLabel("上一個")
+            Button { findIndex = (findIndex + 1) % max(hits.count, 1) } label: { Image(systemName: "chevron.down") }
+                .disabled(hits.isEmpty).accessibilityLabel("下一個")
+            Button("完成") { finding = false; findText = "" }
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.bar)
+        .onAppear { findFocused = true }
+    }
+
+    private func selectionBar(_ sel: ClosedRange<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(lineLabel(sel)).font(.subheadline.weight(.semibold)).monospacedDigit()
+                Spacer(minLength: 4)
+                Button("問管家") { askLines(sel) }
+                Button("開工作卡") { cardLines(sel) }
+                Button("複製") { UIPasteboard.general.string = lineText(sel); flash("已複製 \(lineLabel(sel))"); lineSel = nil }
+                Button { lineSel = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).accessibilityLabel("取消選取")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Text("點左邊的行號選取;再點另一個行號選一段範圍").font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func lineLabel(_ sel: ClosedRange<Int>) -> String {
+        sel.lowerBound == sel.upperBound ? "第 \(sel.lowerBound) 行" : "第 \(sel.lowerBound)–\(sel.upperBound) 行"
+    }
+
+    private func lineText(_ sel: ClosedRange<Int>) -> String {
+        let lines = (file?.content ?? "").components(separatedBy: "\n")
+        let lo = max(1, sel.lowerBound), hi = min(lines.count, sel.upperBound)
+        return lo <= hi ? lines[(lo - 1)..<hi].joined(separator: "\n") : ""
+    }
+
+    /// 選取的行 → 問管家(當成引用,跟網頁編輯器右鍵「問管家」一樣)
+    private func askLines(_ sel: ClosedRange<Int>) {
+        model.pendingChat = .quote(ChatQuote(path: path, from: sel.lowerBound, to: sel.upperBound, text: lineText(sel)))
+        lineSel = nil
+        model.present(.chat)
+    }
+
+    /// 選取的行 → 請管家擬工作卡(跟圈選的「開工作卡」一樣,擬好可以改再放進提案)
+    private func cardLines(_ sel: ClosedRange<Int>) {
+        model.pendingChat = .draft("依照這段程式碼開工作卡\n出處:\(path) \(lineLabel(sel))\n內容:\n```\n\(lineText(sel).prefix(3000))\n```")
+        lineSel = nil
+        model.present(.chat)
+    }
+
     private func save(force: Bool) async {
         guard let api = model.api else { return }
         saving = true
@@ -471,6 +729,7 @@ struct FileView: View {
             let hash = try await api.saveFile(project: project.id, path: path, content: draft, baseHash: file?.hash, force: force)
             file?.content = draft
             file?.hash = hash
+            stamp = hash
             editing = false
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch let c as SaveConflict {
@@ -482,35 +741,94 @@ struct FileView: View {
     }
 }
 
-/// 唯讀的程式碼:左邊行號、等寬字、可以左右捲(長行不折)
+/// 唯讀的程式碼:左邊行號、等寬字、可以左右捲(長行不折)。
+/// 尋找時符合的行標黃色、目前這個捲過去;點行號選行(再點另一個行號選一段範圍)
 struct CodeText: View {
     let text: String
     var truncated: String?
+    var onMore: (() -> Void)?
+    var find = ""
+    var findIndex = 0
+    var selection: Binding<ClosedRange<Int>?>?
+
+    /// 含有關鍵字的行(從 0 開始,不分大小寫)
+    static func matches(_ lines: [String], _ q: String) -> [Int] {
+        let q = q.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return [] }
+        return lines.indices.filter { lines[$0].range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
 
     var body: some View {
         let lines = text.components(separatedBy: "\n")
         let width = String(lines.count).count
-        ScrollView([.vertical, .horizontal]) {
-            VStack(alignment: .leading, spacing: 0) {
-                if let truncated {
-                    Text(truncated).font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
-                }
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(String(i + 1).leftPad(width))
-                                .foregroundStyle(.tertiary)
-                            Text(line.isEmpty ? " " : line)
-                                .textSelection(.enabled)
+        let hits = Self.matches(lines, find)
+        let hitSet = Set(hits)
+        let current = hits.isEmpty ? nil : hits[min(findIndex, hits.count - 1)]
+        let sel = selection?.wrappedValue
+        GeometryReader { geo in
+            ScrollViewReader { proxy in
+                ScrollView([.vertical, .horizontal]) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if let truncated {
+                            HStack(spacing: 12) {
+                                Text(truncated).foregroundStyle(.secondary)
+                                if let onMore { Button("載入更多", action: onMore) }
+                            }
+                            .font(.caption)
+                            .padding(.bottom, 8)
                         }
-                        .font(.system(.footnote, design: .monospaced))
-                        .fixedSize(horizontal: true, vertical: false)
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    Text(String(i + 1).leftPad(width))
+                                        .foregroundStyle(sel?.contains(i + 1) == true ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.tertiary))
+                                        .padding(.horizontal, 4)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { tap(i + 1) }
+                                    Text(line.isEmpty ? " " : line)
+                                        .textSelection(.enabled)
+                                }
+                                .font(.system(.footnote, design: .monospaced))
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(minWidth: max(geo.size.width - 24, 0), alignment: .leading)
+                                .background(background(i, sel: sel, hit: hitSet.contains(i), current: i == current))
+                                .id(i)
+                            }
+                        }
                     }
+                    .padding(.vertical)
+                    .padding(.horizontal, 12)
+                }
+                .onChange(of: current) { _, c in
+                    if let c { withAnimation { proxy.scrollTo(c, anchor: UnitPoint(x: 0, y: 0.35)) } }
+                }
+                .onAppear {
+                    if let current { proxy.scrollTo(current, anchor: UnitPoint(x: 0, y: 0.35)) }
+                    else if let sel, sel.lowerBound > 1 { proxy.scrollTo(sel.lowerBound - 1, anchor: UnitPoint(x: 0, y: 0.3)) }
                 }
             }
-            .padding()
         }
         .background(Color(.systemBackground))
+    }
+
+    private func background(_ i: Int, sel: ClosedRange<Int>?, hit: Bool, current: Bool) -> Color {
+        if sel?.contains(i + 1) == true { return Theme.accent.opacity(0.16) }
+        if current { return Color.yellow.opacity(0.45) }
+        if hit { return Color.yellow.opacity(0.18) }
+        return .clear
+    }
+
+    /// 點行號:沒選 → 選這行;點同一行 → 取消;點範圍裡面 → 從這行重選;點外面 → 延伸範圍
+    private func tap(_ n: Int) {
+        guard let selection else { return }
+        if let s = selection.wrappedValue {
+            if s.lowerBound == n && s.upperBound == n { selection.wrappedValue = nil }
+            else if s.contains(n) { selection.wrappedValue = n...n }
+            else { selection.wrappedValue = min(s.lowerBound, n)...max(s.upperBound, n) }
+        } else {
+            selection.wrappedValue = n...n
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
     }
 }
 
@@ -607,6 +925,119 @@ struct NotebookView: View {
                 Section {} footer: { Text("要執行 Notebook:右上「⋯」→ 在網頁版編輯器打開。") }
             }
             .listStyle(.insetGrouped)
+        }
+    }
+}
+
+/// Office 檔的歷史版本:每次從 Office 存檔前留下的舊版本(最近 20 版、30 天內),可以預覽、還原(跟網頁一樣)
+struct OfficeHistoryView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let project: Project
+    let path: String
+    let onRestored: () -> Void
+    @State private var info: OfficeInfo?
+    @State private var error: String?
+    @State private var busy: String?
+    @State private var restoring: OfficeVersion?
+    @State private var preview: URL?
+
+    private var name: String { (path as NSString).lastPathComponent }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if info?.editing == true {
+                    Section {
+                        Label("這個檔案正在電腦的 Office 編輯中\(info?.owner.map { "(\($0))" } ?? "")", systemImage: "pencil.circle")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                Section {
+                    ForEach(info?.versions ?? []) { v in
+                        Button { Task { await open(v) } } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(Self.time(v.at)).foregroundStyle(.primary)
+                                    if let size = v.size {
+                                        Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if busy == v.id { ProgressView() } else { Image(systemName: "eye").foregroundStyle(.secondary) }
+                            }
+                        }
+                        .swipeActions { Button("還原") { restoring = v }.tint(.orange) }
+                        .contextMenu {
+                            Button { Task { await open(v) } } label: { Label("預覽", systemImage: "eye") }
+                            Button { restoring = v } label: { Label("還原成這個版本", systemImage: "clock.arrow.circlepath") }
+                        }
+                    }
+                } footer: {
+                    if let vs = info?.versions {
+                        Text(vs.isEmpty ? "還沒有歷史版本。從電腦的 Office 存檔之後,每次存檔前的版本會留在這裡。" : "每次從 Office 存檔前會留下舊版本(最近 20 版、30 天內)。點一下預覽;左滑或長按可以還原,還原時目前的版本也會先留一份。")
+                    }
+                }
+                if let error { Section { Text(error).foregroundStyle(.red) } }
+            }
+            .listStyle(.insetGrouped)
+            .overlay { if info == nil && error == nil { ProgressView() } }
+            .navigationTitle("歷史版本 · \(name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+            .task { await load() }
+            .refreshable { await load() }
+            .quickLookPreview($preview)
+            .confirmationDialog("還原這個版本?", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), titleVisibility: .visible, presenting: restoring) { v in
+                Button("還原") { Task { await restore(v) } }
+            } message: { v in
+                Text("把「\(name)」還原成 \(Self.time(v.at)) 的版本?目前的版本會先留一份在歷史版本裡。\(info?.editing == true ? "\n注意:這個檔案正在 Office 編輯中,還原後請在 Office 重新打開,否則 Office 存檔時會蓋掉還原的內容。" : "")")
+            }
+        }
+    }
+
+    static func time(_ ms: Double) -> String {
+        Date(timeIntervalSince1970: ms / 1000).formatted(.dateTime.year().month().day().hour().minute())
+    }
+
+    private func load() async {
+        do {
+            info = try await model.api?.officeInfo(project: project.id, path: path)
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// 用 Quick Look 預覽舊版本(副檔名要對,Quick Look 才認得)
+    private func open(_ v: OfficeVersion) async {
+        guard let api = model.api else { return }
+        busy = v.id
+        defer { busy = nil }
+        do {
+            let d = try await api.officeVersion(project: project.id, path: path, id: v.id)
+            let base = (name as NSString).deletingPathExtension, ext = (name as NSString).pathExtension
+            let stamp = Date(timeIntervalSince1970: v.at / 1000).formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false).timeSeparator(.omitted))
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(base)(\(stamp)).\(ext)")
+            try d.write(to: url, options: .atomic)
+            preview = url
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func restore(_ v: OfficeVersion) async {
+        guard let api = model.api else { return }
+        busy = v.id
+        defer { busy = nil }
+        do {
+            try await api.officeRestore(project: project.id, path: path, id: v.id)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            onRestored()
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 }

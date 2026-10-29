@@ -25,7 +25,7 @@ struct AppShell: View {
         // 圈選層(看板用的原生圈選):截圖鋪滿螢幕,提示放在安全區域裡
         .overlay {
             if let screen = snap.screen {
-                SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel, kind: model.mode == .terminal ? "terminal" : "page") }, onCancel: { snap.cancel() })
+                SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel, kind: model.snapKind) }, onCancel: { snap.cancel() })
             }
         }
         // 從底下升起的視窗都掛在這裡;收好時叫 drainPending,接著打開排隊的下一個
@@ -46,7 +46,10 @@ struct AppShell: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $model.showSettings, onDismiss: { model.drainPending() }) { SettingsView() }
-        .sheet(item: $model.webSheet, onDismiss: { model.drainPending() }) { WebSheetView(sheet: $0) }
+        .sheet(item: $model.webSheet, onDismiss: { model.drainPending() }) { sheet in
+            // 拆出子資料夾是原生畫面;其他(建立專案、整理 spaces、設定各頁)還是網頁
+            if case .split(let p) = sheet { SplitProjectView(projectId: p) } else { WebSheetView(sheet: sheet) }
+        }
         .sheet(isPresented: $model.showProjectPicker, onDismiss: { model.drainPending() }) { ProjectPicker() }
         .alert("這個專案還沒有 herdr space", isPresented: Binding(get: { model.mode == .terminal && model.needSpace != nil && model.needSpace == model.currentProjectId }, set: { if !$0 { model.needSpace = nil } })) {
             Button("建立並跳過去") { model.web.createSpace(); model.needSpace = nil }
