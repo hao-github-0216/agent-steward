@@ -1871,8 +1871,11 @@ function hookClipboard() {
 			st.id = "steward-no-scrollbar";
 			st.textContent = ".xterm .xterm-viewport{scrollbar-width:none!important}.xterm .xterm-viewport::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}";
 			win.document.head.appendChild(st);
-			win.dispatchEvent(new win.Event("resize")); // 讓 xterm 把原本留給捲動條的寬度拿回來
 		}
+		// 只藏捲動條不夠:xterm 排欄數時只要有捲動緩衝區就會先扣掉捲動條的寬度,右邊會空一條。
+		// herdr 自己處理捲動,用不到 xterm 的緩衝區,設成 0 就不扣了
+		t.options.scrollback = 0;
+		win.dispatchEvent(new win.Event("resize"));
 	} catch {}
 	clog("hooked", { secure: win.isSecureContext, proto: location.protocol, host: location.host, ua: navigator.userAgent, clip: !!win.navigator.clipboard?.writeText });
 	// 記錄滑鼠放開(對照「有拖曳但 herdr 沒送複製」的情況)
