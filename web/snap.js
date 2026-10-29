@@ -51,11 +51,15 @@
 		}
 		if (e.repeat || !matchKey(e, keySpec())) return;
 		e.preventDefault(); e.stopImmediatePropagation();
+		// iPhone/iPad app:用 app 自己的圈選(Apple 樣式)
+		if (inApp()) { toApp({ type: "snap" }); return; }
 		start();
 	}
 	document.addEventListener("keydown", onKey, true);
 	window.snapHookFrame = (win) => { try { win.document.addEventListener("keydown", onKey, true); } catch { /* 跨來源:不會發生 */ } };
 	window.snapStart = () => start();
+	// iPhone/iPad app 的原生圈選:圈到終端機時,用這個拿那一塊的原文(rect 是網頁畫面的座標)
+	window.snapTermText = (rect) => { try { const r = termExtract(rect); return r.error ? { error: r.error } : { text: r.text }; } catch (e) { return { error: String(e) }; } };
 	window.snapKeyDefault = KEY_DEFAULT;
 	$("ballSnap")?.addEventListener("click", () => start());
 
