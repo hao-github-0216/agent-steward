@@ -66,6 +66,22 @@ final class WebStore {
     /// 圈選:程式碼帶行號和前後文、終端機分得出是哪個 agent 窗格,用網頁自己的圈選
     func snap() { js("window.snapStart && window.snapStart()") }
 
+    /// 終端機的網頁畫面(圈選時截圖用);還沒打開過就是 nil
+    var mainView: WKWebView? { main }
+
+    /// 圈選:網頁座標的範圍 → 那一塊終端機的原文
+    func terminalText(in rect: CGRect) async -> String? {
+        guard let main, ready else { return nil }
+        let js = "window.snapTermText ? window.snapTermText({ left: \(rect.minX), top: \(rect.minY), right: \(rect.maxX), bottom: \(rect.maxY) }) : null"
+        let r = try? await main.evaluateJavaScript(js)
+        return (r as? [String: Any])?["text"] as? String
+    }
+
+    /// 把文字貼進終端機目前的輸入框(不按 Enter,讓使用者看過再送)
+    func pasteToTerminal(_ text: String) {
+        js("(() => { const t = window.xterm && xterm(); if (!t) return false; t.paste(\(Self.jsString(text))); window.focusTerm && focusTerm(); return true })()")
+    }
+
     func createSpace() { js("window.enterTerminal && enterTerminal({ create: true })") }
 
     /// 開支線(here = 同資料夾開,不建 worktree)

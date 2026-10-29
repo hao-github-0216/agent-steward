@@ -25,7 +25,7 @@ struct AppShell: View {
         // 圈選層(看板用的原生圈選):截圖鋪滿螢幕,提示放在安全區域裡
         .overlay {
             if let screen = snap.screen {
-                SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel) }, onCancel: { snap.cancel() })
+                SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel, kind: model.mode == .terminal ? "terminal" : "page") }, onCancel: { snap.cancel() })
             }
         }
         // 從底下升起的視窗都掛在這裡;收好時叫 drainPending,接著打開排隊的下一個
@@ -246,13 +246,13 @@ struct BallLayer: View {
     }
 }
 
-/// 圈選鈕:看板、程式碼用 iPhone 的文字辨識;終端機用網頁的圈選(分得出是哪個 agent 窗格、可以交給它)
+/// 圈選鈕:三個分頁都用 app 自己的圈選(iPhone 的文字辨識);終端機圈的會請管家認出是哪個 agent 窗格
 struct SnapButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Button {
-            if model.mode.isWeb { model.web.snap() } else { model.snap.begin() }
+            model.beginSnap()
         } label: {
             Image(systemName: "text.viewfinder")
                 .font(.title3)

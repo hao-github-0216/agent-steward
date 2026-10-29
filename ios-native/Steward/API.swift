@@ -142,13 +142,19 @@ struct API {
         var body: [String: Any] = [
             "project": project,
             "message": message,
-            "snap": ["kind": "page", "label": snap.label, "text": text, "context": String(snap.context.prefix(12_000))],
+            "snap": ["kind": snap.kind, "label": snap.label, "text": text, "context": String(snap.context.prefix(12_000))],
         ]
         if text.isEmpty, let a = await MainActor.run(body: { Attachment.image(snap.image) }), case .image(let data, let mime, let thumb) = a.kind {
             body["images"] = [["data": data, "mimeType": mime]]
             body["thumbs"] = [thumb]
         }
         return try await call(request("api/chat", method: "POST", body: body), slow: true)
+    }
+
+    /// 圈選的「交給這個 agent」:herdr 切到那個窗格(接著 app 把內容貼進它的輸入框)
+    func snapAgent(pane: String) async throws {
+        struct R: Decodable { var ok: Bool? }
+        let _: R = try await call(request("api/snap/agent", method: "POST", body: ["pane": pane]))
     }
 
     // MARK: 專案檔案(附檔案用)

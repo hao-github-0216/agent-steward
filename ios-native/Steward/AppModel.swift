@@ -138,6 +138,12 @@ final class AppModel {
     init() {
         phase = server == nil ? .setup : .checking
         web = WebStore(model: self)
+        snap.terminalText = { [weak self] rect in await self?.web.terminalText(in: rect) }
+    }
+
+    /// 開始圈選:終端機時把網頁畫面一起截進來
+    func beginSnap() {
+        snap.begin(web: mode == .terminal ? web.mainView : nil)
     }
 
     // MARK: 專案清單(分組跟網頁的專案欄一樣)
@@ -366,8 +372,17 @@ final class AppModel {
         case "nav":
             present(.projectPicker)
         case "snap":
-            // 圈選提問(跟按圈選鈕一樣);等畫面畫好再截圖
-            Task { try? await Task.sleep(for: .milliseconds(600)); if mode.isWeb { web.snap() } else { snap.begin() } }
+            // 圈選提問(跟按圈選鈕一樣);等畫面畫好再截圖。?all=1:直接圈整個畫面(捷徑用)
+            let all = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "all" } == true
+            Task {
+                try? await Task.sleep(for: .milliseconds(all ? 1500 : 600))
+                beginSnap()
+                if all {
+                    // 終端機的網頁截圖是非同步的:等它合成好再圈整個畫面
+                    try? await Task.sleep(for: .milliseconds(800))
+                    if let img = snap.screen { snap.finish(CGRect(origin: .zero, size: img.size), label: screenLabel, kind: mode == .terminal ? "terminal" : "page") }
+                }
+            }
         case "cards":
             mode = .board
             boardCollapsed = false
@@ -422,6 +437,9 @@ final class AppModel {
             present(.chat)
         case "needSpace":
             needSpace = msg["project"] as? String
+        case "snap":
+            // iPad 外接鍵盤在終端機按 Alt+S:用 app 自己的圈選
+            beginSnap()
         case "termState":
             let b = msg["branch"] as? [String: Any]
             termState = TermState(agent: msg["agent"] as? Bool ?? false, branchMain: b?["mainLabel"] as? String, mainAlive: b?["mainAlive"] as? Bool ?? false)

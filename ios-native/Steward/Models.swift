@@ -188,6 +188,18 @@ struct ChatReply: Codable {
     var me: ChatEntry?
     var bot: ChatEntry?
     var card: Card?
+    /// 圈選提問:管家認出來圈的是哪個專案、哪個 agent 窗格(終端機才有窗格)
+    var snap: SnapReply?
+}
+
+struct SnapReply: Codable {
+    var project: String?
+    var pane: SnapPane?
+}
+
+struct SnapPane: Codable {
+    var paneId: String
+    var agent: String?
 }
 
 struct Suggestions: Codable {

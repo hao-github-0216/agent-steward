@@ -27,7 +27,7 @@
 | 專案說明(目標、目前進度/補建、下一步、卡住的地方、重要決定、最近的工作、herdr space、隱私專案、拆出子資料夾) | 同樣內容,清單分段;隱私專案是系統開關 | 系統清單 |
 | 工作卡視窗(核准派工/不要、重新派工/標成完成、重做一次、在終端機看這個窗格) | 同樣的按鈕和規則 | 系統視窗 |
 | 浮動球(貓)→ 問管家面板(清除紀錄、建議問題、引用、＋檔案/＋圖片/目前檔案、開工作卡、改用備用模型) | 同樣的功能;對話是 iMessage 式泡泡,開工作卡在右上,清除紀錄在「⋯」(會先確認),附件在輸入框左邊「＋」 | 系統視窗、iMessage 式 |
-| 圈選鈕(貓旁邊) | 同一個位置、只有這一顆:看板用 iPhone 的文字辨識;程式碼/終端機用網頁的圈選 | — |
+| 圈選鈕(貓旁邊)、Alt+S | 同一個位置、只有這一顆,三個分頁都用 app 自己的圈選(系統視窗):看板/程式碼用 iPhone 的文字辨識,終端機直接拿圈到的終端機原文;終端機圈的管家會認出是哪個 agent 窗格,可以「交給這個 agent」(貼進它的輸入框,不按 Enter) | 原生 |
 | 程式碼:檔案(瀏覽、搜尋、新增/改名/刪除、Git 標記)、編輯器、預覽 | 原生:系統清單一層層點進資料夾;程式碼/文字用原生檢視(行號)和編輯(存檔衝突會問);Markdown 預覽/原文;圖片可縮放、PDF 用 PDFKit、Word/Excel/PowerPoint 用 Quick Look、Notebook 顯示內容;長按/左滑:問管家這個檔案、重新命名、複製路徑、移到垃圾桶 | 原生 |
 | 程式碼:Git(分支、拉取/推送/抓取、暫存/取消暫存/捨棄、提交、AI 提交訊息、差異、提交紀錄) | 原生:同樣的功能;左滑暫存/捨棄(捨棄會先確認);差異是綠/紅統一格式 | 原生 |
 | 程式碼:編譯 LaTeX、執行 Notebook、分割編輯器 | 檔案右上「⋯ → 在網頁版編輯器打開」 | 網頁 |
@@ -86,7 +86,7 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 模擬器測試:
 - 先填好管家網址:`xcrun simctl spawn <UDID> defaults write io.github.haogithub0216.agentsteward.native serverURL https://…/`
 - 直接打開某個畫面:`xcrun simctl launch <UDID> io.github.haogithub0216.agentsteward.native -noPush YES -openURL agentsteward://…`
-  - `project/<id>`(看板)、`project/<id>/chat|code|terminal`、`card/<id>`、`cards/<欄位>`、`nav`(專案清單)、`snap`(圈選)
+  - `project/<id>`(看板)、`project/<id>/chat|code|terminal`、`card/<id>`、`cards/<欄位>`、`nav`(專案清單)、`snap`(圈選)、`snap?all=1`(圈整個畫面)
   - 程式碼頁:`project/<id>/code?file=<路徑>`、`?git=1`、`?diff=<路徑>&which=<staged|unstaged|untracked>`
   - 注意:模擬器的 `simctl spawn … defaults write` 寫不進 app 自己已經存過的設定(例如上次的模式),要改 app 容器裡的 plist
   - `-noPush YES`:不問推播權限(截圖用)

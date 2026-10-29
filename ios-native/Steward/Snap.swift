@@ -4,6 +4,7 @@
 import SwiftUI
 import UIKit
 import Vision
+import WebKit
 
 @MainActor
 @Observable
@@ -13,26 +14,50 @@ final class SnapState {
     /// 圈好的結果;有值時顯示提問小框
     var result: SnapResult?
 
-    func begin() {
+    /// 終端機:網頁畫面在視窗裡的位置(圈好後換算成網頁座標拿原文)
+    private var webFrame: CGRect?
+    /// 終端機:給網頁座標的範圍,回傳那一塊終端機的原文(AppModel 接上 WebStore)
+    @ObservationIgnored var terminalText: ((CGRect) async -> String?)?
+
+    /// web:終端機的網頁畫面。一般截圖截不到網頁內容,另外截下來合成進凍結的畫面
+    func begin(web: WKWebView? = nil) {
         guard let window = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene }).flatMap(\.windows).first(where: \.isKeyWindow) else { return }
-        let r = UIGraphicsImageRenderer(bounds: window.bounds)
-        screen = r.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: false) }
+        let base = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: false) }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        webFrame = nil
+        guard let web, web.window === window, !web.isHidden else { screen = base; return }
+        let frame = web.convert(web.bounds, to: window)
+        web.takeSnapshot(with: nil) { [weak self] img, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                guard let img else { self.screen = base; return }
+                self.webFrame = frame
+                self.screen = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                    base.draw(at: .zero)
+                    img.draw(in: frame)
+                }
+            }
+        }
     }
 
     func cancel() { screen = nil }
 
-    /// rect 是畫面上的點座標;裁下來、讀字
-    func finish(_ rect: CGRect, label: String) {
+    /// rect 是畫面上的點座標;裁下來、讀字。kind:terminal(終端機,管家會認出是哪個 agent 窗格)或 page
+    func finish(_ rect: CGRect, label: String, kind: String = "page") {
         guard let screen, rect.width > 12, rect.height > 12 else { cancel(); return }
         let crop = screen.cropped(to: rect)
         self.screen = nil
+        let wf = webFrame
         Task {
             async let inside = Self.ocr(crop)
             async let whole = Self.ocr(screen)
-            let (text, around) = await (inside, whole)
-            result = SnapResult(image: crop, text: text, context: around, label: label)
+            var (text, around) = await (inside, whole)
+            // 圈到終端機:用終端機裡的原文(比文字辨識準,跟網頁版圈選一樣)
+            if kind == "terminal", let wf, rect.intersects(wf), let exact = await terminalText?(rect.intersection(wf).offsetBy(dx: -wf.minX, dy: -wf.minY)), !exact.isEmpty {
+                text = exact
+            }
+            result = SnapResult(image: crop, text: text, context: around, label: label, kind: kind)
         }
     }
 
@@ -63,6 +88,7 @@ struct SnapResult: Identifiable {
     let text: String
     let context: String
     let label: String
+    var kind = "page"
 }
 
 extension UIImage {
@@ -133,7 +159,7 @@ struct SnapOverlay: View {
     }
 }
 
-/// 圈好之後的提問小框
+/// 圈好之後的提問視窗(Apple 樣式:系統清單 + iMessage 式輸入列)
 struct SnapSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -143,11 +169,15 @@ struct SnapSheet: View {
     @State private var turns: [(q: String, a: String, error: Bool)] = []
     @State private var busy = false
     @State private var showText = false
+    /// 管家認出來圈的是哪個 agent 窗格(終端機才有)
+    @State private var pane: SnapPane?
+    @State private var info: String?
+    @FocusState private var inputFocused: Bool
 
-    private static let quick: [(String, String)] = [
-        ("解釋", "解釋這段內容"),
-        ("翻譯", "把這段翻譯成繁體中文;如果本來就是中文,翻成英文"),
-        ("找錯", "這裡有什麼錯誤或問題?說明原因和怎麼修"),
+    private static let quick: [(String, String, String)] = [
+        ("解釋", "lightbulb", "解釋這段內容"),
+        ("翻譯", "character.book.closed", "把這段翻譯成繁體中文;如果本來就是中文,翻成英文"),
+        ("找錯", "ladybug", "這裡有什麼錯誤或問題?說明原因和怎麼修"),
     ]
 
     init(snap: SnapResult, projectId: String) {
@@ -156,92 +186,105 @@ struct SnapSheet: View {
     }
 
     private var hasText: Bool { !snap.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var lastAnswer: String? { turns.last(where: { !$0.error })?.a }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+            List {
+                Section {
                     Image(uiImage: snap.image)
                         .resizable().scaledToFit()
-                        .frame(maxHeight: 160)
+                        .frame(maxWidth: .infinity, maxHeight: 180)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(.separator)))
+                        .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
                     DisclosureGroup(isExpanded: $showText) {
                         Text(hasText ? snap.text : "沒有讀到文字,會把圈到的圖片送給管家看。")
                             .font(.footnote).foregroundStyle(.secondary)
                             .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     } label: {
-                        Text(hasText ? "讀到的文字(\(snap.text.count) 字)" : "沒有讀到文字").font(.footnote)
+                        Label(hasText ? "讀到的文字(\(snap.text.count) 字)" : "沒有讀到文字", systemImage: "text.viewfinder")
                     }
-                    Picker("問哪個專案", selection: $projectId) {
-                        ForEach(model.projects) { p in Text(p.name).tag(p.id) }
-                    }
-                    .disabled(busy || !turns.isEmpty)
-                    // 跟網頁的圈選小框一樣:還沒問之前是快速問題 + 開工作卡
-                    if turns.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(Self.quick, id: \.0) { q in
-                                    Button(q.0) { Task { await ask(q.1, shown: q.0) } }.buttonStyle(.bordered)
-                                }
-                                Button("開工作卡") { Task { await draft() } }.buttonStyle(.bordered)
-                            }
-                        }
-                        .disabled(busy)
-                    }
-                    ForEach(Array(turns.enumerated()), id: \.offset) { _, t in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(t.q).font(.caption).foregroundStyle(.secondary)
-                            if t.error { Text(t.a).foregroundStyle(.red) } else { MarkdownText(t.a) }
-                        }
-                        Divider()
-                    }
-                    if busy { HStack { ProgressView(); Text("管家想一下…").font(.footnote).foregroundStyle(.secondary) } }
-                    // 問過之後:複製、到問管家繼續、開工作卡(網頁的 sp-acts)
-                    if !turns.isEmpty && !busy {
-                        HStack(spacing: 8) {
-                            if let last = turns.last(where: { !$0.error })?.a {
-                                Button("複製") { UIPasteboard.general.string = last }
-                            }
-                            Button("到問管家繼續") {
-                                model.switchProject(projectId)
-                                model.pendingPresentation = .chat // 圈選小框收好再打開問管家
-                                dismiss()
-                            }
-                            Button("開工作卡") { Task { await draft() } }
-                        }
-                        .buttonStyle(.bordered)
-                    }
+                } footer: {
+                    Text(snap.label)
                 }
-                .padding()
-            }
-            .safeAreaInset(edge: .bottom) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    // 寫問題按送出;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
-                    TextField(turns.isEmpty ? "問這一塊,或寫要做的事(再按「開工作卡」)…" : "接著問,或寫要做的事(再按「開工作卡」)…", text: $question, axis: .vertical)
-                        .lineLimit(1...4)
-                        .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
-                    Button {
-                        let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
-                        question = ""
-                        Task { await ask(q.isEmpty ? "解釋這段內容" : q, shown: q.isEmpty ? "解釋" : q) }
+                Section {
+                    Picker(selection: $projectId) {
+                        ForEach(model.projects) { p in Text(p.name).tag(p.id) }
                     } label: {
-                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
+                        Label("問哪個專案", systemImage: "folder")
                     }
-                    .accessibilityLabel("送出")
+                    .pickerStyle(.menu)
+                    .disabled(busy || !turns.isEmpty)
+                }
+                if turns.isEmpty {
+                    Section("快速問") {
+                        ForEach(Self.quick, id: \.0) { q in
+                            Button { Task { await ask(q.2, shown: q.0) } } label: { Label(q.0, systemImage: q.1) }
+                        }
+                        Button { Task { await draft() } } label: { Label("開工作卡", systemImage: "rectangle.stack.badge.plus") }
+                    }
                     .disabled(busy)
                 }
-                .padding()
-                .background(.bar)
+                ForEach(Array(turns.enumerated()), id: \.offset) { _, t in
+                    Section {
+                        if t.error { Text(t.a).foregroundStyle(.red) } else { MarkdownText(t.a) }
+                    } header: {
+                        Text(t.q).textCase(nil)
+                    }
+                }
+                if busy {
+                    Section { HStack(spacing: 10) { ProgressView(); Text("管家想一下…").foregroundStyle(.secondary) } }
+                }
+                if !turns.isEmpty && !busy {
+                    Section {
+                        if let a = lastAnswer {
+                            Button { UIPasteboard.general.string = a; info = "已複製" } label: { Label("複製回答", systemImage: "doc.on.doc") }
+                        }
+                        if let pane, lastAnswer != nil {
+                            Button { Task { await handToAgent(pane) } } label: { Label("交給 \(pane.agent ?? "這個 agent")", systemImage: "arrow.turn.down.right") }
+                        }
+                        Button {
+                            model.switchProject(projectId)
+                            model.pendingPresentation = .chat // 圈選視窗收好再打開問管家
+                            dismiss()
+                        } label: { Label("到問管家繼續", systemImage: "bubble.left.and.text.bubble.right") }
+                        Button { Task { await draft() } } label: { Label("開工作卡", systemImage: "rectangle.stack.badge.plus") }
+                    } footer: {
+                        if let info { Text(info) } else if pane != nil { Text("「交給」會把圈到的內容和管家的建議貼進那個 agent 的輸入框,看過再按 Enter 送出。") }
+                    }
+                }
             }
+            .listStyle(.insetGrouped)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom) { inputBar }
             .navigationTitle("圈選提問")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
             }
         }
+    }
+
+    /// iMessage 式的輸入列:寫問題按送出;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
+    private var inputBar: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField(turns.isEmpty ? "問這一塊,或寫要做的事(再按「開工作卡」)…" : "接著問,或寫要做的事(再按「開工作卡」)…", text: $question, axis: .vertical)
+                .lineLimit(1...4)
+                .focused($inputFocused)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+            Button {
+                let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+                question = ""
+                Task { await ask(q.isEmpty ? "解釋這段內容" : q, shown: q.isEmpty ? "解釋" : q) }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
+            }
+            .accessibilityLabel("送出")
+            .disabled(busy)
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.bar)
     }
 
     /// 第一題帶圈選內容(管家記成「↪ 圈選」的引用);之後接著問就是一般提問,管家有前面的對話
@@ -253,14 +296,34 @@ struct SnapSheet: View {
             let r: ChatReply
             if turns.isEmpty {
                 r = try await api.askSnap(project: projectId, message: message, snap: snap)
+                pane = r.snap?.pane
+                // 終端機圈的:管家依窗格判斷是哪個專案的事
+                if let p = r.snap?.project, p != projectId, model.project(p) != nil { projectId = p }
             } else {
                 r = try await api.ask(project: projectId, message: message)
             }
             let ok = r.bot?.error != true && r.error == nil
             turns.append((shown, r.answer ?? r.bot?.text ?? r.error ?? "", !ok))
+            info = nil
             UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)
         } catch {
             turns.append((shown, error.localizedDescription, true))
+        }
+    }
+
+    /// 交給這個 agent:herdr 切到那個窗格,把圈到的內容和管家的建議貼進它的輸入框(不按 Enter)
+    private func handToAgent(_ pane: SnapPane) async {
+        guard let api = model.api, let answer = lastAnswer else { return }
+        do {
+            try await api.snapAgent(pane: pane.paneId)
+            let text = "關於這段:\n\(snap.text)\n\n管家的建議:\n\(answer.trimmingCharacters(in: .whitespacesAndNewlines))"
+            dismiss()
+            model.mode = .terminal
+            try? await Task.sleep(for: .milliseconds(400))
+            model.web.pasteToTerminal(text)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            info = "沒辦法切到那個 agent:\(error.localizedDescription)"
         }
     }
 
@@ -270,10 +333,9 @@ struct SnapSheet: View {
         let task = question.trimmingCharacters(in: .whitespacesAndNewlines)
         question = ""
         let body = hasText ? snap.text : "(圈到的是圖片,沒有文字)"
-        let answer = turns.last(where: { !$0.error })?.a
         model.switchProject(projectId)
-        model.pendingChat = .draft(Self.cardMessage(task: task, label: snap.label, body: body, answer: answer))
-        model.pendingPresentation = .chat // 圈選小框收好再打開問管家
+        model.pendingChat = .draft(Self.cardMessage(task: task, label: snap.label, body: body, answer: lastAnswer))
+        model.pendingPresentation = .chat // 圈選視窗收好再打開問管家
         dismiss()
     }
 
