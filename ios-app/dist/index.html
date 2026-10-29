@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>專案管家</title>
+<style>
+:root { --bg: #fff8ee; --panel: #ffffff; --ink: #2b2420; --muted: #8a7d72; --line: #eadfce; --accent: #e0832f; --bad: #c0392b; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1b1714; --panel: #262019; --ink: #f3ebe1; --muted: #a89a8c; --line: #3a3128; --accent: #f6a04d; --bad: #ff7b6b; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, "PingFang TC", sans-serif; -webkit-text-size-adjust: 100%; }
+main { min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: max(24px, env(safe-area-inset-top)) 22px max(24px, env(safe-area-inset-bottom)); max-width: 460px; margin: 0 auto; }
+.logo { width: 84px; height: 84px; margin: 0 auto; }
+h1 { margin: 0; text-align: center; font-size: 22px; }
+p { margin: 0; color: var(--muted); font-size: 14px; text-align: center; }
+form { display: flex; flex-direction: column; gap: 10px; }
+label { font-size: 13px; color: var(--muted); }
+input { width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font: inherit; }
+button { padding: 12px 14px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; }
+button.link { background: none; color: var(--accent); font-weight: 400; padding: 6px; }
+button:disabled { opacity: .6; }
+.err { color: var(--bad); text-align: center; font-size: 14px; min-height: 1.5em; }
+.spin { width: 28px; height: 28px; margin: 0 auto; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s 0.9s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+	<svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+		<path d="M11 27 L13 6 L28 17 Z" fill="#f6a04d"/><path d="M53 27 L51 6 L36 17 Z" fill="#f6a04d"/>
+		<path d="M15 22 L16 11 L24 17 Z" fill="#ffb3c1"/><path d="M49 22 L48 11 L40 17 Z" fill="#ffb3c1"/>
+		<ellipse cx="32" cy="37" rx="24" ry="21" fill="#f6a04d"/>
+		<ellipse cx="32" cy="44" rx="15" ry="11" fill="#fff6ea"/>
+		<ellipse cx="22.5" cy="35" rx="4.2" ry="5" fill="#3b2a20"/><ellipse cx="41.5" cy="35" rx="4.2" ry="5" fill="#3b2a20"/>
+		<circle cx="24" cy="33" r="1.6" fill="#fff"/><circle cx="43" cy="33" r="1.6" fill="#fff"/>
+		<path d="M30 41.5 h4 l-2 2.4 z" fill="#ff7b93"/>
+		<path d="M27.5 45.5 q2.2 2.6 4.5 0 q2.3 2.6 4.5 0" fill="none" stroke="#3b2a20" stroke-width="1.5" stroke-linecap="round"/>
+	</svg>
+	<h1>專案管家</h1>
+
+	<section id="connecting" hidden>
+		<div class="spin"></div>
+		<p id="connectingTo" style="margin-top:12px"></p>
+		<p><button class="link" id="change" type="button">更換管家網址</button></p>
+	</section>
+
+	<section id="setup" hidden>
+		<form id="form">
+			<p>填你電腦上專案管家的網址。<br>在電腦的專案管家「設定 → 遠端存取」可以看到 Tailscale 網址。</p>
+			<label for="url">管家網址</label>
+			<input id="url" type="url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="https://你的電腦.xxxx.ts.net/" required>
+			<button id="go" type="submit">連線</button>
+			<div class="err" id="err" role="alert"></div>
+		</form>
+	</section>
+</main>
+<script>
+// 管家網址存在 app 自己的 localStorage(只在這支手機上)。
+// 打開 app:有存網址就先確認連得上,連得上整個畫面切過去;連不上回到這裡讓你改。
+const KEY = "steward.server";
+const $ = (id) => document.getElementById(id);
+const read = () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } };
+const save = (v) => { try { localStorage.setItem(KEY, v); } catch {} };
+
+/** 補上 https://、去掉多餘的路徑;不是網址就回空字串 */
+function normalize(raw) {
+	let s = raw.trim();
+	if (!s) return "";
+	if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+	try {
+		const u = new URL(s);
+		return `${u.protocol}//${u.host}/`;
+	} catch {
+		return "";
+	}
+}
+
+/** 連得上嗎:管家沒開 CORS,用 no-cors 只看有沒有回應;6 秒沒回就算連不上 */
+async function reachable(url) {
+	const ctl = new AbortController();
+	const t = setTimeout(() => ctl.abort(), 6000);
+	try {
+		await fetch(url, { mode: "no-cors", cache: "no-store", signal: ctl.signal });
+		return true;
+	} catch {
+		return false;
+	} finally {
+		clearTimeout(t);
+	}
+}
+
+function showSetup(msg = "") {
+	$("connecting").hidden = true;
+	$("setup").hidden = false;
+	$("url").value = read();
+	$("err").textContent = msg;
+	$("go").disabled = false;
+}
+
+let cancelled = false;
+async function connect(url) {
+	cancelled = false;
+	$("setup").hidden = true;
+	$("connecting").hidden = false;
+	$("connectingTo").textContent = `連線到 ${url.replace(/^https?:\/\//, "").replace(/\/$/, "")}…`;
+	const ok = await reachable(url);
+	if (cancelled) return;
+	if (ok) location.replace(url);
+	else showSetup("連不上這個網址。電腦有開著嗎?手機的 Tailscale 有連上嗎?");
+}
+
+$("change").addEventListener("click", () => { cancelled = true; showSetup(); });
+$("form").addEventListener("submit", (e) => {
+	e.preventDefault();
+	const url = normalize($("url").value);
+	if (!url) return showSetup("網址看起來不對,例如 https://my-mac.tail1234.ts.net/");
+	save(url);
+	$("go").disabled = true;
+	connect(url);
+});
+
+const saved = read();
+if (saved && !new URLSearchParams(location.search).has("setup")) connect(saved);
+else showSetup();
+</script>
+</body>
+</html>

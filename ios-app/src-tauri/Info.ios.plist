@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 主畫面上顯示的名稱 -->
+	<key>CFBundleDisplayName</key>
+	<string>專案管家</string>
+	<!-- 建議用 Tailscale 的 https 網址;區網 IP(http)也允許,方便在家裡直接連 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>連到你電腦上的專案管家</string>
+</dict>
+</plist>

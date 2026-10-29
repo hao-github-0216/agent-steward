@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "default",
+	"description": "內建的連線畫面只需要基本權限;管家的網頁(遠端)不開放任何 Tauri 指令",
+	"windows": ["main"],
+	"permissions": ["core:default"]
+}

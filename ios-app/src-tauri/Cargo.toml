@@ -1,0 +1,21 @@
+[package]
+name = "agent-steward-ios"
+version = "0.1.12"
+description = "專案管家 iPhone app:連到你電腦上的專案管家"
+edition = "2021"
+publish = false
+
+[lib]
+# iOS 需要 staticlib;rlib 給桌面版 main.rs 用(在 Mac 上先跑起來測)
+name = "agent_steward_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# iPhone:把網頁的上緣固定在狀態列下方(見 lib.rs)
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"

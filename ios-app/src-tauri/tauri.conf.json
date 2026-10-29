@@ -1,0 +1,31 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "AgentSteward",
+	"version": "0.1.12",
+	"identifier": "io.github.haogithub0216.agentsteward",
+	"build": {
+		"frontendDist": "../dist"
+	},
+	"app": {
+		"windows": [
+			{
+				"label": "main",
+				"title": "專案管家",
+				"url": "index.html",
+				"width": 420,
+				"height": 860
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"],
+		"iOS": {
+			"minimumSystemVersion": "16.0"
+		}
+	}
+}
