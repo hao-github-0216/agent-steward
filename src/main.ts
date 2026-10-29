@@ -35,23 +35,34 @@ const boardUrl = () => publicUrl();
 const steward = new Steward({
 	store,
 	onCardProposed: (card, project) => {
-		void notify(`🗂 專案管家提案(${project.name})\n${card.title}\n→ 交給 ${card.agent}\n完成標準:${card.doneCriteria}\n\n到看板核准:${boardUrl()}`);
+		void notify(`🗂 專案管家提案(${project.name})\n${card.title}\n→ 交給 ${card.agent}\n完成標準:${card.doneCriteria}\n\n到看板核准:${boardUrl()}`, { projectId: project.id });
 	},
 });
 await steward.open();
 
-// 卡片被標成卡住時推播
-let lastBlocked = new Set(store.cards().filter((c) => c.column === "blocked").map((c) => c.id));
+// 卡片被標成卡住時推播;派出去的工作做完了只推 iPhone app(其他管道維持原本的量)
+const idsIn = (col: string) => new Set(store.cards().filter((c) => c.column === col).map((c) => c.id));
+let lastBlocked = idsIn("blocked");
+let lastDone = idsIn("done");
 store.onChange((what) => {
 	if (what !== "cards") return;
-	const now = new Set(store.cards().filter((c) => c.column === "blocked").map((c) => c.id));
+	const now = idsIn("blocked");
 	for (const id of now) {
 		if (lastBlocked.has(id)) continue;
 		const c = store.card(id)!;
 		const p = store.project(c.projectId);
-		void notify(`⚠️ 工作卡卡住(${p?.name ?? "?"})\n${c.title}\n${c.note ?? ""}\n\n${boardUrl()}`);
+		void notify(`⚠️ 工作卡卡住(${p?.name ?? "?"})\n${c.title}\n${c.note ?? ""}\n\n${boardUrl()}`, { projectId: c.projectId });
 	}
 	lastBlocked = now;
+	const done = idsIn("done");
+	for (const id of done) {
+		if (lastDone.has(id)) continue;
+		const c = store.card(id)!;
+		if (!c.paneId) continue; // 沒派出去過(例如直接拖到完成)就不吵
+		const p = store.project(c.projectId);
+		void notify(`✅ 工作完成(${p?.name ?? "?"})\n${c.title}\n${(c.note ?? "").slice(0, 300)}`, { projectId: c.projectId, iphoneOnly: true });
+	}
+	lastDone = done;
 });
 
 // 總覽:跨專案提醒(規則判斷,不呼叫模型),一天最多推一次

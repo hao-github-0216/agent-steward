@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { HOME } from "./config.ts";
 import { settings } from "./settings.ts";
+import { messageFromText, pushAll } from "./apns.ts";
 
 export function hermesSecret(route: string): string | undefined {
 	try {
@@ -26,8 +27,22 @@ async function post(url: string, body: string, headers: Record<string, string> =
 	}
 }
 
-/** 送一則推播;沒設定或失敗回 false(不丟錯) */
-export async function notify(text: string): Promise<boolean> {
+export interface NotifyOptions {
+	/** 跟哪個專案有關:iPhone 上點通知直接打開那個專案 */
+	projectId?: string;
+	/** 只推到 iPhone app(例如「工作完成」,不想讓 Telegram 等管道變吵) */
+	iphoneOnly?: boolean;
+}
+
+/** 送一則推播:設定頁選的管道 + 登記過的 iPhone app;都沒送出回 false(不丟錯) */
+export async function notify(text: string, opts: NotifyOptions = {}): Promise<boolean> {
+	const phone = pushAll(messageFromText(text, opts.projectId)).catch(() => false);
+	if (opts.iphoneOnly) return phone;
+	const [a, b] = await Promise.all([sendConfigured(text), phone]);
+	return a || b;
+}
+
+async function sendConfigured(text: string): Promise<boolean> {
 	const n = settings().notify;
 	if (n.kind === "hermes") {
 		const secret = hermesSecret(n.hermes.route);

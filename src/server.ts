@@ -8,6 +8,7 @@ import { authorize, authorizeTerminal, hasPassword, isPureLocal, login, logout, 
 import { execFileSync } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { getCurrent, getSession, putCurrent, putSession } from "./code-session.ts";
+import { listDevices, pushAll, pushConfigured, registerDevice, unregisterDevice } from "./apns.ts";
 import { expandHome, findTailscale, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
 import { listAgents, setAgent } from "./agents.ts";
@@ -1089,6 +1090,30 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					if (e instanceof BranchError) return send(res, 400, { error: e.message });
 					return send(res, 500, { error: String((e as Error).message ?? e).slice(0, 300) });
 				}
+			}
+			// ---------- iPhone app 推播(見 apns.ts) ----------
+			if (path.startsWith("/api/push/")) {
+				if (req.method === "GET" && path === "/api/push/status") return send(res, 200, { configured: pushConfigured(), devices: listDevices().map((d) => ({ name: d.name, env: d.env, addedAt: d.addedAt, token: `${d.token.slice(0, 8)}…` })) });
+				if (req.method === "POST" && path === "/api/push/register") {
+					const b = await body(req);
+					try {
+						const d = registerDevice(String(b.token ?? ""), String(b.env ?? ""), b.name ? String(b.name) : undefined);
+						return send(res, 200, { ok: true, env: d.env, configured: pushConfigured() });
+					} catch (e) {
+						return send(res, 400, { error: (e as Error).message });
+					}
+				}
+				if (req.method === "POST" && path === "/api/push/unregister") {
+					unregisterDevice(String((await body(req)).token ?? ""));
+					return send(res, 200, { ok: true });
+				}
+				if (req.method === "POST" && path === "/api/push/test") {
+					if (!pushConfigured()) return send(res, 400, { error: "管家還沒設定推播金鑰(APNs)" });
+					const token = String((await body(req)).token ?? "");
+					const ok = await pushAll({ title: "🔔 專案管家測試推播", body: "設定成功:提案、工作卡卡住、工作完成會推到這支 iPhone。" }, token || undefined);
+					return send(res, ok ? 200 : 502, ok ? { ok: true } : { error: "推播沒送出去,看管家的紀錄(steward.log)" });
+				}
+				return send(res, 404, { error: "not found" });
 			}
 			if (req.method === "GET" && path === "/api/plugins") return send(res, 200, { latex: pluginEnabled("latex"), notebook: pluginEnabled("notebook"), office: pluginEnabled("office") });
 			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: listAgents().filter((a) => a.installed && a.dispatch).map((a) => ({ id: a.id, name: a.name })) });
