@@ -2710,7 +2710,12 @@ window.openStewardChat = ({ quote } = {}) => {
 	if (!ball.open) toggleBall(true); else setTimeout(() => $("bpInput").focus(), 30);
 };
 
-load().then(() => { if (location.hash === "#terminal") setMode("term"); if (location.hash === "#code") setMode("code"); }); connect();
+load().then(() => {
+	// ?project=<id>:直接打開某個專案(iPhone app 從專案頁點「程式碼」用)
+	try { const want = new URLSearchParams(location.search).get("project"); if (want) selectProject(want, "app"); } catch {}
+	if (location.hash === "#terminal") setMode("term");
+	if (location.hash === "#code") setMode("code");
+}); connect();
 </script>
 <script src="/web/code.js"></script>
 <script src="/web/snap.js"></script>
