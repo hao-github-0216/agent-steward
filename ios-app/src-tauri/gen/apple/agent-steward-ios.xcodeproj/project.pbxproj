@@ -280,6 +280,7 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
+				DEVELOPMENT_TEAM = "N8XLCRL5GL";
 			};
 			name = release;
 		};
@@ -367,6 +368,7 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
+				DEVELOPMENT_TEAM = "N8XLCRL5GL";
 			};
 			name = debug;
 		};
