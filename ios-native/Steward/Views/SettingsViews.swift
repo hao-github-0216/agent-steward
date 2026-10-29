@@ -1,80 +1,53 @@
-// 終端機、程式碼、Office 這些重的工具沿用管家網頁,放在原生 app 的一個分頁裡;再加上設定頁
+// 設定(標題列的 ⚙):跟網頁的設定同樣幾頁(打開就是網頁那一頁),加上這支 iPhone 自己的設定(管家網址、iPhone 推播)
 import SwiftUI
-import WebKit
-
-struct WebPanelView: View {
-    @Environment(AppModel.self) private var model
-    @State private var reloadToken = 0
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                // ?app=1:管家網頁的 app 模式,藏掉網頁自己的專案切換和看板/程式碼/終端機按鈕,只留終端機和工具列
-                if let base = model.server, let url = URL(string: "?app=1#terminal", relativeTo: base)?.absoluteURL {
-                    WebView(url: url, reloadToken: reloadToken)
-                        .ignoresSafeArea(edges: .bottom)
-                } else {
-                    ContentUnavailableView("還沒設定管家網址", systemImage: "link")
-                }
-            }
-            .navigationTitle("終端機")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                Button { reloadToken += 1 } label: { Image(systemName: "arrow.clockwise") }
-                    .accessibilityLabel("重新載入")
-            }
-        }
-    }
-}
-
-struct WebView: UIViewRepresentable {
-    let url: URL
-    let reloadToken: Int
-
-    final class Coordinator { var token = 0 }
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.allowsInlineMediaPlayback = true
-        let web = WKWebView(frame: .zero, configuration: config)
-        web.allowsBackForwardNavigationGestures = true
-        web.isInspectable = true
-        web.load(URLRequest(url: url))
-        context.coordinator.token = reloadToken
-        return web
-    }
-
-    func updateUIView(_ web: WKWebView, context: Context) {
-        if context.coordinator.token != reloadToken {
-            context.coordinator.token = reloadToken
-            web.load(URLRequest(url: url))
-        }
-    }
-}
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @State private var confirmForget = false
+
+    /// 網頁的 SET_TABS
+    private static let webTabs: [(String, String, String)] = [
+        ("general", "一般", "gearshape"), ("ai", "AI 接口", "cpu"), ("routing", "路由", "arrow.triangle.branch"),
+        ("agents", "Agent", "person.2"), ("access", "存取", "lock.shield"), ("notify", "推播", "bell"),
+        ("plugins", "外掛", "puzzlepiece.extension"), ("about", "關於", "info.circle"),
+    ]
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("管家") {
-                    LabeledContent("網址", value: model.server?.absoluteString ?? "—")
-                    LabeledContent("專案", value: "\(model.projects.count) 個")
+                Section("管家設定") {
+                    ForEach(Self.webTabs, id: \.0) { t in
+                        NavigationLink {
+                            WebPage(sheet: .settings(t.0, t.1))
+                        } label: {
+                            Label(t.1, systemImage: t.2)
+                        }
+                    }
+                }
+                Section {
+                    LabeledContent("管家網址", value: model.server?.absoluteString ?? "—")
                     Button("更換管家網址", role: .destructive) { confirmForget = true }
+                } header: {
+                    Text("這支 iPhone")
                 }
                 PushSettingsSection()
                 Section {
-                    LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                    NavigationLink { WebPage(sheet: .full) } label: { Label("完整網頁版", systemImage: "safari") }
                 } footer: {
-                    Text("原生版試用中:專案和問管家是原生畫面,終端機、程式碼、檔案預覽在「終端機」分頁用網頁版。")
+                    Text("跟電腦上打開的網頁一模一樣(看板拖拉、建立專案、整理 spaces 都在)。")
+                }
+                Section {
+                    LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
                 }
             }
             .navigationTitle("設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+            }
             .confirmationDialog("要更換管家網址嗎?", isPresented: $confirmForget, titleVisibility: .visible) {
-                Button("更換", role: .destructive) { model.forgetServer() }
+                Button("更換", role: .destructive) { dismiss(); model.forgetServer() }
             }
         }
     }

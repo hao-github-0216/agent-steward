@@ -74,7 +74,8 @@ extension UIImage {
     }
 }
 
-/// 圈選層:凍結的畫面變暗,手指拉框;放開就圈好
+/// 圈選層:凍結的畫面變暗,手指拉框;放開就圈好。
+/// 截圖、變暗、選框鋪滿整個螢幕(座標跟截圖一致);提示和「取消」放在安全區域裡,不會被瀏海/動態島擋住
 struct SnapOverlay: View {
     let screen: UIImage
     let onDone: (CGRect) -> Void
@@ -88,18 +89,36 @@ struct SnapOverlay: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             Image(uiImage: screen).resizable().ignoresSafeArea()
-            Color.black.opacity(0.35)
-                .reverseMask { if let rect { Rectangle().frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY) } }
-                .ignoresSafeArea()
-            if let rect {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .ignoresSafeArea()
+            // 變暗 + 挖出選框 + 虛線框:一張 Canvas 畫,座標就是整個螢幕的點座標(跟拖拉手勢的 global 座標一致)
+            Canvas { ctx, size in
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black.opacity(0.35)))
+                if let rect {
+                    ctx.blendMode = .clear
+                    ctx.fill(Path(roundedRect: rect, cornerRadius: 6), with: .color(.black))
+                    ctx.blendMode = .normal
+                    ctx.stroke(Path(roundedRect: rect, cornerRadius: 6), with: .color(.orange), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                }
             }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .gesture(
+                    DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                        .onChanged { v in
+                            if start == nil { start = v.startLocation }
+                            current = v.location
+                        }
+                        .onEnded { _ in
+                            if let rect { onDone(rect) } else { onCancel() }
+                            start = nil; current = nil
+                        }
+                )
+        }
+        .overlay(alignment: .top) {
             HStack {
                 Text("拉一個框圈出要問的地方").font(.subheadline)
                 Button("取消", action: onCancel).buttonStyle(.bordered)
@@ -107,44 +126,10 @@ struct SnapOverlay: View {
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(.regularMaterial, in: Capsule())
             .padding(.top, 8)
+            .opacity(start == nil ? 1 : 0) // 拉框的時候先藏起來,不擋到要圈的地方
+            .animation(.easeOut(duration: 0.15), value: start == nil)
         }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                .onChanged { v in
-                    if start == nil { start = v.startLocation }
-                    current = v.location
-                }
-                .onEnded { _ in
-                    if let rect { onDone(rect) } else { onCancel() }
-                    start = nil; current = nil
-                }
-        )
         .accessibilityAddTraits(.isModal)
-    }
-}
-
-private extension View {
-    func reverseMask<M: View>(@ViewBuilder _ mask: () -> M) -> some View {
-        self.mask(Rectangle().overlay(mask().blendMode(.destinationOut)).compositingGroup())
-    }
-}
-
-/// 圈選鈕(跟網頁浮動球旁的一樣是虛線對話框)
-struct SnapButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 19, weight: .semibold))
-                .frame(width: 46, height: 46)
-                .background(.regularMaterial, in: Circle())
-                .overlay(Circle().stroke(Color.orange.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
-                .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
-        }
-        .foregroundStyle(.orange)
-        .accessibilityLabel("圈選畫面問管家")
     }
 }
 
@@ -239,10 +224,10 @@ struct SnapSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
                 if !turns.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("到問管家") {
+                        Button("到問管家繼續") {
                             dismiss()
-                            model.tab = 0
-                            model.path = [.project(projectId), .chat(projectId)]
+                            model.switchProject(projectId)
+                            model.showChat = true
                         }
                     }
                 }
@@ -270,19 +255,13 @@ struct SnapSheet: View {
         }
     }
 
-    /// 依圈到的內容請管家擬工作卡,擬好到問管家裡確認
+    /// 依圈到的內容開工作卡:到問管家裡請管家擬草稿(跟網頁圈選的「開工作卡」一樣)
     private func draft() async {
-        guard let api = model.api else { return }
-        busy = true
-        defer { busy = false }
         let body = hasText ? snap.text : "(圈到的是圖片,沒有文字)"
-        do {
-            _ = try await api.draftCard(project: projectId, message: "依這段在 iPhone app 圈選的內容開工作卡(\(snap.label)):\n\(body.prefix(4000))")
-            dismiss()
-            model.tab = 0
-            model.path = [.project(projectId), .chat(projectId)]
-        } catch {
-            turns.append(("開工作卡", error.localizedDescription, true))
-        }
+        let answer = turns.last(where: { !$0.error })?.a
+        dismiss()
+        model.switchProject(projectId)
+        model.pendingChat = .draft("依照這段圈選的內容開工作卡\n出處:\(snap.label)\n內容:\n\(body.prefix(3000))\(answer.map { "\n\n管家的看法:\n\($0.prefix(2000))" } ?? "")")
+        model.showChat = true
     }
 }

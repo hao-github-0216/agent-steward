@@ -26,6 +26,7 @@ struct Project: Codable, Hashable, Identifiable {
     var `private`: Bool?
     var state: ProjectState?
     var lastActivityAt: String?
+    var closedAt: String?
 
     /// 看板上要顯示的:真正的專案、而且在進行中(雜務、總覽、收起來的不算)
     var isActiveProject: Bool { kind == "project" && status == "active" }
@@ -43,6 +44,8 @@ struct Card: Codable, Hashable, Identifiable {
     var column: String
     var note: String?
     var paneId: String?
+    var terminalId: String?
+    var attempts: Int?
     var createdAt: String?
     var updatedAt: String?
 
@@ -127,6 +130,8 @@ struct CardDraft: Codable, Hashable {
 
 struct SpaceInfo: Codable, Hashable {
     var label: String?
+    var nameDiffers: Bool?
+    var strays: Int?
     var panes: Int?
     var working: Int?
 }
@@ -156,6 +161,7 @@ struct ChatEntry: Codable, Hashable, Identifiable {
     var alt: String?
     var draft: CardDraft?
     var images: [String]? // 附的圖片縮圖(data URL)
+    var retryable: Bool? // 主要模型沒回應,可以改用備用模型
 
     var isMine: Bool { role == "me" }
 }

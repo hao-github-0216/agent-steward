@@ -107,11 +107,19 @@ struct API {
         return try await call(request(path))
     }
 
-    func ask(project: String, message: String, attachments: [Attachment] = []) async throws -> ChatReply {
+    func ask(project: String, message: String, attachments: [Attachment] = [], quote: ChatQuote? = nil) async throws -> ChatReply {
         var body: [String: Any] = ["project": project, "message": message]
+        if let quote, let text = quote.text {
+            var q: [String: Any] = ["text": text]
+            if let p = quote.path { q["path"] = p }
+            if let f = quote.from { q["from"] = f }
+            if let t = quote.to { q["to"] = t }
+            body["quote"] = q
+        }
         let files: [[String: String]] = attachments.compactMap {
             switch $0.kind {
             case .projectFile(let rel): ["path": rel]
+            case .editorFile(let rel, let content): ["path": rel, "content": content]
             case .phoneFile(let name, let content): ["path": "iPhone/\(name)", "content": content]
             case .image: nil
             }
@@ -164,6 +172,65 @@ struct API {
         return r.files
     }
 
+    // MARK: 目前專案(跟管家網頁共用,跨裝置)
+
+    struct CurrentInfo: Decodable { var project: String?; var source: String? }
+
+    func getCurrent() async throws -> CurrentInfo {
+        try await call(request("api/current"))
+    }
+
+    func putCurrent(project: String) async throws {
+        struct R: Decodable {}
+        let _: R = try await call(request("api/current", method: "PUT", body: ["project": project, "source": "iPhone"]))
+    }
+
+    // MARK: 專案管理
+
+    /// 改名(herdr 的 space 跟著改)、隱私、停止追蹤(closeSpace 一起關 space)、恢復追蹤
+    func updateProject(_ id: String, _ body: [String: Any]) async throws {
+        struct R: Decodable {}
+        let _: R = try await call(request("api/projects/\(id)", method: "POST", body: body))
+    }
+
+    /// 管家還沒有紀錄的專案:從現有記錄(上層專案、開著的 agent)補建
+    func bootstrap(_ id: String) async throws {
+        struct R: Decodable {}
+        let _: R = try await call(request("api/projects/\(id)/bootstrap", method: "POST", body: [:]), slow: true)
+    }
+
+    /// 跑到別的 space 的窗格搬回這個專案的 space
+    func moveStrays(_ id: String) async throws -> String {
+        struct R: Decodable { var moved: Int?; var space: String?; var error: String? }
+        let r: R = try await call(request("api/projects/\(id)/strays", method: "POST", body: [:]))
+        return r.error ?? "已搬 \(r.moved ?? 0) 個窗格到「\(r.space ?? "")」"
+    }
+
+    /// 專案名稱和 herdr space 名稱不同:use = "space"(專案改成 space 的名字)或 "project"(space 改回專案名)
+    func fixSpaceName(_ id: String, use: String) async throws {
+        struct R: Decodable {}
+        let _: R = try await call(request("api/projects/\(id)/space-name", method: "POST", body: ["use": use]))
+    }
+
+    /// herdr 跳到這個專案的 space;create = 沒有就建立
+    func focusTerminal(project: String, create: Bool) async throws {
+        struct R: Decodable { var ok: Bool?; var reason: String? }
+        let r: R = try await call(request("api/terminal/focus", method: "POST", body: ["project": project, "create": create]))
+        if r.ok != true, let why = r.reason { throw APIError.server(0, why) }
+    }
+
+    /// 清除問管家的紀錄(管家記得的專案進度不受影響)
+    func clearChat(project: String) async throws {
+        struct R: Decodable {}
+        let id = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
+        let _: R = try await call(request("api/chat/\(id)", method: "DELETE"))
+    }
+
+    /// 主要模型沒回應:改用備用模型回答同一題(不重複記問題)
+    func retryWithFallback(project: String, message: String) async throws -> ChatReply {
+        try await call(request("api/chat", method: "POST", body: ["project": project, "message": message, "fallback": true, "retry": true]), slow: true)
+    }
+
     // MARK: 工作卡
 
     func moveCard(_ id: String, to column: String) async throws -> Card {
@@ -183,9 +250,16 @@ struct API {
     }
 
     /// 請管家擬一張工作卡草稿(會記進問管家的對話)
-    func draftCard(project: String, message: String) async throws -> ChatReply {
+    func draftCard(project: String, message: String, files: [String] = []) async throws -> ChatReply {
         let id = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
-        return try await call(request("api/chat/\(id)/draft", method: "POST", body: ["message": message]), slow: true)
+        return try await call(request("api/chat/\(id)/draft", method: "POST", body: ["message": message, "files": files]), slow: true)
+    }
+
+    /// 換一組建議問題
+    func regenerateSuggestions(project: String) async throws -> [String] {
+        let id = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
+        let s: Suggestions = try await call(request("api/chat/\(id)/suggest", method: "POST", body: [:]), slow: true)
+        return s.items ?? []
     }
 
     /// 對草稿動作:save / propose / dispatch

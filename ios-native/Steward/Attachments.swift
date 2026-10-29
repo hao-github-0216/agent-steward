@@ -6,8 +6,10 @@ struct Attachment: Identifiable, Hashable {
     enum Kind: Hashable {
         /// base64(不含 data: 前綴)、MIME、160px 縮圖(data URL,存進對話紀錄)
         case image(data: String, mime: String, thumb: String)
-        /// 專案裡的相對路徑
+        /// 專案裡的相對路徑(管家自己讀磁碟)
         case projectFile(String)
+        /// 程式碼頁正在編輯、還沒存的檔案:連內容一起送
+        case editorFile(String, String)
         /// iPhone「檔案」App 裡的文字檔
         case phoneFile(name: String, content: String)
     }
@@ -19,7 +21,7 @@ struct Attachment: Identifiable, Hashable {
     var label: String {
         switch kind {
         case .image: "圖片"
-        case .projectFile(let rel): (rel as NSString).lastPathComponent
+        case .projectFile(let rel), .editorFile(let rel, _): (rel as NSString).lastPathComponent
         case .phoneFile(let name, _): name
         }
     }
