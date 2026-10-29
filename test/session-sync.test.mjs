@@ -59,3 +59,21 @@ test("還沒有 ID 的窗格每輪都找", () => {
 	sync.sync([pane]);
 	assert.deepEqual(calls, [["w1:p1", "ccc"]]);
 });
+
+test("pickClaudeSession:attach 用 ID 開頭對;時間比對不拿別的窗格的前台 claude", async () => {
+	const { pickClaudeSession } = await import("../src/transcripts.ts");
+	const sessions = [
+		{ file: "100.json", pid: 100, sessionId: "3180667e-aaaa", cwd: "/p", startedAt: 1000, kind: "bg" },
+		{ file: "200.json", pid: 200, sessionId: "eb3835a2-bbbb", cwd: "/p", startedAt: 50_000, kind: "interactive" },
+	];
+	// 自己的 pid 檔
+	assert.equal(pickClaudeSession({ pid: 200, argv: ["claude", "--resume", "eb3835a2-bbbb"] }, 50_000, "/p", sessions), "eb3835a2-bbbb");
+	// 重開後對話已經在背景跑:claude attach <ID 開頭>,同一時間隔壁窗格剛起一個前台 claude
+	assert.equal(pickClaudeSession({ pid: 300, argv: ["claude", "attach", "3180667e"] }, 50_500, "/p", sessions), "3180667e-aaaa");
+	// 沒有 attach、沒有自己的檔:只跟背景程式比時間,前台的不算
+	assert.equal(pickClaudeSession({ pid: 300, argv: ["claude"] }, 50_500, "/p", sessions), undefined);
+	assert.equal(pickClaudeSession({ pid: 300, argv: ["claude"] }, 1_500, "/p", sessions), "3180667e-aaaa");
+	// 預先開好的備用背景程式(spare)還沒接對話,不算
+	const spare = [{ file: "400.json", pid: 400, sessionId: "2ffbf1fa", cwd: "/h", startedAt: 9_000, kind: "bg", spare: true }];
+	assert.equal(pickClaudeSession({ pid: 500, argv: ["claude"] }, 9_200, "/h", spare), undefined);
+});

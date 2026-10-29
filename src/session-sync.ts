@@ -28,11 +28,17 @@ function reportToHerdr(pane: HerdrPane, sessionId: string): boolean {
 	return !herdrCli(args)?.error;
 }
 
+/** 還沒有對話紀錄檔的 ID 不報:herdr 重開時 `claude --resume` 它也接不回任何東西 */
+function resolveWithTranscript(pane: HerdrPane): string | undefined {
+	const id = claudeSessionOfPane(pane);
+	return id && transcriptPath({ agent: "claude", kind: "id", value: id }) ? id : undefined;
+}
+
 export class ClaudeSessionSync {
 	private checked = new Map<string, number>(); // 窗格 → 上次對的時間
 	private readonly deps: SessionSyncDeps;
 	constructor(deps: Partial<SessionSyncDeps> = {}) {
-		this.deps = { resolve: claudeSessionOfPane, report: reportToHerdr, now: Date.now, ...deps };
+		this.deps = { resolve: resolveWithTranscript, report: reportToHerdr, now: Date.now, ...deps };
 	}
 
 	/** 每輪窗格清單呼叫一次;回傳這輪回報了哪些窗格 */

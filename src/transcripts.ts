@@ -205,31 +205,51 @@ function procStartMs(pid: number): number | undefined {
  */
 export function claudeSessionOfPane(pane: HerdrPane): string | undefined {
 	const info = herdrCli(["pane", "process-info", "--pane", pane.pane_id])?.result?.process_info;
-	const procs: { pid: number; argv0?: string; name?: string; cwd?: string }[] = info?.foreground_processes ?? [];
-	const proc = procs.find((x) => /claude/i.test(`${x.argv0 ?? ""}`)) ?? procs[0];
+	const procs: ClaudeProc[] = info?.foreground_processes ?? [];
+	const proc = procs.find((x) => /claude/i.test(`${x.argv0 ?? x.argv?.[0] ?? ""}`)) ?? procs[0];
 	if (!proc?.pid) return undefined;
 	const dir = join(HOME, ".claude", "sessions");
-	const read = (f: string) => {
-		try {
-			return JSON.parse(readFileSync(join(dir, f), "utf8")) as { pid?: number; sessionId?: string; cwd?: string; startedAt?: number };
-		} catch {
-			return undefined;
-		}
-	};
-	const own = read(`${proc.pid}.json`);
-	if (own?.sessionId) return own.sessionId;
-	const started = procStartMs(proc.pid);
-	const cwd = proc.cwd ?? pane.foreground_cwd ?? pane.cwd;
-	if (!started || !cwd) return undefined;
 	let names: string[] = [];
 	try {
 		names = readdirSync(dir).filter((n) => n.endsWith(".json"));
 	} catch {
 		return undefined;
 	}
-	const hits = names
-		.map(read)
-		.filter((d): d is NonNullable<typeof d> => !!d?.sessionId && d.cwd === cwd && typeof d.startedAt === "number" && Math.abs(d.startedAt - started) < 10_000);
+	const sessions = names
+		.map((f) => {
+			try {
+				return { ...(JSON.parse(readFileSync(join(dir, f), "utf8")) as ClaudeSessionFile), file: f };
+			} catch {
+				return undefined;
+			}
+		})
+		.filter((d): d is ClaudeSessionFile & { file: string } => !!d?.sessionId);
+	return pickClaudeSession(proc, procStartMs(proc.pid), proc.cwd ?? pane.foreground_cwd ?? pane.cwd, sessions);
+}
+
+export interface ClaudeProc { pid: number; argv0?: string; argv?: string[] | null; name?: string; cwd?: string }
+export interface ClaudeSessionFile { pid?: number; sessionId?: string; cwd?: string; startedAt?: number; kind?: string; spare?: boolean; file?: string }
+
+/**
+ * 從 ~/.claude/sessions 的資料挑出窗格的對話(純邏輯,方便測試):
+ *  1. 窗格裡的 claude 自己有 <pid>.json → 就是它
+ *  2. `claude attach <ID 開頭>`(重開後對話已經在背景跑,--resume 會變成 attach)→ 用 ID 開頭對,唯一才算
+ *  3. 背景程式:同資料夾、啟動時間差 10 秒內、只有一個才算
+ *     (不看 kind=interactive:前台的 claude 各有自己的 <pid>.json、屬於別的窗格,不能拿來對,兩個窗格同時接回時會對錯;
+ *     也不看 spare:Claude 預先開好、還沒接任何對話的備用背景程式)
+ */
+export function pickClaudeSession(proc: ClaudeProc, started: number | undefined, cwd: string | undefined, sessions: ClaudeSessionFile[]): string | undefined {
+	const own = sessions.find((d) => d.file === `${proc.pid}.json` || d.pid === proc.pid);
+	if (own?.sessionId) return own.sessionId;
+	const argv = proc.argv ?? [];
+	const at = argv.indexOf("attach");
+	const prefix = at >= 0 ? argv[at + 1] : undefined;
+	if (prefix && /^[0-9a-f-]{6,}$/i.test(prefix)) {
+		const ids = [...new Set(sessions.map((d) => d.sessionId!).filter((id) => id.startsWith(prefix)))];
+		return ids.length === 1 ? ids[0] : undefined;
+	}
+	if (!started || !cwd) return undefined;
+	const hits = sessions.filter((d) => d.kind !== "interactive" && !d.spare && d.cwd === cwd && typeof d.startedAt === "number" && Math.abs(d.startedAt - started) < 10_000);
 	return hits.length === 1 ? hits[0].sessionId : undefined;
 }
 
