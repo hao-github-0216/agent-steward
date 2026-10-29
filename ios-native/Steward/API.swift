@@ -111,6 +111,53 @@ struct API {
         try await call(request("api/chat", method: "POST", body: ["project": project, "message": message]), slow: true)
     }
 
+    // MARK: 工作卡
+
+    func moveCard(_ id: String, to column: String) async throws -> Card {
+        try await call(request("api/cards/\(id)/move", method: "POST", body: ["column": column]))
+    }
+
+    /// 在終端機切到這張卡的窗格
+    func focusCard(_ id: String) async throws {
+        struct OK: Decodable { var ok: Bool? }
+        let _: OK = try await call(request("api/cards/\(id)/focus", method: "POST", body: [:]))
+    }
+
+    func agents() async throws -> [AgentInfo] {
+        struct R: Decodable { var agents: [AgentInfo] }
+        let r: R = try await call(request("api/agents"))
+        return r.agents
+    }
+
+    /// 請管家擬一張工作卡草稿(會記進問管家的對話)
+    func draftCard(project: String, message: String) async throws -> ChatReply {
+        let id = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
+        return try await call(request("api/chat/\(id)/draft", method: "POST", body: ["message": message]), slow: true)
+    }
+
+    /// 對草稿動作:save / propose / dispatch
+    func draftAction(project: String, entry: String, action: String, draft: CardDraft) async throws -> ChatReply {
+        let id = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
+        let body: [String: Any] = ["action": action, "draft": ["title": draft.title, "agent": draft.agent, "instructions": draft.instructions, "doneCriteria": draft.doneCriteria]]
+        return try await call(request("api/chat/\(id)/draft/\(entry)", method: "POST", body: body))
+    }
+
+    /// 管家的即時事件(SSE):資料一有變動就收到一行 data: {"what": "cards"}
+    func events() throws -> URLRequest {
+        var r = try request("api/events")
+        r.setValue("text/event-stream", forHTTPHeaderField: "accept")
+        r.timeoutInterval = 3600
+        return r
+    }
+
+    static let streamSession: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest = 120 // 管家每 25 秒送一次 ping
+        c.timeoutIntervalForResource = 24 * 3600
+        c.httpCookieStorage = .shared
+        return URLSession(configuration: c)
+    }()
+
     struct PushStatus: Decodable { var configured: Bool? }
 
     func registerPush(token: String, env: String, name: String) async throws {

@@ -27,7 +27,9 @@ struct StewardApp: App {
                 }
                 .onChange(of: scenePhase) { _, now in
                     // 回到前景就更新一次(管家那邊可能已經有新進度)
-                    if now == .active, case .ready = model.phase { Task { await model.refresh() } }
+                    // 回到前景:更新一次並接回即時事件;到背景就先斷開(iOS 本來就會停掉)
+                    if now == .active, case .ready = model.phase { model.startEvents(); Task { await model.refresh() } }
+                    if now == .background { model.stopEvents() }
                 }
         }
     }
@@ -64,6 +66,10 @@ struct MainTabs: View {
             ProjectListView()
                 .tabItem { Label("專案", systemImage: "square.stack.3d.up") }
                 .tag(0)
+            CardsView()
+                .tabItem { Label("工作卡", systemImage: "checklist") }
+                .badge(model.cards.filter { $0.column == "proposed" || $0.column == "blocked" }.count)
+                .tag(3)
             WebPanelView()
                 .tabItem { Label("終端機", systemImage: "terminal") }
                 .tag(1)

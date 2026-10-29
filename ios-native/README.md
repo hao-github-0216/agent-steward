@@ -1,11 +1,13 @@
 # 專案管家 iPhone 原生版(SwiftUI)
 
-專案列表、專案狀態、問管家是 iPhone 原生畫面;終端機、程式碼、檔案預覽這些重的工具在「終端機」分頁用管家網頁版。
+原生畫面:專案列表、專案狀態、工作卡(跨專案看板,核准派工/標完成/卡住/退回)、問管家(含數學式排版、請管家擬工作卡)、設定。
+終端機(「終端機」分頁)和程式碼(專案頁的「程式碼」)這些重的工具沿用管家網頁(`?app=1` 模式,藏掉網頁自己的專案和模式切換)。
+管家有變動時透過 `/api/events` 即時更新。
 管家本身還是跑在你的電腦上,app 透過管家的 API(`/api/board`、`/api/chat`…)讀寫。
 
 - 主畫面名稱「專案管家 β」,bundle ID `io.github.haogithub0216.agentsteward.native`(跟 `ios-app/` 的 Tauri 版分開,可以同時裝)
 - 身分:透過 Tailscale 的 https 網址連線時管家自動認得;否則用管理密碼登入
-- 連結 `agentsteward://project/<專案 id>`、`agentsteward://project/<專案 id>/chat` 直接打開某個專案或它的問管家
+- 連結:`agentsteward://project/<專案 id>`、`…/<專案 id>/chat`、`agentsteward://card/<卡片 id>`、`agentsteward://cards/<proposed|running|blocked|done>`
 
 ## 建置
 
@@ -43,5 +45,5 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 
 ## 還沒做的
 
-- 即時更新(`/api/events`):目前是下拉更新、回到 app 時自動更新
-- 看板拖拉、派工
+- 問管家附檔案、圖片、圈選提問(網頁版有)
+- 推播金鑰還沒設定(見上面「推播通知」)

@@ -30,6 +30,8 @@ struct ProjectListView: View {
                 case .project(let id): ProjectDetailView(projectId: id)
                 case .chat(let id):
                     if let p = model.project(id) { ChatView(project: p) } else { ContentUnavailableView("找不到這個專案", systemImage: "questionmark.folder") }
+                case .card(let id):
+                    CardDetailView(cardId: id)
                 }
             }
             .searchable(text: $query, prompt: "找專案")
@@ -94,6 +96,11 @@ struct ProjectDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.orange)
                     }
+                    NavigationLink {
+                        CodeWebView(project: p)
+                    } label: {
+                        Label("程式碼", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
                 }
                 if let goal = p.state?.goal, !goal.isEmpty {
                     Section("目標") { MarkdownText(goal, fixEscapes: true) }
@@ -105,20 +112,8 @@ struct ProjectDetailView: View {
                 if !cards.isEmpty {
                     Section("工作卡") {
                         ForEach(cards) { c in
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack {
-                                    Text(c.columnLabel)
-                                        .font(.caption.bold())
-                                        .padding(.horizontal, 6).padding(.vertical, 1)
-                                        .background(columnColor(c.column).opacity(0.18), in: Capsule())
-                                        .foregroundStyle(columnColor(c.column))
-                                    if let a = c.agent { Text(a).font(.caption).foregroundStyle(.secondary) }
-                                }
-                                Text(c.title).font(.subheadline)
-                                if let note = c.note, !note.isEmpty {
-                                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                                }
-                            }
+                            NavigationLink(value: Route.card(c.id)) { CardRow(card: c) }
+                                .swipeActions(edge: .trailing) { CardSwipeActions(card: c) }
                         }
                     }
                 }
@@ -151,15 +146,6 @@ struct ProjectDetailView: View {
             Section(title) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, s in MarkdownText(s, fixEscapes: true) }
             }
-        }
-    }
-
-    private func columnColor(_ c: String) -> Color {
-        switch c {
-        case "blocked": .red
-        case "running": .orange
-        case "approved": .blue
-        default: .secondary
         }
     }
 }

@@ -38,9 +38,27 @@ struct Card: Codable, Hashable, Identifiable {
     var projectId: String
     var title: String
     var agent: String?
+    var instructions: String?
+    var doneCriteria: String?
     var column: String
     var note: String?
+    var paneId: String?
+    var createdAt: String?
     var updatedAt: String?
+
+    var lastChanged: Date? { Fmt.date(updatedAt) ?? Fmt.date(createdAt) }
+
+    /// 這張卡現在可以做的動作(跟管家的 moveRule 一致)
+    var actions: [CardAction] {
+        switch column {
+        case "proposed": [.dispatch, .reject]
+        case "approved", "running": [.markDone, .markBlocked]
+        case "blocked": [.redispatch, .markDone, .backToProposed]
+        case "done": [.redispatch, .backToProposed]
+        case "rejected": [.backToProposed]
+        default: []
+        }
+    }
 
     var columnLabel: String {
         switch column {
@@ -53,6 +71,58 @@ struct Card: Codable, Hashable, Identifiable {
         default: column
         }
     }
+}
+
+enum CardAction: String, Identifiable {
+    case dispatch, redispatch, reject, markDone, markBlocked, backToProposed
+    var id: String { rawValue }
+
+    var column: String {
+        switch self {
+        case .dispatch, .redispatch: "approved"
+        case .reject: "rejected"
+        case .markDone: "done"
+        case .markBlocked: "blocked"
+        case .backToProposed: "proposed"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .dispatch: "核准並派工"
+        case .redispatch: "重新派工"
+        case .reject: "不要了"
+        case .markDone: "標成完成"
+        case .markBlocked: "標成卡住"
+        case .backToProposed: "退回提案"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .dispatch, .redispatch: "paperplane.fill"
+        case .reject: "xmark"
+        case .markDone: "checkmark"
+        case .markBlocked: "exclamationmark.triangle"
+        case .backToProposed: "arrow.uturn.backward"
+        }
+    }
+
+    var destructive: Bool { self == .reject }
+}
+
+struct AgentInfo: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String?
+}
+
+struct CardDraft: Codable, Hashable {
+    var title: String
+    var agent: String
+    var instructions: String
+    var doneCriteria: String
+    var status: String // draft | proposed | dispatched
+    var cardId: String?
 }
 
 struct SpaceInfo: Codable, Hashable {
@@ -84,6 +154,7 @@ struct ChatEntry: Codable, Hashable, Identifiable {
     var at: String?
     var error: Bool?
     var alt: String?
+    var draft: CardDraft?
 
     var isMine: Bool { role == "me" }
 }
@@ -98,6 +169,7 @@ struct ChatReply: Codable {
     var error: String?
     var me: ChatEntry?
     var bot: ChatEntry?
+    var card: Card?
 }
 
 struct Suggestions: Codable {

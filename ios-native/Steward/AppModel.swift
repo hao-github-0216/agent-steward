@@ -24,6 +24,13 @@ final class AppModel {
     /// 專案分頁的導覽路徑、目前的分頁(agentsteward:// 連結和之後的推播通知用來直接跳過去)
     var path: [Route] = []
     var tab = 0
+    var cardColumn = "proposed" // 工作卡分頁目前看哪一欄
+    /// 可以派工的 agent(擬工作卡時選)
+    var agents: [AgentInfo] = []
+    /// 即時更新連著沒
+    var live = false
+    private var eventsTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
 
     var api: API? { server.map(API.init(base:)) }
 
@@ -38,6 +45,7 @@ final class AppModel {
     }
 
     func forgetServer() {
+        stopEvents()
         server = nil
         UserDefaults.standard.removeObject(forKey: "serverURL")
         projects = []
@@ -53,6 +61,8 @@ final class AppModel {
             if s.authed {
                 phase = .ready
                 await refresh()
+                startEvents()
+                if agents.isEmpty { agents = (try? await api.agents()) ?? [] }
                 // 啟動參數 -openURL agentsteward://…(Xcode scheme 或 simctl launch 帶)直接跳到那個畫面
                 if let link = UserDefaults.standard.string(forKey: "openURL"), let url = URL(string: link), path.isEmpty {
                     open(url)
@@ -92,9 +102,63 @@ final class AppModel {
         }
     }
 
+    // MARK: 即時更新
+
+    /// 連著管家的即時事件;資料一變動就更新(連續好幾個事件合併成一次)。斷線 3 秒後重連
+    func startEvents() {
+        guard eventsTask == nil else { return }
+        eventsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let api = self.api, let req = try? api.events() else { return }
+                do {
+                    let (bytes, resp) = try await API.streamSession.bytes(for: req)
+                    guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw APIError.network("events") }
+                    self.live = true
+                    for try await line in bytes.lines where line.hasPrefix("data:") {
+                        self.scheduleRefresh()
+                    }
+                } catch {
+                    if Task.isCancelled { break }
+                }
+                self.live = false
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    func stopEvents() {
+        eventsTask?.cancel()
+        eventsTask = nil
+        live = false
+    }
+
+    private func scheduleRefresh() {
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            if Task.isCancelled { return }
+            await self?.refresh()
+        }
+    }
+
+    // MARK: 工作卡
+
+    /// 移動工作卡(核准派工、標完成…);管家拒絕時丟出它說的原因
+    func move(_ card: Card, _ action: CardAction) async throws {
+        guard let api else { return }
+        let updated = try await api.moveCard(card.id, to: action.column)
+        if let i = cards.firstIndex(where: { $0.id == card.id }) { cards[i] = updated }
+        await refresh()
+    }
+
+    func card(_ id: String) -> Card? { cards.first { $0.id == id } }
+
     /// agentsteward://project/<專案 id>、agentsteward://project/<專案 id>/chat
     func open(_ url: URL) {
-        guard url.scheme == "agentsteward", url.host() == "project" else { return }
+        guard url.scheme == "agentsteward" else { return }
+        if url.host() == "cards" { tab = 3; cardColumn = url.pathComponents.dropFirst().first ?? cardColumn; return }
+        if url.host() == "card", let id = url.pathComponents.dropFirst().first { tab = 0; path = [.card(id)]; return }
+        guard url.host() == "project" else { return }
         let parts = url.pathComponents.filter { $0 != "/" }
         guard let id = parts.first else { return }
         tab = 0
@@ -113,4 +177,5 @@ final class AppModel {
 enum Route: Hashable {
     case project(String)
     case chat(String)
+    case card(String)
 }

@@ -12,6 +12,7 @@ struct ChatView: View {
     @State private var suggestions: [String] = []
     @State private var draft = ""
     @State private var sending = false
+    @State private var showDraft = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -32,7 +33,10 @@ struct ChatView: View {
                             .padding(.top, 40)
                     }
                     ForEach(items) { e in
-                        MessageBubble(entry: e).id(e.id)
+                        MessageBubble(entry: e, project: project) { updated in
+                            if let i = items.firstIndex(where: { $0.id == updated.id }) { items[i] = updated }
+                        }
+                        .id(e.id)
                     }
                     if sending {
                         HStack {
@@ -56,6 +60,11 @@ struct ChatView: View {
         .navigationTitle("問管家")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showDraft = true } label: { Image(systemName: "plus.rectangle.on.rectangle") }
+                    .accessibilityLabel("開工作卡")
+                    .disabled(sending)
+            }
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
                     Text("問管家").font(.headline)
@@ -64,6 +73,28 @@ struct ChatView: View {
             }
         }
         .task { await load() }
+        .sheet(isPresented: $showDraft) {
+            NewDraftSheet { message in startDraft(message) }
+                .presentationDetents([.medium])
+        }
+    }
+
+    /// 請管家擬工作卡:跟提問一樣先把「開工作卡:…」放上去,草稿回來後顯示成可以修改的卡片
+    private func startDraft(_ message: String) {
+        guard let api = model.api, !sending else { return }
+        sending = true
+        let tempId = "local-\(UUID().uuidString)"
+        items.append(ChatEntry(id: tempId, role: "me", text: message.isEmpty ? "開工作卡" : "開工作卡:\(message)"))
+        Task {
+            do {
+                let r = try await api.draftCard(project: project.id, message: message)
+                if let me = r.me, let i = items.firstIndex(where: { $0.id == tempId }) { items[i] = me }
+                if let bot = r.bot { items.append(bot) }
+            } catch {
+                items.append(ChatEntry(id: "local-\(UUID().uuidString)", role: "bot", text: error.localizedDescription, error: true))
+            }
+            sending = false
+        }
     }
 
     private var inputBar: some View {
@@ -155,8 +186,130 @@ struct ChatView: View {
     }
 }
 
+struct NewDraftSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onSubmit: (String) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("要做什麼?例如:修好登入頁在手機上跑版", text: $text, axis: .vertical)
+                        .lineLimit(3...8)
+                } footer: {
+                    Text("管家會依這個專案的狀態和剛才的對話擬一張工作卡草稿,你確認或修改後再放進提案或直接派工。留空就讓管家從對話裡判斷。")
+                }
+            }
+            .navigationTitle("開工作卡")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("請管家擬") { onSubmit(text.trimmingCharacters(in: .whitespacesAndNewlines)); dismiss() }
+                }
+            }
+        }
+    }
+}
+
+/// 管家擬的工作卡草稿:還沒處理時可以改欄位、放進提案或直接派工
+struct DraftCardView: View {
+    @Environment(AppModel.self) private var model
+    let entry: ChatEntry
+    let project: Project
+    let onUpdate: (ChatEntry) -> Void
+    @State private var draft: CardDraft
+    @State private var busy: String?
+    @State private var error: String?
+    @State private var editing = false
+
+    init(entry: ChatEntry, project: Project, onUpdate: @escaping (ChatEntry) -> Void) {
+        self.entry = entry
+        self.project = project
+        self.onUpdate = onUpdate
+        _draft = State(initialValue: entry.draft!)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("工作卡草稿", systemImage: "rectangle.stack.badge.plus").font(.caption.bold()).foregroundStyle(.orange)
+                Spacer()
+                if draft.status == "draft" {
+                    Button(editing ? "完成" : "修改") { editing.toggle() }.font(.caption)
+                }
+            }
+            if editing {
+                TextField("標題", text: $draft.title).textFieldStyle(.roundedBorder)
+                Picker("交給", selection: $draft.agent) {
+                    ForEach(model.agents.isEmpty ? [AgentInfo(id: draft.agent)] : model.agents) { a in Text(a.name ?? a.id).tag(a.id) }
+                }
+                TextField("工作說明", text: $draft.instructions, axis: .vertical).lineLimit(3...10).textFieldStyle(.roundedBorder)
+                TextField("完成標準", text: $draft.doneCriteria, axis: .vertical).lineLimit(2...6).textFieldStyle(.roundedBorder)
+            } else {
+                Text(draft.title).font(.headline)
+                Label("交給 \(draft.agent)", systemImage: "person.crop.square").font(.caption).foregroundStyle(.secondary)
+                Text(draft.instructions).font(.subheadline).lineLimit(6)
+                if !draft.doneCriteria.isEmpty {
+                    Text("完成標準:\(draft.doneCriteria)").font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                }
+            }
+            switch draft.status {
+            case "proposed":
+                statusLink("已放進提案", icon: "tray.and.arrow.down")
+            case "dispatched":
+                statusLink("已派工", icon: "paperplane.fill")
+            default:
+                HStack {
+                    Button { Task { await act("propose") } } label: {
+                        if busy == "propose" { ProgressView() } else { Text("放進提案") }
+                    }
+                    .buttonStyle(.bordered)
+                    Button { Task { await act("dispatch") } } label: {
+                        if busy == "dispatch" { ProgressView() } else { Text("直接派工") }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .disabled(busy != nil)
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.orange.opacity(0.35)))
+    }
+
+    @ViewBuilder
+    private func statusLink(_ text: String, icon: String) -> some View {
+        if let id = draft.cardId {
+            NavigationLink(value: Route.card(id)) { Label(text, systemImage: icon).font(.subheadline.bold()) }
+        } else {
+            Label(text, systemImage: icon).font(.subheadline.bold()).foregroundStyle(.secondary)
+        }
+    }
+
+    private func act(_ action: String) async {
+        guard let api = model.api else { return }
+        busy = action
+        defer { busy = nil }
+        do {
+            let r = try await api.draftAction(project: project.id, entry: entry.id, action: action, draft: draft)
+            if let bot = r.bot { onUpdate(bot); if let d = bot.draft { draft = d } }
+            editing = false
+            error = nil
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await model.refresh()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
 struct MessageBubble: View {
     let entry: ChatEntry
+    var project: Project? = nil
+    var onUpdate: (ChatEntry) -> Void = { _ in }
 
     var body: some View {
         HStack(alignment: .top) {
@@ -170,6 +323,9 @@ struct MessageBubble: View {
                         .padding(8)
                         .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
                 }
+                if let project, entry.draft != nil {
+                    DraftCardView(entry: entry, project: project, onUpdate: onUpdate)
+                } else {
                 Group {
                     if entry.isMine {
                         Text(entry.text).textSelection(.enabled)
@@ -180,6 +336,7 @@ struct MessageBubble: View {
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .foregroundStyle(entry.isMine ? Color.white : (entry.error == true ? Color.red : Color.primary))
                 .background(bubbleColor, in: RoundedRectangle(cornerRadius: 18))
+                }
                 if let meta = metaLine {
                     Text(meta).font(.caption2).foregroundStyle(.tertiary)
                 }
