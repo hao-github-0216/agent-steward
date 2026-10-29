@@ -59,10 +59,35 @@ struct RootView: View {
 
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
+    @State private var snap = SnapState()
 
     var body: some View {
         @Bindable var model = model
-        TabView(selection: $model.tab) {
+        tabs
+            // 圈選鈕:原生畫面才有(終端機是管家網頁,用網頁自己的圈選鈕)
+            .overlay(alignment: .bottomTrailing) {
+                if model.tab != 1 && snap.screen == nil {
+                    SnapButton { snap.begin() }
+                        .padding(.trailing, 16)
+                        // 問管家畫面底部有輸入列和建議問題,往上移避開
+                        .padding(.bottom, { if case .chat = model.path.last, model.tab == 0 { 190 } else { 96 } }())
+                }
+            }
+            .overlay {
+                if let screen = snap.screen {
+                    SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel) }, onCancel: { snap.cancel() })
+                        .ignoresSafeArea()
+                }
+            }
+            .sheet(item: $snap.result) { r in
+                SnapSheet(snap: r, projectId: model.currentProjectId ?? "")
+                    .presentationDetents([.medium, .large])
+            }
+    }
+
+    private var tabs: some View {
+        @Bindable var model = model
+        return TabView(selection: $model.tab) {
             ProjectListView()
                 .tabItem { Label("專案", systemImage: "square.stack.3d.up") }
                 .tag(0)

@@ -128,6 +128,21 @@ struct API {
         return try await call(request("api/chat", method: "POST", body: body), slow: true)
     }
 
+    /// 圈選提問:讀得到字送文字(整個畫面的字當周圍內容),讀不到才送截圖
+    func askSnap(project: String, message: String, snap: SnapResult) async throws -> ChatReply {
+        let text = snap.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var body: [String: Any] = [
+            "project": project,
+            "message": message,
+            "snap": ["kind": "page", "label": snap.label, "text": text, "context": String(snap.context.prefix(12_000))],
+        ]
+        if text.isEmpty, let a = await MainActor.run(body: { Attachment.image(snap.image) }), case .image(let data, let mime, let thumb) = a.kind {
+            body["images"] = [["data": data, "mimeType": mime]]
+            body["thumbs"] = [thumb]
+        }
+        return try await call(request("api/chat", method: "POST", body: body), slow: true)
+    }
+
     // MARK: 專案檔案(附檔案用)
 
     private func codePath(_ project: String, _ op: String, _ q: [URLQueryItem]) -> String {

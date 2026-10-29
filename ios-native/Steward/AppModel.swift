@@ -167,6 +167,33 @@ final class AppModel {
 
     func project(_ id: String) -> Project? { projects.first { $0.id == id } }
 
+    /// 目前畫面是哪個專案(圈選提問預設問它):導覽路徑最後一個專案/對話/工作卡;都沒有就最近活動的專案
+    var currentProjectId: String? {
+        for r in path.reversed() {
+            switch r {
+            case .project(let id), .chat(let id): return id
+            case .card(let id): if let c = card(id) { return c.projectId }
+            }
+        }
+        return projects.first?.id
+    }
+
+    /// 圈選提問的出處說明
+    var screenLabel: String {
+        let name = currentProjectId.flatMap(project)?.name
+        switch tab {
+        case 3: return "iPhone app 工作卡頁"
+        case 2: return "iPhone app 設定頁"
+        default:
+            switch path.last {
+            case .chat: return "iPhone app 問管家(\(name ?? ""))"
+            case .card: return "iPhone app 工作卡(\(name ?? ""))"
+            case .project: return "iPhone app 專案頁(\(name ?? ""))"
+            case nil: return "iPhone app 專案列表"
+            }
+        }
+    }
+
     func working(_ p: Project) -> Int { spaces[p.id]?.working ?? 0 }
 
     func openCards(_ p: Project) -> [Card] {
