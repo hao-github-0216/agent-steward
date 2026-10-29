@@ -10,6 +10,7 @@ struct ChatPanel: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        @Bindable var model = model
         Group {
             if let p = model.current {
                 ChatContent(project: p).id(p.id)
@@ -18,6 +19,12 @@ struct ChatPanel: View {
             }
         }
         .background(Theme.panel)
+        // 草稿「打開工作卡」:在問管家面板上面再升起一層(不能跟面板同一層)
+        .sheet(item: Binding(get: { model.chatCardId.map(CardRef.init) }, set: { model.chatCardId = $0?.id })) { ref in
+            CardPopup(cardId: ref.id)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
@@ -455,7 +462,7 @@ struct DraftCardView: View {
 
     private func statusLine(_ text: String) -> some View {
         Button {
-            if let id = draft.cardId { model.openCardId = id }
+            if let id = draft.cardId { model.chatCardId = id }
         } label: {
             Text(draft.cardId != nil ? "\(text) · 打開工作卡" : text).font(.system(size: 13, weight: .semibold))
         }

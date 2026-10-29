@@ -225,9 +225,9 @@ struct SnapSheet: View {
                 if !turns.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
                         Button("到問管家繼續") {
-                            dismiss()
                             model.switchProject(projectId)
-                            model.showChat = true
+                            model.afterSnapOpenChat = true
+                            dismiss()
                         }
                     }
                 }
@@ -259,9 +259,9 @@ struct SnapSheet: View {
     private func draft() async {
         let body = hasText ? snap.text : "(圈到的是圖片,沒有文字)"
         let answer = turns.last(where: { !$0.error })?.a
-        dismiss()
         model.switchProject(projectId)
-        model.pendingChat = .draft("依照這段圈選的內容開工作卡\n出處:\(snap.label)\n內容:\n\(body.prefix(3000))\(answer.map { "\n\n管家的看法:\n\($0.prefix(2000))" } ?? "")")
-        model.showChat = true
+        model.afterSnap = .draft("依照這段圈選的內容開工作卡\n出處:\(snap.label)\n內容:\n\(body.prefix(3000))\(answer.map { "\n\n管家的看法:\n\($0.prefix(2000))" } ?? "")")
+        model.afterSnapOpenChat = true
+        dismiss()
     }
 }

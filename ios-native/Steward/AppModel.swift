@@ -104,6 +104,11 @@ final class AppModel {
     var openCardId: String?
     /// 要帶到問管家的東西
     var pendingChat: ChatIntent?
+    /// 圈選小框關掉之後要做的事(兩個視窗不能同時升起:等圈選小框收好再打開問管家)
+    var afterSnap: ChatIntent?
+    var afterSnapOpenChat = false
+    /// 問管家面板裡打開的工作卡(在面板上面再升起一層)
+    var chatCardId: String?
     /// 問管家:等回答中(貓咪眼睛動)、有沒看過的回答(貓咪上的點)
     var chatBusy = false
     var chatUnread = false
@@ -242,6 +247,8 @@ final class AppModel {
             cards = b.cards ?? []
             spaces = b.spaceInfo ?? [:]
             lastError = nil
+            // 目前專案被停止追蹤或收起來了:換到最近活動的專案
+            if phase == .ready, let p = current, p.status != "active", let next = projects.first?.id { switchProject(next) }
         } catch APIError.needLogin(let why) {
             phase = .needPassword(why)
         } catch {
@@ -302,7 +309,17 @@ final class AppModel {
         try await api?.focusCard(card.id)
         if card.projectId != currentProjectId { switchProject(card.projectId) }
         openCardId = nil
+        chatCardId = nil
+        showChat = false
         mode = .terminal
+    }
+
+    /// 圈選小框收好了:要到問管家繼續或開工作卡的,現在才打開問管家
+    func runAfterSnap() {
+        if let intent = afterSnap { pendingChat = intent }
+        if afterSnapOpenChat { showChat = true }
+        afterSnap = nil
+        afterSnapOpenChat = false
     }
 
     func updateProject(_ id: String, _ body: [String: Any]) async throws {

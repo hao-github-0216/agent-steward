@@ -55,7 +55,7 @@ struct AppShell: View {
                 SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel) }, onCancel: { snap.cancel() })
             }
         }
-        .sheet(item: $snap.result) { r in
+        .sheet(item: $snap.result, onDismiss: { model.runAfterSnap() }) { r in
             SnapSheet(snap: r, projectId: model.currentProjectId ?? "")
                 .presentationDetents([.medium, .large])
         }

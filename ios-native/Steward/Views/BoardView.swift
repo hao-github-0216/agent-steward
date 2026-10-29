@@ -63,6 +63,10 @@ struct BoardView: View {
         .onChange(of: model.scrollToColumn) { _, col in
             if let col { withAnimation { visibleColumn = col }; model.scrollToColumn = nil }
         }
+        .onAppear {
+            // 從程式碼/終端機用連結跳過來時,看板這時才出現
+            if let col = model.scrollToColumn { visibleColumn = col; model.scrollToColumn = nil }
+        }
     }
 
     private var cards: [Card] {
