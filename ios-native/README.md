@@ -12,6 +12,7 @@
 ```
 
 - 主畫面名稱「專案管家 β」,bundle ID `io.github.haogithub0216.agentsteward.native`(跟 `ios-app/` 的 Tauri 版分開)
+- iPhone 和 iPad 都能用(iPad 上分頁列在頂端、看板一次看得到好幾欄、可以分割畫面)
 - 顏色用 iOS 系統顏色(深淺色由系統處理),強調色是網頁的藍;文字跟著 iPhone 的文字大小設定
 - 身分:透過 Tailscale 的 https 網址連線時管家自動認得;否則用管理密碼登入
 
@@ -27,7 +28,10 @@
 | 工作卡視窗(核准派工/不要、重新派工/標成完成、重做一次、在終端機看這個窗格) | 同樣的按鈕和規則 | 系統視窗 |
 | 浮動球(貓)→ 問管家面板(清除紀錄、建議問題、引用、＋檔案/＋圖片/目前檔案、開工作卡、改用備用模型) | 同樣的功能;對話是 iMessage 式泡泡,開工作卡在右上,清除紀錄在「⋯」(會先確認),附件在輸入框左邊「＋」 | 系統視窗、iMessage 式 |
 | 圈選鈕(貓旁邊) | 同一個位置、只有這一顆:看板用 iPhone 的文字辨識;程式碼/終端機用網頁的圈選 | — |
-| 程式碼、終端機 | 管家網頁的內容(app 模式);＋支線/帶回、管家側欄的按鈕在導覽列 | 網頁 |
+| 程式碼:檔案(瀏覽、搜尋、新增/改名/刪除、Git 標記)、編輯器、預覽 | 原生:系統清單一層層點進資料夾;程式碼/文字用原生檢視(行號)和編輯(存檔衝突會問);Markdown 預覽/原文;圖片可縮放、PDF 用 PDFKit、Word/Excel/PowerPoint 用 Quick Look、Notebook 顯示內容;長按/左滑:問管家這個檔案、重新命名、複製路徑、移到垃圾桶 | 原生 |
+| 程式碼:Git(分支、拉取/推送/抓取、暫存/取消暫存/捨棄、提交、AI 提交訊息、差異、提交紀錄) | 原生:同樣的功能;左滑暫存/捨棄(捨棄會先確認);差異是綠/紅統一格式 | 原生 |
+| 程式碼:編譯 LaTeX、執行 Notebook、分割編輯器 | 檔案右上「⋯ → 在網頁版編輯器打開」 | 網頁 |
+| 終端機 | 管家網頁的內容(app 模式);＋支線/帶回、管家側欄的按鈕在導覽列;斷線會自動重連 | 網頁 |
 | 管家側欄 | 程式碼/終端機下面的毛玻璃面板 | 系統材質 |
 | 設定 ⚙(一般、AI 接口、路由、Agent、存取、推播、外掛、關於) | 同樣八頁(內容是網頁那一頁)+ 這支 iPhone 的管家網址、iPhone 推播 | 系統表單 |
 | 建立專案、整理 spaces、拆出子資料夾、帶回主線 | 打開網頁的對話框 | 網頁 |
@@ -83,6 +87,7 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 - 先填好管家網址:`xcrun simctl spawn <UDID> defaults write io.github.haogithub0216.agentsteward.native serverURL https://…/`
 - 直接打開某個畫面:`xcrun simctl launch <UDID> io.github.haogithub0216.agentsteward.native -noPush YES -openURL agentsteward://…`
   - `project/<id>`(看板)、`project/<id>/chat|code|terminal`、`card/<id>`、`cards/<欄位>`、`nav`(專案清單)、`snap`(圈選)
+  - 程式碼頁:`project/<id>/code?file=<路徑>`、`?git=1`、`?diff=<路徑>&which=<staged|unstaged|untracked>`
   - 注意:模擬器的 `simctl spawn … defaults write` 寫不進 app 自己已經存過的設定(例如上次的模式),要改 app 容器裡的 plist
   - `-noPush YES`:不問推播權限(截圖用)
 - 注意:切到終端機、在終端機換專案會讓 herdr 跳到那個專案的 space(跟網頁一樣),電腦上的 herdr 畫面也會跟著換

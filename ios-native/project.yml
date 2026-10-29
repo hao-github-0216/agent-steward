@@ -29,7 +29,7 @@ targets:
         # 跟 Tauri 版(io.github.haogithub0216.agentsteward)分開,兩個可以同時裝在手機上比較
         PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2" # iPhone + iPad
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: Steward/Steward.entitlements
     info:
@@ -38,6 +38,8 @@ targets:
         CFBundleDisplayName: 專案管家 β
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # iPad:四個方向都可以(分割畫面、多工需要)
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: 連到你電腦上的專案管家

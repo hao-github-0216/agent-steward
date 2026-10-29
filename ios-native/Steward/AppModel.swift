@@ -25,13 +25,16 @@ enum Mode: String, CaseIterable, Identifiable {
         }
     }
 
-    var isWeb: Bool { self != .board }
+    /// 只有終端機是管家網頁;看板和程式碼是原生畫面
+    var isWeb: Bool { self == .terminal }
 }
 
 /// 從別的地方(圈選、網頁程式碼頁的「問管家」)帶著東西打開問管家
 enum ChatIntent: Equatable {
     case quote(ChatQuote)
     case draft(String)
+    /// 程式碼頁「問管家這個檔案」:附上這個檔案
+    case file(String)
 }
 
 /// 終端機的支線狀態(網頁的 renderBranchBtns 告訴我們)
@@ -98,6 +101,11 @@ final class AppModel {
     var ballCorner = BallCorner(rawValue: UserDefaults.standard.string(forKey: "ballCorner") ?? "") ?? .br {
         didSet { UserDefaults.standard.set(ballCorner.rawValue, forKey: "ballCorner") }
     }
+    /// 程式碼頁:目前看檔案還是版本控制、導覽路徑(資料夾、檔案、差異)
+    var codeSection = UserDefaults.standard.string(forKey: "codeSection") ?? "files" {
+        didSet { UserDefaults.standard.set(codeSection, forKey: "codeSection") }
+    }
+    var codePath: [CodeRoute] = []
     /// 看板要捲到哪一欄(連結 agentsteward://cards/<欄位>)
     var scrollToColumn: String?
     /// 打開的工作卡視窗
@@ -160,6 +168,7 @@ final class AppModel {
         currentProjectId = id
         UserDefaults.standard.set(id, forKey: "currentProject")
         needSpace = nil
+        codePath = []
         if !fromWeb {
             lastLocalSwitch = .now
             web.select(id)
@@ -373,7 +382,14 @@ final class AppModel {
             switchProject(id)
             switch parts.dropFirst().first {
             case "chat": present(.chat)
-            case "code": mode = .code
+            case "code":
+                // ?file=<路徑> 打開檔案、?git=1 版本控制、?diff=<路徑>&which=<staged|unstaged|untracked> 看差異
+                mode = .code
+                let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                let v = { (k: String) in q.first { $0.name == k }?.value }
+                if let f = v("file") { codeSection = "files"; codePath = [.file(f)] }
+                else if let d = v("diff") { codeSection = "git"; codePath = [.diff(path: d, which: v("which") ?? "unstaged", commit: nil)] }
+                else if v("git") != nil { codeSection = "git"; codePath = [] }
             case "terminal": mode = .terminal
             default: mode = .board
             }
@@ -430,6 +446,7 @@ enum WebSheet: Identifiable, Equatable {
     case create
     case tidy
     case split(String) // 專案 id
+    case codeEditor // 網頁版的程式碼編輯器(編譯 LaTeX、執行 Notebook、分割編輯器)
     case full
 
     var id: String {
@@ -438,6 +455,7 @@ enum WebSheet: Identifiable, Equatable {
         case .create: "create"
         case .tidy: "tidy"
         case .split(let p): "split-\(p)"
+        case .codeEditor: "codeEditor"
         case .full: "full"
         }
     }

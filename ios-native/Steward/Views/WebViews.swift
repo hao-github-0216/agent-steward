@@ -35,7 +35,7 @@ final class WebStore {
         guard let model, let base = model.server else { return nil }
         var c = URLComponents(url: base, resolvingAgainstBaseURL: false)
         c?.queryItems = [URLQueryItem(name: "app", value: "1")] + (model.currentProjectId.map { [URLQueryItem(name: "project", value: $0)] } ?? [])
-        c?.fragment = model.mode == .code ? "code" : "terminal"
+        c?.fragment = "terminal"
         return c?.url
     }
 
@@ -51,12 +51,15 @@ final class WebStore {
         ready = true
         guard let model else { return }
         let fixProject = { if let id = model.currentProjectId, id != project { self.select(id) } }
-        let fixMode = { if mode != model.mode.webName { self.setMode(model.mode) } }
+        let fixMode = { if mode != Self.webMode(model.mode) { self.setMode(model.mode) } }
         if model.mode == .terminal { fixProject(); fixMode() } else { fixMode(); fixProject() }
     }
 
     /// 切模式:看板時網頁也切回看板(藏著),在看板換專案才不會讓 herdr 跳過去;切到終端機時 herdr 跟著目前專案(跟網頁一樣)
-    func setMode(_ mode: Mode) { js("window.setMode && setMode('\(mode.webName)')") }
+    func setMode(_ mode: Mode) { js("window.setMode && setMode('\(Self.webMode(mode))')") }
+
+    /// 共用網頁只負責終端機;看板、程式碼是原生畫面,這時網頁切回看板(藏著,換專案不會讓 herdr 跳)
+    static func webMode(_ mode: Mode) -> String { mode == .terminal ? "term" : "board" }
 
     func select(_ projectId: String) { js("window.selectProject && selectProject(\(Self.jsString(projectId)), 'app')") }
 
@@ -157,6 +160,7 @@ struct WebPage: View {
         case .create: "建立專案"
         case .tidy: "整理 spaces"
         case .split: "拆出子資料夾"
+        case .codeEditor: "網頁版編輯器"
         case .full: "完整網頁版"
         }
     }
@@ -170,6 +174,9 @@ struct WebPage: View {
         case .tidy: c?.queryItems = [.init(name: "app", value: "1"), .init(name: "open", value: "tidy")]
         // 拆出子資料夾畫在看板的專案說明裡:用完整網頁版(不進 app 模式)
         case .split(let p): c?.queryItems = [.init(name: "project", value: p), .init(name: "open", value: "split")]
+        case .codeEditor:
+            c?.queryItems = [.init(name: "app", value: "1")] + (model.currentProjectId.map { [.init(name: "project", value: $0)] } ?? [])
+            c?.fragment = "code"
         case .full: break
         }
         return c?.url

@@ -15,7 +15,7 @@ struct AppShell: View {
             BoardTab()
                 .tabItem { Label("看板", systemImage: "rectangle.split.3x1") }
                 .tag(Mode.board)
-            WebModeTab(mode: .code)
+            CodeTab()
                 .tabItem { Label("程式碼", systemImage: "chevron.left.forwardslash.chevron.right") }
                 .tag(Mode.code)
             WebModeTab(mode: .terminal)
@@ -165,7 +165,6 @@ struct WebModeTab: View {
                     if mode == .terminal { branchTools }
                     Button(model.drawerOpen ? "收起管家" : "管家") { model.drawerOpen.toggle() }
                         .accessibilityHint("打開或收起下面的管家側欄")
-                    if mode == .code { SettingsToolbarButton() }
                 }
             }
         }
@@ -247,7 +246,7 @@ struct BallLayer: View {
     }
 }
 
-/// 圈選鈕:看板用 iPhone 的文字辨識;程式碼、終端機用網頁的圈選(帶行號、分得出 agent 窗格)
+/// 圈選鈕:看板、程式碼用 iPhone 的文字辨識;終端機用網頁的圈選(分得出是哪個 agent 窗格、可以交給它)
 struct SnapButton: View {
     @Environment(AppModel.self) private var model
 

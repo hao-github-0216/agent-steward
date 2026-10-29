@@ -298,8 +298,8 @@ private struct ChatContent: View {
         }
         loading = false
         model.chatUnread = false
-        // 在程式碼模式打開:提供「目前檔案」(含還沒存的修改)
-        if model.mode == .code { currentFile = await model.web.currentFile() }
+        // 在程式碼頁打開:正在看的檔案當「目前檔案」
+        if model.mode == .code, case .file(let p) = model.codePath.last { currentFile = (p, nil) }
         suggestions = (try? await api.suggestions(project: project.id)) ?? []
     }
 
@@ -312,6 +312,9 @@ private struct ChatContent: View {
             inputFocused = true
         case .draft(let message):
             startDraft(message)
+        case .file(let path):
+            if !attachedPaths.contains(path) { attachments.append(Attachment(kind: .projectFile(path))) }
+            inputFocused = true
         }
     }
 

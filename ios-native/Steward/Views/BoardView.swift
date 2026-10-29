@@ -74,7 +74,8 @@ struct BoardView: View {
     }
 
     private func columns(width: CGFloat) -> some View {
-        let colWidth = (width - 40) * 0.86
+        // 手機:一欄約 86% 寬,下一欄露一點;iPad 等寬螢幕:每欄固定寬,一次看得到好幾欄
+        let colWidth = width > 700 ? 340 : (width - 40) * 0.86
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(boardColumns, id: \.id) { col in

@@ -22,7 +22,7 @@ struct API {
     let base: URL
 
     /// 一般請求 30 秒;問管家要等模型回答,管家那邊最多等 180 秒
-    private static let session: URLSession = {
+    static let session: URLSession = {
         let c = URLSessionConfiguration.default
         c.timeoutIntervalForRequest = 30
         c.httpCookieStorage = .shared
@@ -30,7 +30,7 @@ struct API {
         return URLSession(configuration: c)
     }()
 
-    private static let slowSession: URLSession = {
+    static let slowSession: URLSession = {
         let c = URLSessionConfiguration.default
         c.timeoutIntervalForRequest = 210
         c.timeoutIntervalForResource = 240
@@ -52,7 +52,7 @@ struct API {
         return out.url
     }
 
-    private func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
+    func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
         guard let url = URL(string: path, relativeTo: base) else { throw APIError.badURL }
         var r = URLRequest(url: url)
         r.httpMethod = method
@@ -64,7 +64,7 @@ struct API {
         return r
     }
 
-    private func call<T: Decodable>(_ r: URLRequest, slow: Bool = false) async throws -> T {
+    func call<T: Decodable>(_ r: URLRequest, slow: Bool = false) async throws -> T {
         let data: Data
         let resp: URLResponse
         do {

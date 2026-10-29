@@ -172,6 +172,7 @@ struct FileEntry: Codable, Hashable, Identifiable {
     var type: String // dir | file
     var size: Int?
     var ignored: Bool?
+    var git: String? // U 新檔、M 修改、A 新增、D 刪除、! 衝突、• 資料夾裡有變更
     var id: String { rel }
     var isDir: Bool { type == "dir" }
 }
