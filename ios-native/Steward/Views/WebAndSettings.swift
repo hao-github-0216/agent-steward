@@ -65,6 +65,7 @@ struct SettingsView: View {
                     LabeledContent("專案", value: "\(model.projects.count) 個")
                     Button("更換管家網址", role: .destructive) { confirmForget = true }
                 }
+                PushSettingsSection()
                 Section {
                     LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
                 } footer: {
@@ -75,6 +76,67 @@ struct SettingsView: View {
             .confirmationDialog("要更換管家網址嗎?", isPresented: $confirmForget, titleVisibility: .visible) {
                 Button("更換", role: .destructive) { model.forgetServer() }
             }
+        }
+    }
+}
+
+struct PushSettingsSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var push = PushState.shared
+    @State private var serverReady: Bool?
+    @State private var testing = false
+    @State private var result: String?
+
+    var body: some View {
+        Section {
+            LabeledContent("iPhone 權限") {
+                switch push.authorized {
+                case .some(true): Text("已允許").foregroundStyle(.green)
+                case .some(false): Text("已關閉").foregroundStyle(.red)
+                case .none: Text("還沒問過")
+                }
+            }
+            LabeledContent("管家推播金鑰") {
+                switch serverReady {
+                case .some(true): Text("已設定").foregroundStyle(.green)
+                case .some(false): Text("還沒設定").foregroundStyle(.orange)
+                case .none: ProgressView()
+                }
+            }
+            if push.authorized == false {
+                Button("到 iPhone 設定打開通知") {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+                }
+            } else if push.authorized == nil {
+                Button("允許推播通知") { Task { await push.requestAndRegister() } }
+            }
+            Button {
+                Task { await test() }
+            } label: {
+                if testing { ProgressView() } else { Text("傳一則測試通知") }
+            }
+            .disabled(push.token == nil || serverReady != true || testing)
+        } header: {
+            Text("推播通知")
+        } footer: {
+            Text(result ?? push.lastError ?? "有新提案、工作卡卡住、派出去的工作完成或在等你回應時通知你;點通知會打開那個專案。")
+        }
+        .task {
+            await push.refreshAuthorization()
+            serverReady = (try? await model.api?.pushStatus())?.configured ?? false
+        }
+    }
+
+    private func test() async {
+        guard let api = model.api, let token = push.token else { return }
+        testing = true
+        defer { testing = false }
+        await push.sendToken(api: api)
+        do {
+            try await api.testPush(token: token)
+            result = "已送出,幾秒內會收到。"
+        } catch {
+            result = error.localizedDescription
         }
     }
 }

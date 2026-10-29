@@ -111,6 +111,22 @@ struct API {
         try await call(request("api/chat", method: "POST", body: ["project": project, "message": message]), slow: true)
     }
 
+    struct PushStatus: Decodable { var configured: Bool? }
+
+    func registerPush(token: String, env: String, name: String) async throws {
+        struct OK: Decodable { var ok: Bool? }
+        let _: OK = try await call(request("api/push/register", method: "POST", body: ["token": token, "env": env, "name": name]))
+    }
+
+    func pushStatus() async throws -> PushStatus {
+        try await call(request("api/push/status"))
+    }
+
+    func testPush(token: String) async throws {
+        struct OK: Decodable { var ok: Bool? }
+        let _: OK = try await call(request("api/push/test", method: "POST", body: ["token": token]))
+    }
+
     func suggestions(project: String) async throws -> [String] {
         let id = project.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? project
         let s: Suggestions = try await call(request("api/chat/\(id)/suggest?ensure=1"), slow: true)

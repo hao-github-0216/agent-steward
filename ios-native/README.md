@@ -30,8 +30,18 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 - 先填好管家網址:`xcrun simctl spawn <UDID> defaults write io.github.haogithub0216.agentsteward.native serverURL https://…/`
 - 直接打開某個畫面:`xcrun simctl launch <UDID> io.github.haogithub0216.agentsteward.native -openURL agentsteward://project/<id>/chat`
 
-## 第一版還沒做的
+## 推播通知
 
-- 數學式($…$)和表格照原文顯示
+管家直接送 Apple Push Notification service(APNs),不經第三方:
+
+1. developer.apple.com → Certificates, IDs & Profiles → Keys → 「+」,勾 Apple Push Notifications service (APNs),下載 `AuthKey_<KEY ID>.p8`(只能下載一次)
+2. 放進管家那台電腦的 `~/.agent-steward/apns/`,同一個資料夾加 `config.json`:
+   `{"teamId": "<Team ID>", "bundleId": "io.github.haogithub0216.agentsteward.native"}`
+3. iPhone app 連上管家後會問推播權限,允許後自動把裝置登記給管家;設定頁可以「傳一則測試通知」
+
+推播的時機:新提案、工作卡卡住、派出去的工作在等你回應、派出去的工作完成(只推 iPhone)、每日提醒。點通知會打開那個專案。
+
+## 還沒做的
+
 - 即時更新(`/api/events`):目前是下拉更新、回到 app 時自動更新
-- 推播通知、看板拖拉、派工
+- 看板拖拉、派工
