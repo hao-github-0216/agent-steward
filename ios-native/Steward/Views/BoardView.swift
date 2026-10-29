@@ -140,7 +140,8 @@ struct BoardColumn: View {
                     VStack(spacing: 8) {
                         ForEach(shown) { c in
                             KCard(card: c, showProject: model.allCards)
-                                .contextMenu { CardActions(card: c, onMove: onMove) }
+                                // 長按選單也畫在一般畫面樹外面:不讀環境,把 model 直接傳進去(跟拖拉預覽同一個坑)
+                                .contextMenu { CardActions(model: model, card: c, onMove: onMove) }
                                 // 拖拉預覽畫在 app 的畫面樹外面,拿不到 AppModel:只能用不讀環境的 KCardFace
                                 .draggable(c.id) { KCardFace(card: c, projectName: nil).frame(width: 240) }
                         }
@@ -167,7 +168,7 @@ struct BoardColumn: View {
 /// 長按卡片的動作:跟網頁工作卡視窗一樣(提案:核准派工/不要;卡住:重新派工/標成完成;完成:重做一次),
 /// 加上打開和在終端機看這個窗格
 struct CardActions: View {
-    @Environment(AppModel.self) private var model
+    let model: AppModel
     let card: Card
     let onMove: (String, String) -> Void
 

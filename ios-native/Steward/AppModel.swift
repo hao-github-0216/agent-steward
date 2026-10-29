@@ -319,11 +319,13 @@ final class AppModel {
         if anySheetShown { pendingPresentation = p } else { show(p) }
     }
 
-    /// 根視窗收好了(每個 .sheet 的 onDismiss 都叫這個)
+    /// 根視窗收好了(每個 .sheet 的 onDismiss 都叫這個)。晚一拍再開:這時視窗的開關狀態可能還沒歸零
     func drainPending() {
-        guard let p = pendingPresentation, !anySheetShown else { return }
-        pendingPresentation = nil
-        show(p)
+        DispatchQueue.main.async { [self] in
+            guard let p = pendingPresentation, !anySheetShown else { return }
+            pendingPresentation = nil
+            show(p)
+        }
     }
 
     private var anySheetShown: Bool {
