@@ -57,6 +57,7 @@ final class GestureTests: XCTestCase {
         app.launchArguments = ["-noPush", "YES", "-serverURL", server, "-openURL", "agentsteward://project/\(proj)/terminal"]
         app.launch()
         sleep(14)
+        if app.buttons["之後再說"].firstMatch.exists { app.buttons["之後再說"].firstMatch.tap(); sleep(2) }
         shot(app, "term-1-open")
         let web = app.webViews.firstMatch
         web.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.4)).tap()
@@ -76,5 +77,35 @@ final class GestureTests: XCTestCase {
         note.name = "keyboard-counts"; note.lifetime = .keepAlways; add(note)
         XCTAssertEqual(afterTap, 0, "點終端機不該跳鍵盤")
         XCTAssertGreaterThan(afterKbd, 0, "按 ⌨︎ 要叫出鍵盤")
+    }
+
+    /// 終端機按鍵列(隔離的管家):在按鍵上左右滑要捲動、不能送鍵;點一下 ↓ 送一次。
+    /// 用座標拖(網頁裡的按鍵 XCUITest 常判斷成看不見)
+    func testTerminalKeyBarSwipe() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let proj = env["STEWARD_TEST_PROJECT"] else { throw XCTSkip("要接隔離的管家才跑") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-noPush", "YES", "-serverURL", server, "-openURL", "agentsteward://project/\(proj)/terminal"]
+        app.launch()
+        sleep(14)
+        if app.buttons["之後再說"].firstMatch.exists { app.buttons["之後再說"].firstMatch.tap(); sleep(2) }
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 5))
+        let f = web.frame
+        let barY = f.maxY - 24
+        let at = { (x: CGFloat) in app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: barY)) }
+        shot(app, "bar-1-before")
+        // 從列的右半邊(按鍵上)往左拖:要捲動、不送鍵
+        at(f.width * 0.72).press(forDuration: 0.05, thenDragTo: at(f.width * 0.12))
+        sleep(2)
+        shot(app, "bar-2-after-swipe")
+        // 拖回最左邊(拖兩次),再點一下 ↓(⌨︎ 固定在左邊,↓ 是捲動區的第二個鍵)
+        for _ in 0..<2 {
+            at(f.width * 0.2).press(forDuration: 0.05, thenDragTo: at(f.width * 0.95))
+            sleep(2)
+        }
+        at(54 + 4 + 42 + 6 + 21).tap()
+        sleep(2)
+        shot(app, "bar-3-after-tap")
     }
 }
