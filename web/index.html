@@ -204,6 +204,11 @@ body.board-collapsed .board { display: none; }
 .seg button.on { background: var(--accent); color: #fff; }
 .termctl { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 body.term .termctl { display: inline-flex; }
+/* 支線按鈕只在終端機頁顯示 */
+body:not(.term) .termctl .termonly { display: none; }
+.termctl .sm { display: none; }
+@media (max-width: 600px) { .termctl .termonly .lg { display: none; } .termctl .termonly .sm { display: inline; } .termctl.onbranch #branchBtn { display: none; } }
+#handoffText { font: 14px/1.6 inherit; min-height: 180px; resize: vertical; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 body.term main, body.code main { display: contents; }
 body.term main > section.content, body.code main > section.content { display: none; }
 body.term nav, body.code nav { display: block; position: fixed; z-index: 40; top: 50px; bottom: 0; left: 0; width: min(300px, 85vw); height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); background: var(--panel); border-right: 1px solid var(--line); box-shadow: 8px 0 24px rgba(0,0,0,.18); transform: translateX(-105%); transition: transform .18s ease; }
@@ -627,6 +632,8 @@ form.tool { flex-direction: row; }
 		<button class="small" id="fontDown" title="字體縮小">A−</button>
 		<span id="fontSize">15</span>
 		<button class="small" id="fontUp" title="字體放大">A+</button>
+		<button class="small termonly" id="branchBtn" hidden title="從 herdr 目前的 agent 開一條支線:新 tab 接著它的對話,另外問問題或做事,不打擾它"><span class="lg">開支線</span><span class="sm">＋支線</span></button>
+		<button class="small termonly" id="handoffBtn" hidden title="把這條支線的結論整理好,確認後送回主線"><span class="lg">帶回主線</span><span class="sm">帶回</span></button>
 		<button class="small" id="drawerBtn" title="管家側欄">管家 ▸</button>
 	</div>
 	<span class="status" id="status"><span class="dot"></span>連線中…</span>
@@ -717,6 +724,13 @@ form.tool { flex-direction: row; }
 			<div class="msgbox" id="createMsg" hidden></div>
 		</div>
 		<div class="mfoot"><button class="small primary" id="createGo" disabled>建立</button></div>
+	</div>
+</div>
+<div class="modal" id="handoffDlg" hidden>
+	<div class="box" role="dialog" aria-labelledby="handoffTitle">
+		<div class="mhead"><h3 id="handoffTitle">帶回主線</h3><button class="small" data-close="handoffDlg">取消</button></div>
+		<div class="mbody"><div class="hint" id="handoffHint"></div><textarea id="handoffText" placeholder="管家正在整理支線的結論…"></textarea></div>
+		<div class="mfoot"><span class="hint" id="handoffNote"></span><button class="small" id="handoffRedo" disabled>重新整理</button><button class="small primary" id="handoffGo" disabled>送給主線</button><button class="small" id="handoffKeep" hidden>保留支線</button><button class="small primary" id="handoffClose" hidden>關掉支線</button></div>
 	</div>
 </div>
 <div class="modal" id="tidyDlg" hidden>
@@ -1201,7 +1215,7 @@ document.addEventListener("click", (e) => {
 	if (e.target.dataset?.spacename) { post(`/api/projects/${sel}/space-name`, { use: e.target.dataset.spacename }).then(() => load()); return; }
 	if (e.target.dataset?.strays) { post(`/api/projects/${sel}/strays`, {}).then((m) => { toast(m.error || `已搬 ${m.moved} 個窗格到「${m.space}」`); load(); }); return; }
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { for (const id of ["createDlg", "tidyDlg"]) $(id).hidden = true; closeCard(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { for (const id of ["createDlg", "tidyDlg", "handoffDlg"]) $(id).hidden = true; closeCard(); } });
 document.addEventListener("click", (e) => {
 	const t = e.target;
 	if (t.closest(".proj")) { $("nav").classList.remove("open"); syncMenuLabel(); selectProject(t.closest(".proj").dataset.id, document.body.classList.contains("code") ? "程式碼頁面" : document.body.classList.contains("term") ? "終端機" : "看板"); }
@@ -2027,6 +2041,7 @@ async function enterTerminal({ create = false } = {}) {
 		}
 		termCurrent = (await fetchTermCurrent()) || termCurrent;
 		herdrSeen = termCurrent.project ?? null;
+		renderBranchBtns();
 	} finally {
 		termEntering = false;
 		if (termAgain) { termAgain = false; setTimeout(() => enterTerminal(), 0); }
@@ -2039,6 +2054,7 @@ async function pollTerminalCurrent() {
 	if (!r || termEntering) return;
 	const moved = (r.project ?? null) !== herdrSeen;
 	termCurrent = r;
+	renderBranchBtns();
 	if (moved) {
 		herdrSeen = r.project ?? null;
 		// 停在不屬於任何專案的地方不算選擇,保留上一個
@@ -2047,6 +2063,75 @@ async function pollTerminalCurrent() {
 	renderDrawer();
 }
 setInterval(pollTerminalCurrent, 2000);
+// ---------- 支線:herdr 焦點在 agent 上就能開支線;焦點在支線上就能帶回主線 ----------
+function renderBranchBtns() {
+	const c = termCurrent || {};
+	$("branchBtn").hidden = !c.agent;
+	const b = c.branch;
+	$("handoffBtn").hidden = !b;
+	$("termctl").classList.toggle("onbranch", !!b); // 手機上焦點在支線時只留「帶回」
+	if (b) {
+		$("handoffBtn").disabled = !b.mainAlive;
+		$("handoffBtn").title = b.mainAlive ? `把這條支線的結論整理好,確認後送回「${b.mainLabel}」` : "主線已經關閉,沒辦法帶回";
+		const queued = b.handoff === "queued";
+		$("handoffBtn").innerHTML = `<span class="lg">${queued ? "帶回主線(等主線閒下來)" : "帶回主線"}</span><span class="sm">${queued ? "排隊中" : "帶回"}</span>`;
+	}
+}
+$("branchBtn").onclick = async () => {
+	$("branchBtn").disabled = true;
+	toast("正在開支線…");
+	try {
+		const r = await post("/api/branch", { pane: termCurrent.pane }).catch(() => ({ error: "連不上管家" }));
+		if (r.error) return toast(`沒開成:${r.error}`);
+		toast(r.branch.mode === "fork" ? `已開「${r.branch.label}」,接著主線的對話` : `已開「${r.branch.label}」:這個 agent 不能分叉,已送主線節錄給它`);
+		termCurrent = (await fetchTermCurrent()) || termCurrent;
+		renderBranchBtns();
+		focusTerm();
+	} finally {
+		$("branchBtn").disabled = false;
+	}
+};
+let handoffBranch = null;
+async function loadHandoffDraft() {
+	$("handoffText").value = ""; $("handoffText").disabled = true;
+	$("handoffGo").disabled = true; $("handoffRedo").disabled = true;
+	$("handoffNote").textContent = "管家正在整理…";
+	const r = await post(`/api/branch/${handoffBranch.id}/draft`, {}).catch(() => ({ error: "連不上管家" }));
+	$("handoffText").disabled = false; $("handoffRedo").disabled = false;
+	if (r.error) { $("handoffNote").textContent = r.error; return; }
+	$("handoffText").value = r.draft; $("handoffNote").textContent = "可以先改再送"; $("handoffGo").disabled = false;
+}
+$("handoffBtn").onclick = () => {
+	handoffBranch = termCurrent.branch;
+	if (!handoffBranch) return;
+	$("handoffHint").textContent = `從「${handoffBranch.label}」送回主線「${handoffBranch.mainLabel}」。主線正在工作時會等它閒下來才送。`;
+	for (const id of ["handoffRedo", "handoffGo"]) $(id).hidden = false;
+	for (const id of ["handoffKeep", "handoffClose"]) $(id).hidden = true;
+	$("handoffDlg").hidden = false;
+	loadHandoffDraft();
+};
+$("handoffRedo").onclick = () => loadHandoffDraft();
+$("handoffGo").onclick = async () => {
+	const text = $("handoffText").value.trim();
+	if (!text) return;
+	$("handoffGo").disabled = true;
+	const r = await post(`/api/branch/${handoffBranch.id}/handoff`, { text }).catch(() => ({ error: "連不上管家" }));
+	if (r.error) { $("handoffGo").disabled = false; $("handoffNote").textContent = r.error; return; }
+	if (r.status === "failed") { $("handoffDlg").hidden = true; return toast(`沒送出:${r.note || "主線已經關閉"}`); }
+	// 送出(或排隊)後問要不要關掉支線,預設保留
+	$("handoffNote").textContent = r.status === "sent" ? "已送給主線。要關掉這條支線嗎?" : "主線正在忙,閒下來就會送出。要關掉這條支線嗎?(關掉也會照樣送)";
+	for (const id of ["handoffRedo", "handoffGo"]) $(id).hidden = true;
+	for (const id of ["handoffKeep", "handoffClose"]) $(id).hidden = false;
+	termCurrent = (await fetchTermCurrent()) || termCurrent;
+	renderBranchBtns();
+};
+$("handoffKeep").onclick = () => { $("handoffDlg").hidden = true; focusTerm(); };
+$("handoffClose").onclick = async () => {
+	$("handoffDlg").hidden = true;
+	const x = await post(`/api/branch/${handoffBranch.id}/close`, {}).catch(() => ({ error: "連不上管家" }));
+	toast(x.error ? `沒關成:${x.error}` : "已關掉支線");
+	focusTerm();
+};
 const SOURCE_LABEL = { "看板": "最後在看板選的", "程式碼頁面": "最後在程式碼頁面選的", herdr: "最後在 herdr 切到的" };
 function renderDrawer() {
 	const term = document.body.classList.contains("term");

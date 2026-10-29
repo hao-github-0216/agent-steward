@@ -6,7 +6,8 @@ import { listPanes, type HerdrPane } from "./herdr.ts";
 import { resolveProject } from "./projects.ts";
 import type { Steward } from "./steward.ts";
 import type { Project, Store } from "./store.ts";
-import { paneExcerpt, transcriptExcerpt, transcriptPath, type AgentSessionRef } from "./transcripts.ts";
+import { deliverHandoffs } from "./branch.ts";
+import { offsetSince, paneExcerpt, resolveSession, transcriptExcerpt, transcriptPath, type AgentSessionRef } from "./transcripts.ts";
 
 const POLL_MS = 10_000;
 const SETTLE_MS = Number(process.env.STEWARD_SETTLE_MS ?? 90_000); // 閒置多久才算「告一段落」
@@ -21,8 +22,7 @@ interface PaneTrack {
 }
 
 function sessionRef(pane: HerdrPane): AgentSessionRef | undefined {
-	if (!pane.agent_session) return undefined;
-	return { ...pane.agent_session, agent: pane.agent_session.agent ?? pane.agent ?? "" };
+	return resolveSession(pane);
 }
 
 export class Watcher {
@@ -101,6 +101,18 @@ export class Watcher {
 			t.status = status;
 		}
 		for (const id of this.tracks.keys()) if (!seen.has(id)) this.tracks.delete(id);
+		// 支線「帶回主線」:主線閒下來就送;送出後主線會開始工作,照派工一樣算進回報
+		deliverHandoffs(this.store, panes, (paneId) => this.expectWork.add(paneId));
+	}
+
+	/**
+	 * 第一次讀某個紀錄檔從哪裡開始:一般從最近 150KB;支線的紀錄檔複製了主線的歷史,
+	 * 從支線建立的那一刻開始,才不會把主線的舊內容當成新進度。
+	 */
+	private firstOffset(pane: HerdrPane, path: string): number {
+		const branch = this.store.branchOfPane(pane);
+		if (branch) return offsetSince(path, Date.parse(branch.createdAt));
+		return Math.max(0, statSync(path).size - FIRST_LOOK_BYTES);
 	}
 
 	/** 第一次看到某個 session:從最近一段開始讀,不要把整份歷史倒給管家 */
@@ -110,8 +122,7 @@ export class Watcher {
 		if (!path) return;
 		const key = `t:${path}`;
 		if (this.store.cursor(key)) return;
-		const size = statSync(path).size;
-		this.store.setCursor(key, { offset: Math.max(0, size - FIRST_LOOK_BYTES) });
+		this.store.setCursor(key, { offset: this.firstOffset(pane, path) });
 	}
 
 	/** 讀這個窗格上次之後的新內容,交給管家 */
@@ -120,7 +131,8 @@ export class Watcher {
 		const project = resolveProject(this.store, cwd);
 		const ref = sessionRef(pane);
 		const path = ref ? transcriptPath(ref) : undefined;
-		let excerpt = ref && path ? transcriptExcerpt(ref, this.store.cursor(`t:${path}`)?.offset ?? 0) : undefined;
+		// 紀錄檔晚於第一次看到窗格才出現(例如分叉後第一則訊息才建檔):這裡補定起點
+		let excerpt = ref && path ? transcriptExcerpt(ref, this.store.cursor(`t:${path}`)?.offset ?? this.firstOffset(pane, path)) : undefined;
 		if (!excerpt) excerpt = paneExcerpt(pane.pane_id);
 		if (!excerpt) return undefined;
 		const found = excerpt;

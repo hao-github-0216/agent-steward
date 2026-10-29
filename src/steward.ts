@@ -432,6 +432,32 @@ ${card.instructions}
 		return now.revisedAt && now.revisedAt > since ? "revised" : "unchanged";
 	}
 
+	/**
+	 * 支線「帶回主線」:把支線的對話整理成要送回主線 agent 的結論。單次問模型,不寫進專案對話。
+	 * 用「整理 agent 回報」的模型(隱私專案用隱私模型),主要失敗自動改用備用。
+	 */
+	async handoffDraft(p: Project, info: { label: string; mainLabel: string }, content: string): Promise<string> {
+		const system = `${PERSONA()}
+
+以下是這個專案目前的狀態:
+
+${brief(this.deps.store, p, { recent: 5 })}
+
+使用者在主線 agent(「${info.mainLabel}」)之外開了一條支線 agent(「${info.label}」)另外問問題或做事。現在要把支線的結論送回主線。規則:
+- 寫給主線 agent 看,3 到 8 句或條列,繁體中文。
+- 包含:支線問了什麼、得到什麼結論、做了哪些決定、改了哪些檔案(只寫路徑)、還有什麼沒解決。
+- 只寫支線裡真的出現過的內容,不要編造;支線沒做任何事就直說。
+- 不要開場白、不要客套,直接輸出要送出的內容。`;
+		const user = `【支線的對話】\n${content.slice(-60_000)}`;
+		const ask = (fallback: boolean) => this.oneShotWith(system, user, routeFor("digest", { private: p.private, fallback }), 2000);
+		try {
+			return await ask(false);
+		} catch (e) {
+			if (p.private || !hasFallback("digest")) throw e;
+			return ask(true);
+		}
+	}
+
 	/** 不經過管家對話回答提問時用的系統提示:管家身分 + 專案簡報 + 最近的問答 */
 	private chatSystem(p: Project, dropLast = true): string {
 		const history = recentChat(p.id, 8).slice(0, dropLast ? -1 : undefined).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");

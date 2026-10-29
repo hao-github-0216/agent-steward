@@ -63,11 +63,33 @@ export interface SourceCursor {
 	lastReportAt?: string;
 }
 
+/** 支線:從某個 agent 窗格分叉(或帶節錄)開出來的另一個 agent */
+export interface Branch {
+	id: string;
+	projectId: string;
+	n: number; // 同一條主線的第幾條支線
+	agent: string; // herdr agent kind
+	mode: "fork" | "excerpt"; // 真正分叉 / 帶節錄的新對話
+	label: string; // tab 名稱
+	mainLabel: string;
+	mainPaneId: string;
+	mainTerminalId?: string;
+	mainSession?: string; // 主線的 session ID 或紀錄檔路徑
+	paneId: string;
+	terminalId?: string;
+	tabId?: string;
+	transcript?: string; // 支線自己的紀錄檔(找到後記下來)
+	draft?: string; // 最近一次「帶回主線」的草稿
+	handoff?: { text: string; status: "queued" | "sent" | "failed"; at: string; sentAt?: string; note?: string };
+	createdAt: string;
+}
+
 interface Data {
 	version: 1;
 	projects: Record<string, Project>;
 	cards: Record<string, Card>;
 	cursors: Record<string, SourceCursor>;
+	branches?: Record<string, Branch>;
 }
 
 export function emptyState(): ProjectState {
@@ -166,5 +188,30 @@ export class Store {
 	setCursor(key: string, cursor: SourceCursor): void {
 		this.data.cursors[key] = cursor;
 		this.save("cursors");
+	}
+
+	// ---------- 支線 ----------
+	branches(): Branch[] {
+		return Object.values(this.data.branches ?? {});
+	}
+	branch(id: string): Branch | undefined {
+		return this.data.branches?.[id];
+	}
+	/** 用終端機 ID 找(窗格搬到別的 space 後 pane ID 會變,終端機 ID 不會) */
+	branchOfPane(pane: { pane_id: string; terminal_id?: string }): Branch | undefined {
+		return this.branches().find((b) => (b.terminalId && pane.terminal_id ? b.terminalId === pane.terminal_id : b.paneId === pane.pane_id));
+	}
+	addBranch(b: Omit<Branch, "id" | "createdAt"> & { createdAt?: string }): Branch {
+		const branch: Branch = { createdAt: new Date().toISOString(), ...b, id: randomUUID().slice(0, 8) };
+		(this.data.branches ??= {})[branch.id] = branch;
+		this.save("branches");
+		return branch;
+	}
+	updateBranch(id: string, patch: Partial<Branch>): Branch {
+		const b = this.data.branches?.[id];
+		if (!b) throw new Error(`unknown branch ${id}`);
+		Object.assign(b, patch);
+		this.save("branches");
+		return b;
 	}
 }

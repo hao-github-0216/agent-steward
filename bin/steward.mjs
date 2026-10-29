@@ -5,6 +5,9 @@
 //   steward projects                              列出所有專案
 //   steward report "做了什麼" [--agent X] 主動回報
 //   steward board                      開啟看板
+//   steward branch [窗格]              從 agent 窗格開一條支線(分叉主線的對話,在新 tab 另外問)
+//   steward branch back [--send]       在支線裡:把結論整理成草稿,確認後帶回主線
+//   steward branch close               關掉這條支線
 //   steward hook <agent>               給各 agent 的 SessionStart hook 用(失敗安靜略過)
 //   steward mcp                        以 MCP stdio server 執行
 import { execFileSync } from "node:child_process";
@@ -66,6 +69,72 @@ async function hook(agent) {
 	}
 }
 
+/** 伺服器回的錯誤訊息(api() 丟出的是「狀態碼 + 內容」) */
+function errText(e) {
+	const m = String(e.message ?? e).match(/^\d+ (.*)$/s);
+	try {
+		return JSON.parse(m?.[1] ?? "").error ?? e.message;
+	} catch {
+		return e.message;
+	}
+}
+
+async function confirm(question) {
+	if (!process.stdin.isTTY) return undefined; // 在 agent 裡用 ! 執行時沒有鍵盤可以回答
+	const { createInterface } = await import("node:readline/promises");
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		return /^y(es)?$/i.test((await rl.question(question)).trim());
+	} finally {
+		rl.close();
+	}
+}
+
+async function branch() {
+	const sub = args[0] === "back" || args[0] === "close" ? args.shift() : "open";
+	const here = process.env.HERDR_PANE_ID;
+	try {
+		if (sub === "open") {
+			const r = JSON.parse(await post("/api/branch", { pane: args[0] ?? here, workspace: process.env.HERDR_WORKSPACE_ID }, 120_000));
+			const b = r.branch;
+			process.stdout.write(`已開支線「${b.label}」(${b.agent},窗格 ${b.paneId})\n${b.mode === "excerpt" ? "這個 agent 不能分叉(或找不到主線的 session),已經把主線最近的對話節錄送給它。\n" : "支線接著主線的對話,可以直接在那個 tab 問。\n"}問完要帶回主線:在支線裡執行 steward branch back\n`);
+			return;
+		}
+		const pane = args.find((a) => !a.startsWith("--")) ?? here;
+		if (!pane) throw new Error("請在支線的窗格裡執行,或指定窗格 ID");
+		const b = JSON.parse(await api(`/api/branch/at?pane=${encodeURIComponent(pane)}`)).branch;
+		if (sub === "close") {
+			await post(`/api/branch/${b.id}/close`, {});
+			return;
+		}
+		const handoff = async (text) => {
+			const r = JSON.parse(await post(`/api/branch/${b.id}/handoff`, text ? { text } : {}));
+			process.stdout.write(r.status === "sent" ? "已送給主線。\n" : r.status === "queued" ? "主線正在忙,等它閒下來就會送出。\n" : `沒送出:${r.note ?? "主線已經關閉"}\n`);
+			return r.status !== "failed";
+		};
+		if (args.includes("--send")) {
+			if (!b.draft) throw new Error("還沒有草稿,先執行 steward branch back");
+			await handoff();
+			return;
+		}
+		process.stdout.write("管家正在整理支線的結論…\n");
+		const draft = JSON.parse(await post(`/api/branch/${b.id}/draft`, {}, 180_000)).draft;
+		process.stdout.write(`\n──── 要送回主線「${b.mainLabel}」的內容 ────\n${draft}\n────────────────\n`);
+		const ok = await confirm("送出?(y/N) ");
+		if (ok === undefined) {
+			process.stdout.write("確認沒問題就執行:steward branch back --send(想改內容可以在網頁終端機按「帶回主線」編輯後送出)\n");
+			return;
+		}
+		if (!ok) return void process.stdout.write("沒有送出。\n");
+		if (!(await handoff())) return;
+		if (await confirm("要關掉這條支線嗎?(y/N) ")) await post(`/api/branch/${b.id}/close`, {});
+	} catch (e) {
+		// 連不上管家照原本的提示;其他是管家回的錯誤,直接顯示
+		if (/fetch failed|ECONNREFUSED/.test(String(e.message))) throw e;
+		throw Object.assign(new Error(errText(e)), { known: true });
+	}
+}
+
 async function main() {
 	switch (cmd) {
 		case "brief": {
@@ -104,6 +173,9 @@ async function main() {
 			process.stdout.write(url + "\n");
 			break;
 		}
+		case "branch":
+			await branch();
+			break;
 		case "hook":
 			await hook(args[0] ?? "generic");
 			break;
@@ -113,13 +185,18 @@ async function main() {
 			break;
 		}
 		default:
-			process.stdout.write("用法:steward brief | ask \"問題\" | report \"做了什麼\" | board | hook <agent> | mcp\n");
+			process.stdout.write("用法:steward brief | ask \"問題\" | report \"做了什麼\" | board | branch [窗格|back|close] | hook <agent> | mcp\n");
 			process.exitCode = cmd ? 1 : 0;
 	}
 }
 
 main().catch((e) => {
 	if (cmd === "hook") return; // hook 永遠不失敗
+	if (e.known) {
+		process.stderr.write(`steward:${e.message}\n`);
+		process.exitCode = 1;
+		return;
+	}
 	process.stderr.write(`steward:${e.message}\n(專案管家有在跑嗎?打開 ${BASE}/ 看看;macOS 是 launchd 的 agent-steward 服務,Windows 是工作排程器的 agent-steward)\n`);
 	process.exitCode = 1;
 });

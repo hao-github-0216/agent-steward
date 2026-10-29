@@ -30,6 +30,7 @@ import { fileURLToPath } from "node:url";
 import { brief } from "./brief.ts";
 import { DATA_DIR, HOME, HOSTS, isPrivatePath, MISC_ROOTS, PORT, publicUrl, TERMINAL_PORT } from "./config.ts";
 import { dispatchCard, focusProject } from "./dispatch.ts";
+import { BranchError, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
 import { herdrCli, listPanes, listWorkspaces } from "./herdr.ts";
 import { boundSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
 import { createProject } from "./create.ts";
@@ -150,14 +151,24 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 	const terminalCurrent = () => {
 		if (currentCache && Date.now() - currentCache.at < 1500) return currentCache.value;
 		const ws = listWorkspaces().find((w) => w.focused);
-		let value: { project: string | null; via?: string; space?: string } = { project: null };
+		let value: { project: string | null; via?: string; space?: string; pane?: string; agent?: string; branch?: unknown } = { project: null };
 		if (ws) {
-			const pane = (listPanes() ?? []).find((x) => x.workspace_id === ws.workspace_id && x.focused);
+			const panes = listPanes() ?? [];
+			const pane = panes.find((x) => x.workspace_id === ws.workspace_id && x.focused);
 			const cwd = pane?.foreground_cwd || pane?.cwd;
 			const byPane = cwd ? ownerOf(store, cwd) : undefined;
 			const bySpace = projectOfSpace(store, ws.workspace_id);
 			const p = byPane ?? bySpace;
-			value = { project: p?.id ?? null, via: byPane ? "pane" : bySpace ? "space" : undefined, space: ws.label };
+			// 焦點窗格是不是支線(網頁顯示「開支線」/「帶回主線」用)
+			const b = pane ? store.branchOfPane(pane) : undefined;
+			value = {
+				project: p?.id ?? null,
+				via: byPane ? "pane" : bySpace ? "space" : undefined,
+				space: ws.label,
+				pane: pane?.pane_id,
+				agent: pane?.agent,
+				branch: b ? { id: b.id, label: b.label, mainLabel: b.mainLabel, mainAlive: mainAlive(b, panes), handoff: b.handoff?.status } : undefined,
+			};
 		}
 		currentCache = { at: Date.now(), value };
 		return value;
@@ -366,7 +377,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			// 所有 /api 都要登入;例外:健康檢查、網頁回報錯誤、本機 agent 整合(開工簡報、提問、回報)
 			const OPEN = new Set(["/api/health", "/api/clientlog"]);
 			const LOCAL_INTEGRATION = new Set(["/api/brief", "/api/ask", "/api/report", "/api/projects"]);
-			if (path.startsWith("/api/") && !OPEN.has(path) && !(LOCAL_INTEGRATION.has(path) && isPureLocal(req))) {
+			// 支線也給本機的 steward 指令用(只限本機直連,和 ask/report 一樣)
+			const localApi = LOCAL_INTEGRATION.has(path) || path === "/api/branch" || path.startsWith("/api/branch/");
+			if (path.startsWith("/api/") && !OPEN.has(path) && !(localApi && isPureLocal(req))) {
 				const a = await authorize(req);
 				if (!a.ok) return send(res, a.status, { error: a.reason, login: a.login });
 			}
@@ -991,6 +1004,45 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (!p || p.kind !== "project") return send(res, 404, { error: "unknown project" });
 				currentCache = null; // 跳完馬上查要拿到新位置
 				return send(res, 200, focusProject(store, p, { create: create !== false }));
+			}
+			// ---------- 支線 ----------
+			if (path === "/api/branch" || path.startsWith("/api/branch/")) {
+				try {
+					// 開支線:指定窗格(指令列帶 HERDR_PANE_ID)或用 herdr 目前焦點的窗格(網頁)
+					if (req.method === "POST" && path === "/api/branch") {
+						const b = await body(req);
+						const main = pickMainPane({ pane: b.pane || undefined, workspace: b.workspace || undefined });
+						const branch = openBranch(store, main.pane_id);
+						currentCache = null;
+						return send(res, 200, { branch });
+					}
+					// 這個窗格是不是支線
+					if (req.method === "GET" && path === "/api/branch/at") {
+						const id = url.searchParams.get("pane") ?? "";
+						const pane = (listPanes() ?? []).find((x) => x.pane_id === id);
+						const branch = pane ? store.branchOfPane(pane) : undefined;
+						return branch ? send(res, 200, { branch }) : send(res, 404, { error: "這個窗格不是支線" });
+					}
+					const mb = path.match(/^\/api\/branch\/([0-9a-f]{8})\/(draft|handoff|close)$/);
+					if (mb && req.method === "POST") {
+						const [, id, action] = mb;
+						if (action === "draft") return send(res, 200, { draft: await draftHandoff(store, steward, id) });
+						if (action === "handoff") {
+							const b = await body(req);
+							const text = typeof b.text === "string" ? b.text : (store.branch(id)?.draft ?? "");
+							const branch = queueHandoff(store, id, text, (paneId) => watcher.expectWork.add(paneId));
+							currentCache = null;
+							return send(res, 200, { branch, status: branch.handoff?.status, note: branch.handoff?.note });
+						}
+						closeBranch(store, id);
+						currentCache = null;
+						return send(res, 200, { ok: true });
+					}
+					return send(res, 404, { error: "not found" });
+				} catch (e) {
+					if (e instanceof BranchError) return send(res, 400, { error: e.message });
+					return send(res, 500, { error: String((e as Error).message ?? e).slice(0, 300) });
+				}
 			}
 			if (req.method === "GET" && path === "/api/plugins") return send(res, 200, { latex: pluginEnabled("latex"), notebook: pluginEnabled("notebook"), office: pluginEnabled("office") });
 			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: listAgents().filter((a) => a.installed && a.dispatch).map((a) => ({ id: a.id, name: a.name })) });
