@@ -502,6 +502,35 @@ html, body { height: var(--appH, 100dvh); }
 #stewardBall.unread::after { content: ""; position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #e5484d; border: 2px solid var(--panel); }
 #stewardBall.busy { animation: ballPulse 1.2s ease-in-out infinite; }
 @keyframes ballPulse { 50% { box-shadow: 0 0 0 6px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.3); } }
+/* 圈選提問 */
+#snapLayer { position: fixed; inset: 0; z-index: 9000; background: rgba(15,18,24,.35); cursor: crosshair; touch-action: none; }
+#snapLayer canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#snapLayer .snap-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: var(--panel); color: var(--ink); padding: 6px 14px; border-radius: 999px; font-size: 13px; box-shadow: var(--shadow); pointer-events: none; white-space: nowrap; }
+#snapMark { position: fixed; z-index: 8990; border: 2px solid var(--accent); border-radius: 8px; box-shadow: 0 0 0 9999px rgba(15,18,24,.18); pointer-events: none; }
+#snapPop { position: fixed; z-index: 9001; max-height: min(70vh, 560px); display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 13px; }
+#snapPop.sheet { left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 70dvh; border-radius: 14px 14px 0 0; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+#snapPop .sp-head { display: flex; align-items: center; gap: 8px; }
+#snapPop .sp-src { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#snapPop .sp-peek summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+#snapPop .sp-peek pre { max-height: 140px; overflow: auto; margin: 6px 0 0; padding: 6px 8px; background: var(--col); border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+#snapPop .sp-peek img { max-width: 100%; max-height: 120px; margin-top: 6px; border-radius: 6px; }
+#snapPop .sp-chips, #snapPop .sp-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+#snapPop .sp-chips[hidden], #snapPop .sp-acts[hidden], #snapPop .sp-ans[hidden] { display: none; }
+#snapPop .sp-form { display: flex; gap: 6px; }
+#snapPop .sp-form input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+#snapPop .sp-ans { overflow: auto; min-height: 0; flex: 1; }
+#snapPop .sp-q { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+#snapPop .sp-text { white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+#snapPop .sp-ans.err .sp-text { color: var(--bad); }
+#snapPop .sp-wait { color: var(--muted); }
+#ballSnap { position: fixed; z-index: 57; width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--accent); display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.2); cursor: pointer; }
+#ballSnap svg { width: 16px; height: 16px; }
+#ballSnap:hover { background: var(--accent); color: #fff; }
+#ballWrap[data-corner$="r"] #ballSnap { right: 66px; }
+#ballWrap[data-corner$="l"] #ballSnap { left: 66px; }
+#ballWrap[data-corner^="b"] #ballSnap { bottom: 58px; }
+#ballWrap[data-corner^="t"] #ballSnap { top: 108px; }
+@media (pointer: coarse) { #ballSnap { display: none; } }
 #ballWrap[data-corner$="r"] #stewardBall { right: 18px; }
 #ballWrap[data-corner$="l"] #stewardBall { left: 18px; }
 #ballWrap[data-corner^="b"] #stewardBall { bottom: 18px; }
@@ -697,6 +726,7 @@ form.tool { flex-direction: row; }
 		<div class="bp-pick" id="bpPick" hidden></div>
 		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><div class="bp-btns"><button class="small primary">送出</button><button type="button" class="small" id="bpDraft" title="根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡">開工作卡</button></div></form>
 	</div>
+	<button id="ballSnap" type="button" title="圈選畫面問管家(Alt+S;手機長按浮動球)" aria-label="圈選畫面問管家"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c5 0 9 3.6 9 8s-4 8-9 8c-1.6 0-3-.3-4.3-.9L4 20l1-3.4C3.8 15.2 3 13.2 3 11c0-4.4 4-8 9-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4" stroke-linecap="round"/></svg></button>
 	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
 		<path d="M11 27 L13 6 L28 17 Z" fill="#f6a04d"/><path d="M53 27 L51 6 L36 17 Z" fill="#f6a04d"/>
 		<path d="M15 22 L16 11 L24 17 Z" fill="#ffb3c1"/><path d="M49 22 L48 11 L40 17 Z" fill="#ffb3c1"/>
@@ -1584,7 +1614,10 @@ function renderSettings() {
 			<h4>隱私路徑</h4>
 			<div class="hint">這些資料夾底下的專案只會用「隱私專案」指定的模型(通常是本地模型),內容不會送到雲端。一行一個,可以用 ~ 開頭。</div>
 			<textarea data-k="paths.privacy" data-lines>${esc(s.paths.privacy.join("\n"))}</textarea>
-			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> 同時沿用 pi 的隱私清單${detected.piPrivacy ? "" : "(這台電腦沒有 pi 的清單)"}</label>`,
+			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> 同時沿用 pi 的隱私清單${detected.piPrivacy ? "" : "(這台電腦沒有 pi 的清單)"}</label>
+			<h4>圈選提問(這台裝置)</h4>
+			<div class="hint">按快捷鍵後圈出畫面上的一塊,旁邊會跳出小框問管家。點下面的框再按想用的組合鍵;手機改用長按浮動球。</div>
+			<div class="row"><label class="field">快捷鍵<input type="text" id="snapKeyIn" readonly value="${esc(pref("steward.snapKey") || window.snapKeyDefault || "Alt+S")}"></label><button type="button" class="small" id="snapKeyReset">還原成 ${esc(window.snapKeyDefault || "Alt+S")}</button></div>`,
 		access: `
 			<h4>管理密碼</h4>
 			<div class="hint">${setState.auth?.hasPassword ? "已設定。" : "<b>還沒設定</b>:目前只有這台電腦本身能使用專案管家。"}從別的裝置、瀏覽器登入時要輸入這組密碼(Tailscale 本人的裝置免密碼)。</div>
@@ -1916,6 +1949,7 @@ function hookClipboard() {
 	win.document.addEventListener("wheel", (e) => { perf.wheel++; perf.wheelPx += Math.abs(e.deltaY); }, { capture: true, passive: true });
 	const origWrite = t.write.bind(t);
 	t.write = (d, cb) => { perf.termBytes += d?.length ?? d?.byteLength ?? 0; return origWrite(d, cb); };
+	window.snapHookFrame?.(win); // 圈選快捷鍵在終端機裡也有效
 	// 貼圖片:瀏覽器的剪貼簿圖片傳不進終端機,改成上傳到主機存檔、把檔案路徑貼進去(只有文字時照常貼文字)
 	win.document.addEventListener("paste", (e) => {
 		const imgs = imageFiles(e.clipboardData);
@@ -2253,18 +2287,28 @@ setBallCorner();
 (() => {
 	const el = $("stewardBall");
 	let d = null;
-	el.addEventListener("pointerdown", (e) => { d = { x: e.clientX, y: e.clientY, moved: false }; el.setPointerCapture(e.pointerId); });
+	let hold = 0; // 長按浮動球 = 圈選
+	el.addEventListener("pointerdown", (e) => {
+		d = { x: e.clientX, y: e.clientY, moved: false };
+		el.setPointerCapture(e.pointerId);
+		clearTimeout(hold);
+		hold = setTimeout(() => { if (d && !d.moved) { d.long = true; navigator.vibrate?.(15); window.snapStart?.(); } }, 550);
+	});
 	el.addEventListener("pointermove", (e) => {
 		if (!d) return;
 		if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) return;
+		clearTimeout(hold);
+		if (d.long) return;
 		d.moved = true;
 		el.classList.add("dragging");
 		Object.assign(el.style, { left: `${e.clientX - 26}px`, top: `${e.clientY - 26}px`, right: "auto", bottom: "auto" });
 	});
 	const end = (e) => {
 		if (!d) return;
-		const moved = d.moved; d = null;
+		clearTimeout(hold);
+		const moved = d.moved, long = d.long; d = null;
 		el.classList.remove("dragging");
+		if (long) return; // 長按已經進入圈選
 		if (!moved) { if (e.type === "pointerup") toggleBall(); return; }
 		el.style.left = el.style.top = el.style.right = el.style.bottom = "";
 		// 放開:吸到最近的角落
@@ -2628,5 +2672,6 @@ window.openStewardChat = ({ quote } = {}) => {
 load().then(() => { if (location.hash === "#terminal") setMode("term"); if (location.hash === "#code") setMode("code"); }); connect();
 </script>
 <script src="/web/code.js"></script>
+<script src="/web/snap.js"></script>
 </body>
 </html>

@@ -16,6 +16,7 @@ import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.
 import { stewardAuth } from "./auth-store.ts";
 import { buildLatex } from "./latex.ts";
 import { PasteError, savePastedImage } from "./term-paste.ts";
+import { findSnapPane, parseSnap, snapPrompt, terminalContext } from "./snap.ts";
 import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./plugins.ts";
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
@@ -719,12 +720,25 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 			if (req.method === "POST" && path === "/api/chat") {
 				const b = await body(req);
-				const p = store.project(b.project);
+				let p = store.project(b.project);
+				// 圈選提問:終端機圈的要找出是哪個窗格(補最近輸出當前後文,也決定是哪個專案的事)
+				const snap = parseSnap(b.snap);
+				let snapPane: { paneId: string; agent?: string } | undefined;
+				if (snap?.kind === "terminal") {
+					const pane = findSnapPane(snap.text);
+					if (pane) {
+						snapPane = { paneId: pane.pane_id, agent: pane.agent };
+						snap.context = terminalContext(pane) || snap.context;
+						const owner = ownerOf(store, pane.foreground_cwd ?? pane.cwd ?? "");
+						if (owner) p = owner;
+					}
+				}
 				if (!p) return send(res, 404, { error: "unknown project" });
+				const extra = snap ? { snap: { project: p.id, pane: snapPane } } : {};
 				// 「改用備用模型回答這一題」(舊版網頁送 cloud)
 				const useFallback = b.fallback === true || b.cloud === true;
 				if (useFallback && p.private) return send(res, 400, { error: "隱私專案只用指定的模型,沒有備用" });
-				const message = String(b.message ?? "").trim();
+				const message = String(b.message ?? "").trim() || (snap ? "解釋這段內容" : "");
 				const q = b.quote && typeof b.quote.text === "string" ? (b.quote as ChatQuote) : undefined;
 				const quote = q ? { path: q.path ? String(q.path) : undefined, from: Number(q.from) || undefined, to: Number(q.to) || undefined, text: q.text.slice(0, 20000) } : undefined;
 				// 浮動球加進來的檔案:網頁有給內容(編輯器裡還沒存的版本)就用它,否則讀磁碟
@@ -735,9 +749,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					.map((i: { data: string; mimeType: string }) => ({ data: i.data, mimeType: i.mimeType }));
 				const thumbs: string[] = (Array.isArray(b.thumbs) ? b.thumbs : []).slice(0, 4).filter((t: unknown) => typeof t === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(t) && t.length < 60_000);
 				if (!message && !quote && !fileReqs.length && !images.length) return send(res, 400, { error: "請輸入問題" });
+				// 紀錄裡顯示成一則引用(出處 + 圈到的文字)
+				const shown = snap ? { path: snap.path ?? snap.label, from: snap.from, to: snap.to, text: (snap.text || "(圈到的是圖片)").slice(0, 4000) } : quote;
 				// 先記下問題(回答還沒回來時重新整理也看得到);「改用雲端重問」不重複記問題
-				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote, ...(fileReqs.length ? { files: fileReqs.map((f) => f.path) } : {}), ...(thumbs.length ? { images: thumbs } : {}) });
-				let snippet = quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
+				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote: shown, ...(snap ? { via: "圈選" } : {}), ...(fileReqs.length ? { files: fileReqs.map((f) => f.path) } : {}), ...(thumbs.length ? { images: thumbs } : {}) });
+				let snippet = snap ? snapPrompt(snap, images.length > 0) : quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
 				let budget = 300_000;
 				for (const f of fileReqs) {
 					let item: { path: string; text?: string; note?: string };
@@ -752,17 +768,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const ref = imageRoute(p.private);
 					if (!ref) {
 						const bot = appendChat(p.id, { role: "bot", text: p.private ? "這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。" : "目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。", error: true });
-						return send(res, 200, { error: bot.text, me: mine, bot });
+						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 					}
 					try {
 						const answer = await steward.askWithImages(p, `【提問】(使用者,附了 ${images.length} 張圖片)${message || "請看圖片"}${snippet}`, images, ref);
 						let primary = "";
 						try { primary = `${routeFor("chat", { private: p.private }).provider}/${routeFor("chat", { private: p.private }).modelId}`; } catch { /* 沒設定 */ }
 						const bot = appendChat(p.id, { role: "bot", text: answer, ...(`${ref.provider}/${ref.modelId}` !== primary ? { alt: `看圖改用 ${modelLabel(ref)}` } : {}) });
-						return send(res, 200, { answer, me: mine, bot });
+						return send(res, 200, { answer, me: mine, bot, ...extra });
 					} catch (e) {
 						const bot = appendChat(p.id, { role: "bot", text: `「${modelLabel(ref)}」看圖失敗:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`, error: true });
-						return send(res, 200, { error: bot.text, me: mine, bot });
+						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 					}
 				}
 				try {
@@ -770,13 +786,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const answer = await steward.send(p, `【提問】(使用者)${message}${snippet}`, { role: "chat", fallback: useFallback, timeoutMs: 180_000 });
 					const bot = appendChat(p.id, { role: "bot", text: answer, ...(useFallback ? { alt: modelLabel(routeFor("chat", { fallback: true })) } : {}) });
 					void makeSuggestions(p).catch(() => undefined); // 回答完換一組建議問題(背景)
-					return send(res, 200, { answer, me: mine, bot });
+					return send(res, 200, { answer, me: mine, bot, ...extra });
 				} catch (e) {
 					const why = String((e as Error).message ?? e).replace(/^管家沒有回答:/, "");
 					let who = "模型";
 					try { who = `「${modelLabel(routeFor("chat", { private: p.private, fallback: useFallback }))}」`; } catch { /* 沒設定路由 */ }
 					const bot = appendChat(p.id, { role: "bot", text: `${who}沒有回應:${why}`, error: true, retryable: !useFallback && !p.private && hasFallback("chat") });
-					return send(res, 200, { error: bot.text, me: mine, bot });
+					return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 				}
 			}
 			// ---------- 浮動球「開工作卡」:擬草稿、改欄位、放進提案、直接派工 ----------
@@ -1001,6 +1017,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				if (size < 2_000_000) appendFileSync(file, `${new Date().toISOString()} ${req.socket.remoteAddress} ${header(req, "tailscale-user-login") ?? ""} ${JSON.stringify(b).slice(0, 2000)}\n`);
 				return send(res, 204, "");
+			}
+			// 圈選提問「交給這個 agent」:先讓 herdr 切到那個 agent,網頁再把內容貼進終端機(不按 Enter)
+			if (req.method === "POST" && path === "/api/snap/agent") {
+				const auth = await authorizeTerminal(req);
+				if (!auth.ok) return send(res, auth.status, { error: auth.reason });
+				const { pane } = await body(req);
+				if (typeof pane !== "string" || !/^[\w:-]+$/.test(pane)) return send(res, 400, { error: "缺少窗格" });
+				const r = herdrCli(["agent", "focus", pane]);
+				if (r?.error) return send(res, 409, { error: String(r.error.message ?? "那個窗格已經不在了").slice(0, 200) });
+				return send(res, 200, { ok: true });
 			}
 			// 終端機貼圖片:存成檔案,回傳路徑讓網頁貼進終端機(和終端機同一套身分檢查)
 			if (req.method === "POST" && path === "/api/terminal/paste-image") {

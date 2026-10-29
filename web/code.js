@@ -2164,6 +2164,32 @@
 			return null; // 沒改過:伺服器自己讀磁碟
 		},
 		hasUnsaved: (id) => (id === cm.pid ? allTabs().some((t) => t.dirty) : cm.stash.has(id)),
+		/**
+		 * 圈選提問:圈的範圍落在哪個編輯區。程式碼(Monaco)直接取那幾行原文和前後 30 行;
+		 * 其他(Markdown、Notebook、PDF、Word、Excel、圖片)回傳畫面元素,由圈選程式從畫面上取文字或截圖。
+		 */
+		snapAt(rect) {
+			const cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
+			const g = cm.cols.flatMap((c) => c.groups).find((x) => { const r = x.stageEl.getBoundingClientRect(); return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom; });
+			const t = g?.active;
+			if (!t) return null;
+			const ed = t.kind === "file" && !g.editorEl.hidden ? g.editor : t.kind === "diff" && !g.diffEl.hidden ? g.diff?.getModifiedEditor() : null;
+			const label = t.kind === "diff" ? `${t.path}(差異)` : t.path || t.label || "程式碼頁";
+			if (ed?.getModel()) {
+				const model = ed.getModel(), box = ed.getDomNode().getBoundingClientRect();
+				const lh = ed.getOption(cm.monaco.editor.EditorOption.lineHeight), top = ed.getScrollTop();
+				let from = 0, to = 0;
+				for (const r of ed.getVisibleRanges()) for (let n = r.startLineNumber; n <= r.endLineNumber; n++) {
+					const mid = box.top + ed.getTopForLineNumber(n) - top + lh / 2;
+					if (mid >= rect.top && mid <= rect.bottom) { if (!from) from = n; to = n; }
+				}
+				if (!from) return { kind: "code", path: t.path, label, text: "" };
+				const range = (a, b) => model.getValueInRange({ startLineNumber: a, startColumn: 1, endLineNumber: b, endColumn: model.getLineMaxColumn(b) });
+				const c0 = Math.max(1, from - 30), c1 = Math.min(model.getLineCount(), to + 30);
+				return { kind: "code", path: t.path, label, from, to, text: range(from, to), context: `(第 ${c0}–${c1} 行)\n${range(c0, c1)}` };
+			}
+			return { kind: "doc", dom: g.stageEl, path: t.path, label };
+		},
 		refreshPlugins,
 		/** 共用入口呼叫:程式碼頁面開著時換到這個專案 */
 		async pick(id) {
