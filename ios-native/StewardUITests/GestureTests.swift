@@ -242,14 +242,14 @@ final class GestureTests: XCTestCase {
         shot(app, "more-5-imported")
         // ⋯ → 關閉所有分頁
         app.buttons["程式碼頁選項"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["關閉所有分頁(沒存的留著)"].waitForExistence(timeout: 3))
-        app.buttons["關閉所有分頁(沒存的留著)"].tap()
+        XCTAssertTrue(app.buttons["關閉所有分頁"].waitForExistence(timeout: 3))
+        app.buttons["關閉所有分頁"].tap()
         sleep(2)
         shot(app, "more-6-closed-all")
         XCTAssertTrue(app.staticTexts["沒有打開的檔案"].exists, "關閉所有分頁後還有分頁")
     }
 
-    /// iPad:⌘\ 把有兩個分頁的格子分到右邊;改了沒存的分頁按 ⌘W 會先問(只按「不存,直接關閉」)
+    /// iPad:⌘\ 把有兩個分頁的格子分到右邊;「關閉所有分頁」留下改了沒存的;沒存的按 ⌘W 會先問(只按「不存,直接關閉」)
     /// 用 ios-native/zz-scratch.txt(測試前建、測完刪);-resetCodeLayout 從空的版面開始
     func testIPadSplitAndUnsavedClose() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad 才跑") }
@@ -277,6 +277,13 @@ final class GestureTests: XCTestCase {
         left.textViews.firstMatch.typeText("unsaved")
         sleep(1)
         shot(app, "unsaved-2-dirty")
+        // ⋯ → 關閉所有分頁:LICENSE 關掉,沒存的 zz-scratch.txt 留著
+        app.buttons["程式碼頁選項"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["關閉所有分頁"].waitForExistence(timeout: 3))
+        app.buttons["關閉所有分頁"].tap()
+        sleep(2)
+        XCTAssertTrue(scratch.exists, "關閉所有分頁把沒存的分頁也關了")
+        XCTAssertFalse(el("tab-file:LICENSE").exists, "關閉所有分頁沒有關掉 LICENSE")
         // ⌘W:沒存 → 先問
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(app.buttons["不存,直接關閉"].waitForExistence(timeout: 3), "沒存的分頁關閉前沒有問")

@@ -67,8 +67,9 @@ struct CodeToolbarItems: ToolbarContent {
             SettingsToolbarButton()
             Menu {
                 Button { Task { await importWeb() } } label: { Label("帶入網頁版的版面", systemImage: "square.and.arrow.down.on.square") }
-                Button(role: .destructive) { for t in model.code.allTabs where !model.code.dirty.contains(t.id) { model.code.close(t.id) } } label: {
-                    Label("關閉所有分頁(沒存的留著)", systemImage: "xmark.square")
+                // 沒存的留著(分頁上有小圓點),跟長按分頁的「關閉其他分頁」一樣
+                Button(role: .destructive) { model.code.closeAll() } label: {
+                    Label("關閉所有分頁", systemImage: "xmark.square")
                 }
                 .disabled(model.code.allTabs.isEmpty)
             } label: {

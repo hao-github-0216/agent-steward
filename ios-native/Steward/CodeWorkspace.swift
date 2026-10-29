@@ -222,10 +222,15 @@ final class CodeWorkspace {
         persist()
     }
 
-    /// 關掉同一格的其他分頁(沒存的留著,跟「關閉所有分頁」一樣)
+    /// 關掉同一格的其他分頁(沒存的留著)
     func closeOthers(_ tabId: String) {
         guard let p = paneOf(tab: tabId), let others = pane(p)?.tabs.filter({ $0.id != tabId && !dirty.contains($0.id) }) else { return }
         for t in others { close(t.id) }
+    }
+
+    /// 關掉所有分頁(沒存的留著)
+    func closeAll() {
+        for t in allTabs where !dirty.contains(t.id) { close(t.id) }
     }
 
     /// 分頁(或從側欄拖來的檔案)放到某一格:中間 = 加成分頁;邊緣 = 分出新的一格(欄、格滿了就加成分頁)
