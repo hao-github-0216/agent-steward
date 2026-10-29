@@ -2736,6 +2736,8 @@ load().then(() => {
 		if (op === "tidy") { openTidy(); watchClose("tidyDlg"); }
 		if (op === "split") { const p = state.projects.find((x) => x.id === sel); if (p) showSplit(p); }
 	} catch {}
+	// app:網頁載好了(在這之前 app 叫的換模式、換專案可能沒接到,app 會再對一次)
+	if (inApp()) toApp({ type: "ready", mode: document.body.classList.contains("term") ? "term" : document.body.classList.contains("code") ? "code" : "board", project: sel });
 	if (location.hash === "#terminal") setMode("term");
 	if (location.hash === "#code") setMode("code");
 }); connect();
