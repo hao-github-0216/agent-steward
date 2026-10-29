@@ -514,7 +514,7 @@ html, body { height: var(--appH, 100dvh); }
 #toast { position: fixed; left: 50%; bottom: 18px; translate: -50% 0; z-index: 80; background: #282828; color: #ebdbb2; border: 1px solid #504945; padding: 6px 12px; border-radius: 8px; font-size: 13px; opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s; pointer-events: none; }
 #toast.show { opacity: 1; transform: none; }
 /* ---------- 問管家浮動球 ---------- */
-#stewardBall { position: fixed; z-index: 56; width: 56px; height: 56px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 0; background: #fff1dc; color: #fff; font-family: inherit; font-size: 18px; font-weight: 700; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.3); cursor: grab; touch-action: none; user-select: none; transition: transform .12s, box-shadow .12s; }
+#stewardBall { position: fixed; z-index: 56; width: 56px; height: 56px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 0; background: #fff1dc; color: #fff; font-family: inherit; font-size: 18px; font-weight: 700; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.3); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform .12s, box-shadow .12s; }
 #stewardBall:hover { transform: scale(1.06); }
 #stewardBall .cat { width: 48px; height: 48px; margin-top: 2px; pointer-events: none; overflow: visible; }
 /* 偶爾眨眼;管家在想事情時左右歪頭 */
@@ -557,7 +557,8 @@ html, body { height: var(--appH, 100dvh); }
 #ballWrap[data-corner$="l"] #ballSnap { left: 66px; }
 #ballWrap[data-corner^="b"] #ballSnap { bottom: 58px; }
 #ballWrap[data-corner^="t"] #ballSnap { top: 108px; }
-@media (pointer: coarse) { #ballSnap { display: none; } }
+/* 手機也顯示圈選鈕(長按浮動球不容易發現),按鈕放大好按 */
+@media (pointer: coarse) { #ballSnap { width: 36px; height: 36px; } #ballSnap svg { width: 20px; height: 20px; } }
 #ballWrap[data-corner$="r"] #stewardBall { right: 18px; }
 #ballWrap[data-corner$="l"] #stewardBall { left: 18px; }
 #ballWrap[data-corner^="b"] #stewardBall { bottom: 18px; }
@@ -753,7 +754,7 @@ form.tool { flex-direction: row; }
 		<div class="bp-pick" id="bpPick" hidden></div>
 		<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><div class="bp-btns"><button class="small primary">送出</button><button type="button" class="small" id="bpDraft" title="根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡">開工作卡</button></div></form>
 	</div>
-	<button id="ballSnap" type="button" title="圈選畫面問管家(Alt+S;手機長按浮動球)" aria-label="圈選畫面問管家"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c5 0 9 3.6 9 8s-4 8-9 8c-1.6 0-3-.3-4.3-.9L4 20l1-3.4C3.8 15.2 3 13.2 3 11c0-4.4 4-8 9-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4" stroke-linecap="round"/></svg></button>
+	<button id="ballSnap" type="button" title="圈選畫面問管家(Alt+S;也可以長按浮動球)" aria-label="圈選畫面問管家"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c5 0 9 3.6 9 8s-4 8-9 8c-1.6 0-3-.3-4.3-.9L4 20l1-3.4C3.8 15.2 3 13.2 3 11c0-4.4 4-8 9-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4" stroke-linecap="round"/></svg></button>
 	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
 		<path d="M11 27 L13 6 L28 17 Z" fill="#f6a04d"/><path d="M53 27 L51 6 L36 17 Z" fill="#f6a04d"/>
 		<path d="M15 22 L16 11 L24 17 Z" fill="#ffb3c1"/><path d="M49 22 L48 11 L40 17 Z" fill="#ffb3c1"/>
@@ -1644,7 +1645,7 @@ function renderSettings() {
 			<textarea data-k="paths.privacy" data-lines>${esc(s.paths.privacy.join("\n"))}</textarea>
 			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> 同時沿用 pi 的隱私清單${detected.piPrivacy ? "" : "(這台電腦沒有 pi 的清單)"}</label>
 			<h4>圈選提問(這台裝置)</h4>
-			<div class="hint">按快捷鍵後圈出畫面上的一塊,旁邊會跳出小框問管家。點下面的框再按想用的組合鍵;手機改用長按浮動球。</div>
+			<div class="hint">按快捷鍵後圈出畫面上的一塊,旁邊會跳出小框問管家。點下面的框再按想用的組合鍵;手機按浮動球旁的圈選鈕,或長按浮動球。</div>
 			<div class="row"><label class="field">快捷鍵<input type="text" id="snapKeyIn" readonly value="${esc(pref("steward.snapKey") || window.snapKeyDefault || "Alt+S")}"></label><button type="button" class="small" id="snapKeyReset">還原成 ${esc(window.snapKeyDefault || "Alt+S")}</button></div>`,
 		access: `
 			<h4>管理密碼</h4>
