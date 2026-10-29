@@ -7,18 +7,18 @@ import UniformTypeIdentifiers
 
 struct ChatPanel: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         @Bindable var model = model
-        Group {
-            if let p = model.current {
-                ChatContent(project: p).id(p.id)
-            } else {
-                ContentUnavailableView("先選一個專案", systemImage: "tray")
+        NavigationStack {
+            Group {
+                if let p = model.current {
+                    ChatContent(project: p).id(p.id)
+                } else {
+                    ContentUnavailableView("先選一個專案", systemImage: "tray")
+                }
             }
         }
-        .background(Theme.panel)
         // 草稿「打開工作卡」:在問管家面板上面再升起一層(不能跟面板同一層)
         .sheet(item: Binding(get: { model.chatCardId.map(CardRef.init) }, set: { model.chatCardId = $0?.id })) { ref in
             CardPopup(cardId: ref.id)
@@ -40,7 +40,6 @@ private struct ChatContent: View {
     @State private var suggestions: [String] = []
     @State private var draft = ""
     @State private var sending = false
-    @State private var clearArmed = false
     @State private var quote: ChatQuote?
     @State private var attachments: [Attachment] = []
     @State private var currentFile: (path: String, unsaved: String?)?
@@ -52,126 +51,133 @@ private struct ChatContent: View {
     @State private var attachError: String?
     @FocusState private var inputFocused: Bool
 
+    @State private var confirmClear = false
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 6) {
-                        if more {
-                            Button("載入更早的對話") { Task { await loadOlder() } }
-                                .font(.system(size: 12)).foregroundStyle(Theme.muted).padding(4)
-                        }
-                        if let loadError {
-                            Text(loadError).font(.system(size: 13)).foregroundStyle(Theme.bad)
-                        }
-                        if !loading && items.isEmpty && loadError == nil {
-                            Text("問管家這個專案的事:進度、卡在哪、下一步該做什麼。")
-                                .font(.system(size: 13)).foregroundStyle(Theme.muted).padding(.top, 30)
-                        }
-                        ForEach(items) { e in
-                            MessageBubble(entry: e, project: project, onUpdate: replace, onRetry: { retry(e) })
-                                .id(e.id)
-                        }
-                        if sending {
-                            HStack {
-                                Text("管家想一下…").font(.system(size: 14)).foregroundStyle(Theme.muted)
-                                    .padding(.horizontal, 10).padding(.vertical, 8)
-                                    .background(Theme.chip, in: RoundedRectangle(cornerRadius: 10))
-                                Spacer()
-                            }
-                            .id("thinking")
-                        }
-                        Color.clear.frame(height: 1).id("bottom")
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    if more {
+                        Button("載入更早的對話") { Task { await loadOlder() } }
+                            .font(.footnote).padding(.top, 4)
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    if let loadError {
+                        Label(loadError, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.red)
+                    }
+                    if !loading && items.isEmpty && loadError == nil {
+                        ContentUnavailableView("還沒問過管家", systemImage: "bubble.left.and.bubble.right",
+                                               description: Text("問這個專案的進度、卡在哪、下一步該做什麼。"))
+                            .padding(.top, 40)
+                    }
+                    ForEach(items) { e in
+                        MessageBubble(entry: e, project: project, onUpdate: replace, onRetry: { retry(e) })
+                            .id(e.id)
+                    }
+                    if sending {
+                        HStack {
+                            ProgressView()
+                            Text("管家想一下…").font(.footnote).foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .id("thinking")
+                    }
+                    Color.clear.frame(height: 1).id("bottom")
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .defaultScrollAnchor(.bottom)
-                .onChange(of: items.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
-                .onChange(of: sending) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                .padding(.vertical, 8)
             }
-            footer
+            .scrollDismissesKeyboard(.interactively)
+            .defaultScrollAnchor(.bottom)
+            .onChange(of: items.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .onChange(of: sending) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .safeAreaInset(edge: .bottom) { inputBar }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text("問管家").font(.headline)
+                    Text(project.name).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("開工作卡") { startDraft(draft) }
+                    .disabled(sending)
+                    .accessibilityHint("根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡")
+                Menu {
+                    Button(role: .destructive) { confirmClear = true } label: { Label("清除紀錄", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("更多")
+            }
+        }
+        .confirmationDialog("清除這個專案的問答紀錄?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("清除紀錄", role: .destructive) { Task { await clear() } }
+        } message: {
+            Text("只清畫面上的問答,管家記得的專案進度不受影響。")
         }
         .task { await load() }
         .task { await consumePending() }
         .onChange(of: model.pendingChat) { _, _ in Task { await consumePending() } }
     }
 
-    // MARK: 標題列
+    // MARK: 下面:建議問題、引用、附件、輸入列(iMessage 式)
 
-    private var header: some View {
-        HStack(spacing: 6) {
-            Text("問管家 · \(project.name)").font(.system(size: 15, weight: .bold)).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button(clearArmed ? "再按一次清除" : "清除紀錄") { Task { await clear() } }
-                .buttonStyle(.small)
-                .accessibilityHint("清除這個專案畫面上的問答紀錄(管家記得的專案進度不受影響)")
-            Button("關閉") { dismiss() }.buttonStyle(.small)
-        }
-        .padding(.horizontal, 12).padding(.top, 16).padding(.bottom, 10)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
-    }
-
-    // MARK: 下面:建議問題、引用、附件、輸入框
-
-    private var footer: some View {
+    private var inputBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !suggestions.isEmpty && draft.isEmpty && !sending {
-                HStack(alignment: .top, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(suggestions.prefix(3), id: \.self) { s in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(suggestions, id: \.self) { s in
                             Button { send(s) } label: {
-                                Text(s).font(.system(size: 13)).multilineTextAlignment(.leading)
-                                    .padding(.horizontal, 10).padding(.vertical, 6)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Theme.bg, in: RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
-                                    .foregroundStyle(Theme.ink)
+                                Text(s).font(.subheadline).lineLimit(1)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(Color(.secondarySystemBackground), in: Capsule())
                             }
                             .buttonStyle(.plain)
                         }
+                        Button { Task { await regenSuggestions() } } label: { Image(systemName: "arrow.clockwise") }
+                            .accessibilityLabel("換一組建議問題")
                     }
-                    Button { Task { await regenSuggestions() } } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.small)
-                        .accessibilityLabel("換一組建議問題")
+                    .padding(.horizontal)
                 }
             }
             if let q = quote {
-                HStack(alignment: .top, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("引用 \(quoteLabel(q))").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                        Text(q.text ?? "").font(.system(size: 12, design: .monospaced)).lineLimit(4)
+                        Text("引用 \(quoteLabel(q))").font(.caption).foregroundStyle(.secondary)
+                        Text(q.text ?? "").font(.caption.monospaced()).lineLimit(3)
                     }
                     Spacer()
-                    Button { quote = nil } label: { Image(systemName: "xmark") }.buttonStyle(.small).accessibilityLabel("拿掉引用")
+                    Button { quote = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .accessibilityLabel("拿掉引用")
                 }
-                .padding(8)
-                .background(Theme.chip, in: RoundedRectangle(cornerRadius: 8))
+                .padding(10)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal)
             }
-            ctxRow
-            if let attachError { Text(attachError).font(.system(size: 12)).foregroundStyle(Theme.bad) }
-            HStack(alignment: .bottom, spacing: 6) {
+            if !attachments.isEmpty || currentFileSuggestion != nil || attachError != nil {
+                attachmentStrip
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                attachMenu
                 TextField("問管家這個專案的事…", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($inputFocused)
-                    .font(.system(size: 15))
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
-                VStack(spacing: 6) {
-                    Button("送出") { send(draft) }
-                        .buttonStyle(.smallPrimary)
-                        .disabled((draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty && quote == nil) || sending)
-                    Button("開工作卡") { startDraft(draft) }
-                        .buttonStyle(.small)
-                        .disabled(sending)
-                        .accessibilityHint("根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡")
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+                Button { send(draft) } label: {
+                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
                 }
+                .disabled((draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty && quote == nil) || sending)
+                .accessibilityLabel("送出")
             }
+            .padding(.horizontal)
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 
     private var imageCount: Int { attachments.filter { if case .image = $0.kind { true } else { false } }.count }
@@ -180,49 +186,31 @@ private struct ChatContent: View {
         Set(attachments.compactMap { switch $0.kind { case .projectFile(let r): r; case .editorFile(let r, _): r; default: nil } })
     }
 
-    /// 網頁的 bpCtx:已加的圖片、檔案 📎、「目前檔案:xxx ＋」、＋ 檔案、＋ 圖片
-    private var ctxRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(attachments) { a in
-                    HStack(spacing: 4) {
-                        if let img = a.preview {
-                            Image(uiImage: img).resizable().scaledToFill().frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 5))
-                        } else {
-                            Text("📎 \(a.label)").font(.system(size: 12)).lineLimit(1)
-                        }
-                        Button { attachments.removeAll { $0.id == a.id } } label: { Text("×").font(.system(size: 13, weight: .bold)) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("拿掉 \(a.label)")
-                    }
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Theme.chip, in: Capsule())
-                }
-                if let cf = currentFile, !attachedPaths.contains(cf.path) {
-                    Button {
-                        if let text = cf.unsaved { attachments.append(Attachment(kind: .editorFile(cf.path, text))) } else { attachments.append(Attachment(kind: .projectFile(cf.path))) }
-                    } label: {
-                        Text("目前檔案:\((cf.path as NSString).lastPathComponent) ＋").font(.system(size: 12))
-                    }
-                    .buttonStyle(.small)
-                    .accessibilityHint("把正在看的檔案加進來")
-                }
-                Menu {
-                    Button { showProjectFiles = true } label: { Label("專案裡的檔案", systemImage: "folder") }
-                    Button { showPhoneFiles = true } label: { Label("iPhone 上的檔案", systemImage: "iphone") }
-                } label: { Text("＋ 檔案").font(.system(size: 12)) }
-                .buttonStyle(.small)
-                .disabled(fileCount >= Attachment.maxFiles)
-                Menu {
-                    Button { showPhotos = true } label: { Label("照片", systemImage: "photo.on.rectangle") }
-                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                        Button { showCamera = true } label: { Label("拍照", systemImage: "camera") }
-                    }
-                } label: { Text("＋ 圖片").font(.system(size: 12)) }
-                .buttonStyle(.small)
+    /// 程式碼模式時建議加入「目前檔案」(還沒加的話)
+    private var currentFileSuggestion: (path: String, unsaved: String?)? {
+        guard let cf = currentFile, !attachedPaths.contains(cf.path) else { return nil }
+        return cf
+    }
+
+    private var attachMenu: some View {
+        Menu {
+            Button { showPhotos = true } label: { Label("照片", systemImage: "photo.on.rectangle") }
                 .disabled(imageCount >= Attachment.maxImages)
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button { showCamera = true } label: { Label("拍照", systemImage: "camera") }
+                    .disabled(imageCount >= Attachment.maxImages)
             }
+            Button { showProjectFiles = true } label: { Label("專案裡的檔案", systemImage: "folder") }
+                .disabled(fileCount >= Attachment.maxFiles)
+            Button { showPhoneFiles = true } label: { Label("iPhone 上的檔案", systemImage: "doc") }
+                .disabled(fileCount >= Attachment.maxFiles)
+        } label: {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(.secondary)
         }
+        .disabled(sending)
+        .accessibilityLabel("加入檔案或圖片")
         .photosPicker(isPresented: $showPhotos, selection: $photoItems, maxSelectionCount: max(1, Attachment.maxImages - imageCount), matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
@@ -253,6 +241,45 @@ private struct ChatContent: View {
             case .failure(let e):
                 attachError = e.localizedDescription
             }
+        }
+    }
+
+    private var attachmentStrip: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(attachments) { a in
+                        HStack(spacing: 6) {
+                            if let img = a.preview {
+                                Image(uiImage: img).resizable().scaledToFill()
+                                    .frame(width: 36, height: 36).clipShape(RoundedRectangle(cornerRadius: 6))
+                            } else {
+                                Image(systemName: { if case .phoneFile = a.kind { "iphone" } else { "doc.text" } }()).foregroundStyle(.secondary)
+                                Text(a.label).font(.caption).lineLimit(1).frame(maxWidth: 140)
+                            }
+                            Button { attachments.removeAll { $0.id == a.id } } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .accessibilityLabel("拿掉 \(a.label)")
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    if let cf = currentFileSuggestion {
+                        Button {
+                            if let text = cf.unsaved { attachments.append(Attachment(kind: .editorFile(cf.path, text))) } else { attachments.append(Attachment(kind: .projectFile(cf.path))) }
+                        } label: {
+                            Label("目前檔案:\((cf.path as NSString).lastPathComponent)", systemImage: "plus")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityHint("把正在看的檔案加進來")
+                    }
+                }
+                .padding(.horizontal)
+            }
+            if let attachError { Text(attachError).font(.caption).foregroundStyle(.red).padding(.horizontal) }
         }
     }
 
@@ -305,15 +332,8 @@ private struct ChatContent: View {
         if let i = items.firstIndex(where: { $0.id == e.id }) { items[i] = e }
     }
 
-    /// 清除紀錄:跟網頁一樣按兩次才清(3 秒內)
+    /// 清除紀錄(確認過才清)
     private func clear() async {
-        guard clearArmed else {
-            clearArmed = true
-            try? await Task.sleep(for: .seconds(3))
-            clearArmed = false
-            return
-        }
-        clearArmed = false
         do { try await model.api?.clearChat(project: project.id); items = []; more = false } catch { loadError = error.localizedDescription }
     }
 
@@ -419,10 +439,10 @@ struct DraftCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("工作卡草稿").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                Label("工作卡草稿", systemImage: "rectangle.stack.badge.plus").font(.caption.bold()).foregroundStyle(Theme.accent)
                 Spacer()
                 if draft.status == "draft" {
-                    Button(editing ? "完成" : "修改") { editing.toggle() }.buttonStyle(.small)
+                    Button(editing ? "完成" : "修改") { editing.toggle() }.font(.caption)
                 }
             }
             if editing {
@@ -433,41 +453,44 @@ struct DraftCardView: View {
                 TextField("工作說明", text: $draft.instructions, axis: .vertical).lineLimit(3...10).textFieldStyle(.roundedBorder)
                 TextField("完成標準", text: $draft.doneCriteria, axis: .vertical).lineLimit(2...6).textFieldStyle(.roundedBorder)
             } else {
-                Text(draft.title).font(.system(size: 15, weight: .bold))
-                Text("交給 \(draft.agent)").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                Text(draft.instructions).font(.system(size: 14)).lineLimit(6)
+                Text(draft.title).font(.headline)
+                Label("交給 \(draft.agent)", systemImage: "person.crop.square").font(.caption).foregroundStyle(.secondary)
+                Text(draft.instructions).font(.subheadline).lineLimit(6)
                 if !draft.doneCriteria.isEmpty {
-                    Text("完成標準:\(draft.doneCriteria)").font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(4)
+                    Text("完成標準:\(draft.doneCriteria)").font(.caption).foregroundStyle(.secondary).lineLimit(4)
                 }
             }
             switch draft.status {
             case "proposed":
-                statusLine("已放進提案")
+                statusLine("已放進提案", icon: "tray.and.arrow.down")
             case "dispatched":
-                statusLine("已派工")
+                statusLine("已派工", icon: "paperplane.fill")
             default:
                 HStack {
-                    Spacer()
-                    Button(busy == "propose" ? "放進提案…" : "放進提案") { Task { await act("propose") } }.buttonStyle(.small)
-                    Button(busy == "dispatch" ? "直接派工…" : "直接派工") { Task { await act("dispatch") } }.buttonStyle(.smallPrimary)
+                    Button { Task { await act("propose") } } label: {
+                        if busy == "propose" { ProgressView() } else { Text("放進提案") }
+                    }
+                    .buttonStyle(.bordered)
+                    Button { Task { await act("dispatch") } } label: {
+                        if busy == "dispatch" { ProgressView() } else { Text("直接派工") }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
+                .controlSize(.small)
                 .disabled(busy != nil)
             }
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(Theme.bad) }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
-        .padding(10)
-        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        .padding(12)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private func statusLine(_ text: String) -> some View {
+    private func statusLine(_ text: String, icon: String) -> some View {
         Button {
             if let id = draft.cardId { model.chatCardId = id }
         } label: {
-            Text(draft.cardId != nil ? "\(text) · 打開工作卡" : text).font(.system(size: 13, weight: .semibold))
+            Label(draft.cardId != nil ? "\(text) · 打開工作卡" : text, systemImage: icon).font(.subheadline.bold())
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(Theme.accent)
         .disabled(draft.cardId == nil)
     }
 
@@ -488,7 +511,7 @@ struct DraftCardView: View {
     }
 }
 
-/// 一則對話:我的是藍底白字、管家的是淡底(跟網頁 .msg.me / .msg.bot 一樣)
+/// 一則對話(iMessage 式):我的是藍色泡泡、管家的是灰色泡泡
 struct MessageBubble: View {
     let entry: ChatEntry
     var project: Project? = nil
@@ -497,52 +520,61 @@ struct MessageBubble: View {
 
     var body: some View {
         HStack(alignment: .top) {
-            if entry.isMine { Spacer(minLength: 40) }
+            if entry.isMine { Spacer(minLength: 48) }
             VStack(alignment: entry.isMine ? .trailing : .leading, spacing: 4) {
                 if let thumbs = entry.images, !thumbs.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(Array(thumbs.enumerated()), id: \.offset) { _, t in
                             if let img = imageFromDataURL(t) {
                                 Image(uiImage: img).resizable().scaledToFill()
-                                    .frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                         }
                     }
+                }
+                if let files = entry.files, !files.isEmpty {
+                    VStack(alignment: entry.isMine ? .trailing : .leading, spacing: 2) {
+                        ForEach(files, id: \.self) { f in
+                            Label((f as NSString).lastPathComponent, systemImage: f.hasPrefix("iPhone/") ? "iphone" : "doc.text")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if let q = entry.quote, let t = q.text, !t.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let p = q.path { Text("\(entry.via == "圈選" ? "圈選:" : "")\(p)\(q.from.map { " 第 \($0) 行" } ?? "")").font(.caption.bold()) }
+                        Text(t).font(.caption.monospaced()).lineLimit(5)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
                 }
                 if let project, entry.draft != nil {
                     DraftCardView(entry: entry, project: project, onUpdate: onUpdate)
-                } else if !entry.text.isEmpty || entry.quote != nil || !(entry.files ?? []).isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let q = entry.quote, let t = q.text, !t.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                if let p = q.path { Text("\(entry.via == "圈選" ? "圈選:" : "")\(p)\(q.from.map { " 第 \($0) 行" } ?? "")").font(.system(size: 12)) }
-                                Text(t).font(.system(size: 12, design: .monospaced)).lineLimit(5)
-                            }
-                            .padding(6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                        if let files = entry.files, !files.isEmpty {
-                            ForEach(files, id: \.self) { f in Text("📎 \((f as NSString).lastPathComponent)").font(.system(size: 12)) }
-                        }
-                        if !entry.text.isEmpty {
-                            if entry.isMine { Text(entry.text).textSelection(.enabled) } else { MarkdownText(entry.text) }
-                        }
+                } else if !entry.text.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if entry.isMine { Text(entry.text).textSelection(.enabled) } else { MarkdownText(entry.text) }
                         if entry.retryable == true {
-                            Button("改用備用模型回答這一題", action: onRetry).buttonStyle(.small)
+                            Button("改用備用模型回答這一題", action: onRetry)
+                                .buttonStyle(.bordered).controlSize(.small)
                         }
                     }
-                    .font(.system(size: 15))
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .foregroundStyle(entry.isMine ? Color.white : (entry.error == true ? Theme.warn : Theme.ink))
-                    .background(entry.isMine ? Theme.accent : Theme.chip, in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .foregroundStyle(entry.isMine ? Color.white : (entry.error == true ? Color.red : Color.primary))
+                    .background(bubbleColor, in: RoundedRectangle(cornerRadius: 18))
                 }
                 if let meta = metaLine {
-                    Text(meta).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    Text(meta).font(.caption2).foregroundStyle(.tertiary)
                 }
             }
-            if !entry.isMine { Spacer(minLength: 16) }
+            if !entry.isMine { Spacer(minLength: 24) }
         }
+        .padding(.horizontal)
+    }
+
+    private var bubbleColor: Color {
+        if entry.isMine { return Theme.accent }
+        return entry.error == true ? Color.red.opacity(0.1) : Color(.secondarySystemBackground)
     }
 
     private var metaLine: String? {

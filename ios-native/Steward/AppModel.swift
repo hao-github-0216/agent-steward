@@ -79,7 +79,7 @@ final class AppModel {
             web.setMode(mode)
         }
     }
-    var showNav = false
+    var showProjectPicker = false
     var showChat = false
     var showSettings = false
     /// 程式碼/終端機下面的管家側欄展開了沒(網頁的 body.drawer)
@@ -104,9 +104,8 @@ final class AppModel {
     var openCardId: String?
     /// 要帶到問管家的東西
     var pendingChat: ChatIntent?
-    /// 圈選小框關掉之後要做的事(兩個視窗不能同時升起:等圈選小框收好再打開問管家)
-    var afterSnap: ChatIntent?
-    var afterSnapOpenChat = false
+    /// 下一個要升起的視窗:兩個視窗不能同時從畫面底下升起,等目前這個收好(onDismiss)再打開
+    var pendingPresentation: Presentation?
     /// 問管家面板裡打開的工作卡(在面板上面再升起一層)
     var chatCardId: String?
     /// 問管家:等回答中(貓咪眼睛動)、有沒看過的回答(貓咪上的點)
@@ -308,18 +307,37 @@ final class AppModel {
     func showInTerminal(_ card: Card) async throws {
         try await api?.focusCard(card.id)
         if card.projectId != currentProjectId { switchProject(card.projectId) }
-        openCardId = nil
+        // 從問管家裡的工作卡來的:先收工作卡,下一輪再收問管家(同時收兩層會卡住)
         chatCardId = nil
-        showChat = false
+        openCardId = nil
+        DispatchQueue.main.async { self.showChat = false }
         mode = .terminal
     }
 
-    /// 圈選小框收好了:要到問管家繼續或開工作卡的,現在才打開問管家
-    func runAfterSnap() {
-        if let intent = afterSnap { pendingChat = intent }
-        if afterSnapOpenChat { showChat = true }
-        afterSnap = nil
-        afterSnapOpenChat = false
+    /// 有視窗開著:等它收好再打開這個;沒有就馬上打開
+    func present(_ p: Presentation) {
+        if anySheetShown { pendingPresentation = p } else { show(p) }
+    }
+
+    /// 根視窗收好了(每個 .sheet 的 onDismiss 都叫這個)
+    func drainPending() {
+        guard let p = pendingPresentation, !anySheetShown else { return }
+        pendingPresentation = nil
+        show(p)
+    }
+
+    private var anySheetShown: Bool {
+        showChat || openCardId != nil || showSettings || webSheet != nil || showProjectPicker || snap.result != nil
+    }
+
+    private func show(_ p: Presentation) {
+        switch p {
+        case .chat: showChat = true
+        case .card(let id): openCardId = id
+        case .settings: showSettings = true
+        case .web(let w): webSheet = w
+        case .projectPicker: showProjectPicker = true
+        }
     }
 
     func updateProject(_ id: String, _ body: [String: Any]) async throws {
@@ -335,7 +353,7 @@ final class AppModel {
         let parts = url.pathComponents.filter { $0 != "/" }
         switch url.host() {
         case "nav":
-            showNav = true
+            present(.projectPicker)
         case "snap":
             // 圈選提問(跟按圈選鈕一樣);等畫面畫好再截圖
             Task { try? await Task.sleep(for: .milliseconds(600)); if mode.isWeb { web.snap() } else { snap.begin() } }
@@ -347,12 +365,12 @@ final class AppModel {
             guard let id = parts.first else { return }
             if let c = card(id) { switchProject(c.projectId) }
             mode = .board
-            openCardId = id
+            present(.card(id))
         case "project":
             guard let id = parts.first else { return }
             switchProject(id)
             switch parts.dropFirst().first {
-            case "chat": showChat = true
+            case "chat": present(.chat)
             case "code": mode = .code
             case "terminal": mode = .terminal
             default: mode = .board
@@ -379,11 +397,11 @@ final class AppModel {
             if let q = msg["quote"] as? [String: Any], let text = q["text"] as? String {
                 pendingChat = .quote(ChatQuote(path: q["path"] as? String, from: q["from"] as? Int, to: q["to"] as? Int, text: text))
             }
-            showChat = true
+            present(.chat)
         case "draft":
             if let id = msg["project"] as? String { switchProject(id) }
             if let m = msg["message"] as? String { pendingChat = .draft(m) }
-            showChat = true
+            present(.chat)
         case "needSpace":
             needSpace = msg["project"] as? String
         case "termState":
@@ -393,6 +411,15 @@ final class AppModel {
             break
         }
     }
+}
+
+/// 從畫面底下升起的視窗
+enum Presentation: Equatable {
+    case chat
+    case card(String)
+    case settings
+    case web(WebSheet)
+    case projectPicker
 }
 
 /// 一次性的網頁畫面

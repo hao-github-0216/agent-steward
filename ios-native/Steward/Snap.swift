@@ -165,7 +165,7 @@ struct SnapSheet: View {
                         .resizable().scaledToFit()
                         .frame(maxHeight: 160)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent.opacity(0.6)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(.separator)))
                     DisclosureGroup(isExpanded: $showText) {
                         Text(hasText ? snap.text : "沒有讀到文字,會把圈到的圖片送給管家看。")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -183,9 +183,9 @@ struct SnapSheet: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(Self.quick, id: \.0) { q in
-                                    Button(q.0) { Task { await ask(q.1, shown: q.0) } }.buttonStyle(.small)
+                                    Button(q.0) { Task { await ask(q.1, shown: q.0) } }.buttonStyle(.bordered)
                                 }
-                                Button("開工作卡") { Task { await draft() } }.buttonStyle(.small)
+                                Button("開工作卡") { Task { await draft() } }.buttonStyle(.bordered)
                             }
                         }
                         .disabled(busy)
@@ -193,44 +193,44 @@ struct SnapSheet: View {
                     ForEach(Array(turns.enumerated()), id: \.offset) { _, t in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(t.q).font(.caption).foregroundStyle(.secondary)
-                            if t.error { Text(t.a).foregroundStyle(Theme.bad) } else { MarkdownText(t.a) }
+                            if t.error { Text(t.a).foregroundStyle(.red) } else { MarkdownText(t.a) }
                         }
                         Divider()
                     }
                     if busy { HStack { ProgressView(); Text("管家想一下…").font(.footnote).foregroundStyle(.secondary) } }
                     // 問過之後:複製、到問管家繼續、開工作卡(網頁的 sp-acts)
                     if !turns.isEmpty && !busy {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             if let last = turns.last(where: { !$0.error })?.a {
-                                Button("複製") { UIPasteboard.general.string = last }.buttonStyle(.small)
+                                Button("複製") { UIPasteboard.general.string = last }
                             }
                             Button("到問管家繼續") {
                                 model.switchProject(projectId)
-                                model.afterSnapOpenChat = true
+                                model.pendingPresentation = .chat // 圈選小框收好再打開問管家
                                 dismiss()
                             }
-                            .buttonStyle(.small)
-                            Button("開工作卡") { Task { await draft() } }.buttonStyle(.small)
+                            Button("開工作卡") { Task { await draft() } }
                         }
+                        .buttonStyle(.bordered)
                     }
                 }
                 .padding()
             }
             .safeAreaInset(edge: .bottom) {
-                HStack(alignment: .bottom, spacing: 6) {
-                    // 寫問題按「送出」;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
+                HStack(alignment: .bottom, spacing: 8) {
+                    // 寫問題按送出;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
                     TextField(turns.isEmpty ? "問這一塊,或寫要做的事(再按「開工作卡」)…" : "接著問,或寫要做的事(再按「開工作卡」)…", text: $question, axis: .vertical)
                         .lineLimit(1...4)
-                        .font(.system(size: 15))
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
-                    Button("送出") {
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+                    Button {
                         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
                         question = ""
                         Task { await ask(q.isEmpty ? "解釋這段內容" : q, shown: q.isEmpty ? "解釋" : q) }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
                     }
-                    .buttonStyle(.smallPrimary)
+                    .accessibilityLabel("送出")
                     .disabled(busy)
                 }
                 .padding()
@@ -272,8 +272,8 @@ struct SnapSheet: View {
         let body = hasText ? snap.text : "(圈到的是圖片,沒有文字)"
         let answer = turns.last(where: { !$0.error })?.a
         model.switchProject(projectId)
-        model.afterSnap = .draft(Self.cardMessage(task: task, label: snap.label, body: body, answer: answer))
-        model.afterSnapOpenChat = true
+        model.pendingChat = .draft(Self.cardMessage(task: task, label: snap.label, body: body, answer: answer))
+        model.pendingPresentation = .chat // 圈選小框收好再打開問管家
         dismiss()
     }
 

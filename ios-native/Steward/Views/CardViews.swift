@@ -1,5 +1,5 @@
-// 工作卡視窗(網頁的 #cardPop;手機上一樣從下面升起):標題、欄位/編號/agent/專案、備註、指示、完成標準,
-// 下面是動作按鈕,每一欄能做的事跟網頁一樣
+// 工作卡視窗:內容和能做的事跟網頁的工作卡視窗一樣,元件用 Apple 的清單和系統按鈕
+//   提案:核准派工 / 不要;卡住:重新派工 / 標成完成;完成:重做一次;進行中/卡住/完成又有窗格:在終端機看這個窗格
 import SwiftUI
 
 struct CardPopup: View {
@@ -10,82 +10,89 @@ struct CardPopup: View {
     @State private var error: String?
 
     var body: some View {
-        if let c = model.card(cardId) {
-            VStack(spacing: 0) {
-                HStack(alignment: .top) {
-                    Text(c.title).font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink)
-                    Spacer()
-                    Button("關閉") { dismiss() }.buttonStyle(.small)
-                }
-                .padding(.horizontal, 16).padding(.top, 18).padding(.bottom, 10)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        meta(c)
+        NavigationStack {
+            Group {
+                if let c = model.card(cardId) {
+                    List {
+                        Section {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(c.title).font(.title3.bold())
+                                meta(c)
+                            }
+                            .padding(.vertical, 2)
+                        }
                         if let note = c.note, !note.isEmpty {
-                            Text(note)
-                                .font(.system(size: 14))
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Theme.chip, in: RoundedRectangle(cornerRadius: 8))
+                            Section("最新狀態") { Text(note).textSelection(.enabled) }
+                        }
+                        Section("指示") {
+                            Text(c.instructions?.isEmpty == false ? c.instructions! : "(沒有)")
+                                .font(.callout.monospaced())
                                 .textSelection(.enabled)
                         }
-                        SectionLabel("指示")
-                        Text(c.instructions?.isEmpty == false ? c.instructions! : "(沒有)")
-                            .font(.system(size: 13, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
-                            .textSelection(.enabled)
-                        SectionLabel("完成標準")
-                        Text(c.doneCriteria?.isEmpty == false ? c.doneCriteria! : "(沒有)").font(.system(size: 14))
-                        if let error { Text(error).font(.system(size: 13)).foregroundStyle(Theme.bad).padding(.top, 6) }
+                        Section("完成標準") {
+                            Text(c.doneCriteria?.isEmpty == false ? c.doneCriteria! : "(沒有)")
+                        }
+                        actions(c)
+                        if let error {
+                            Section { Text(error).foregroundStyle(.red) }
+                        }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .listStyle(.insetGrouped)
+                } else {
+                    ContentUnavailableView("找不到這張工作卡", systemImage: "questionmark.square.dashed")
                 }
-                Divider()
-                footer(c)
-                    .padding(.horizontal, 16).padding(.vertical, 12)
             }
-            .background(Theme.panel)
-        } else {
-            ContentUnavailableView("找不到這張工作卡", systemImage: "questionmark.square.dashed")
+            .navigationTitle("工作卡")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("關閉") { dismiss() } }
+            }
         }
     }
 
     private func meta(_ c: Card) -> some View {
         let p = model.project(c.projectId)
-        let parts = ["#\(c.id)", c.agent.map { "· \($0)" }, p.map { "· \($0.name)" }, (c.attempts ?? 0) > 1 ? "· 第 \(c.attempts!) 次派工" : nil, c.lastChanged.map { "· \(Fmt.ago($0))" }].compactMap { $0 }
-        return HStack(spacing: 6) {
-            Chip(text: columnLabel[c.column] ?? c.column)
-            Text(parts.joined(separator: " ")).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(2)
+        let parts = ["#\(c.id)", c.agent, p?.name, (c.attempts ?? 0) > 1 ? "第 \(c.attempts!) 次派工" : nil, c.lastChanged.map { Fmt.ago($0) }].compactMap { $0 }
+        return HStack(spacing: 8) {
+            Text(columnLabel[c.column] ?? c.column)
+                .font(.caption.bold())
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(columnColor(c.column).opacity(0.15), in: Capsule())
+                .foregroundStyle(columnColor(c.column))
+            Text(parts.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
         }
     }
 
-    /// 網頁 renderCardPop 的按鈕:提案(不要/核准派工)、卡住(標成完成/重新派工)、完成(重做一次);
-    /// 進行中/卡住/完成又有窗格的可以「在終端機看這個窗格」
     @ViewBuilder
-    private func footer(_ c: Card) -> some View {
+    private func actions(_ c: Card) -> some View {
         let canJump = (c.terminalId != nil || c.paneId != nil) && ["running", "blocked", "done"].contains(c.column)
-        HStack(spacing: 8) {
-            if canJump {
-                Button("在終端機看這個窗格") { Task { await jump(c) } }.buttonStyle(.small)
-            }
-            Spacer()
+        let moves: [(String, String, Bool)] = {
             switch c.column {
-            case "proposed":
-                Button("不要") { Task { await move(c, "rejected") } }.buttonStyle(.small)
-                Button("核准派工") { Task { await move(c, "approved") } }.buttonStyle(.smallPrimary)
-            case "blocked":
-                Button("標成完成") { Task { await move(c, "done") } }.buttonStyle(.small)
-                Button("重新派工") { Task { await move(c, "approved") } }.buttonStyle(.smallPrimary)
-            case "done":
-                Button("重做一次") { Task { await move(c, "approved") } }.buttonStyle(.small)
-            default:
-                EmptyView()
+            case "proposed": [("核准派工", "approved", true), ("不要", "rejected", false)]
+            case "blocked": [("重新派工", "approved", true), ("標成完成", "done", false)]
+            case "done": [("重做一次", "approved", false)]
+            default: []
+            }
+        }()
+        if !moves.isEmpty || canJump {
+            Section {
+                ForEach(moves, id: \.1) { label, column, primary in
+                    Button(role: column == "rejected" ? .destructive : nil) {
+                        Task { await move(c, column) }
+                    } label: {
+                        HStack {
+                            Text(label).fontWeight(primary ? .semibold : .regular)
+                            Spacer()
+                            if busy { ProgressView() }
+                        }
+                    }
+                    .disabled(busy)
+                }
+                if canJump {
+                    Button { Task { await jump(c) } } label: { Label("在終端機看這個窗格", systemImage: "terminal") }
+                }
             }
         }
-        .disabled(busy)
     }
 
     private func move(_ c: Card, _ column: String) async {

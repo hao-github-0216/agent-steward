@@ -101,9 +101,11 @@ final class WebBridge: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// 把共用的 WKWebView 放進 SwiftUI(切回看板再回來還是原本的畫面)
+/// 把共用的 WKWebView 放進 SwiftUI。程式碼和終端機兩個分頁共用同一個網頁(跟網頁一樣同一頁切模式),
+/// 分頁出現時 token 會變,updateUIView 就把網頁搬到這個分頁(不搬的話另一頁會空白)
 struct WebContainer: UIViewRepresentable {
     @Environment(AppModel.self) private var model
+    let token: Int
 
     func makeUIView(context: Context) -> UIView {
         let host = UIView()
@@ -113,7 +115,7 @@ struct WebContainer: UIViewRepresentable {
     }
 
     func updateUIView(_ host: UIView, context: Context) {
-        if host.subviews.first == nil { attach(to: host) }
+        if model.web.view().superview !== host { attach(to: host) }
     }
 
     private func attach(to host: UIView) {
