@@ -56,6 +56,9 @@ async function fetchCompatModels(c: ProviderConfig): Promise<string[]> {
 	return (((await r.json()) as { data?: { id: string }[] }).data ?? []).map((m) => m.id).filter(Boolean);
 }
 
+/** 網頁對話框能顯示的格式(附在使用者從網頁問的問題後面,管家的長期對話也看得到) */
+const CHAT_FORMAT = "\n\n(回答會顯示在網頁對話框,支援 Markdown:**粗體**、清單、`行內程式`、```程式區塊```、表格、## 小標題、> 引用;數學式用 $…$ 或 $$…$$。不要用 HTML。)";
+
 async function body(req: IncomingMessage): Promise<any> {
 	const chunks: Buffer[] = [];
 	for await (const c of req) chunks.push(c as Buffer);
@@ -771,7 +774,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 					}
 					try {
-						const answer = await steward.askWithImages(p, `【提問】(使用者,附了 ${images.length} 張圖片)${message || "請看圖片"}${snippet}`, images, ref);
+						const answer = await steward.askWithImages(p, `【提問】(使用者,附了 ${images.length} 張圖片)${message || "請看圖片"}${snippet}${CHAT_FORMAT}`, images, ref);
 						let primary = "";
 						try { primary = `${routeFor("chat", { private: p.private }).provider}/${routeFor("chat", { private: p.private }).modelId}`; } catch { /* 沒設定 */ }
 						const bot = appendChat(p.id, { role: "bot", text: answer, ...(`${ref.provider}/${ref.modelId}` !== primary ? { alt: `看圖改用 ${modelLabel(ref)}` } : {}) });
@@ -783,7 +786,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				try {
 					// 聊天室用路由「聊天室」的主要模型(純問答,不能開卡);使用者按「改用備用模型」才用備用
-					const answer = await steward.send(p, `【提問】(使用者)${message}${snippet}`, { role: "chat", fallback: useFallback, timeoutMs: 180_000 });
+					const answer = await steward.send(p, `【提問】(使用者)${message}${snippet}${CHAT_FORMAT}`, { role: "chat", fallback: useFallback, timeoutMs: 180_000 });
 					const bot = appendChat(p.id, { role: "bot", text: answer, ...(useFallback ? { alt: modelLabel(routeFor("chat", { fallback: true })) } : {}) });
 					void makeSuggestions(p).catch(() => undefined); // 回答完換一組建議問題(背景)
 					return send(res, 200, { answer, me: mine, bot, ...extra });

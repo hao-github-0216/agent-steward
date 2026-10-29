@@ -333,7 +333,8 @@
 		S.asked = true;
 		if (r.snap) { S.project = r.snap.project; S.pane = r.snap.pane || S.pane; }
 		S.answer = r.answer || "";
-		ans.innerHTML = `<div class="sp-q">${esc(q)}</div><div class="sp-text">${esc(r.answer || r.error || "沒有回應")}</div>`;
+		ans.innerHTML = `<div class="sp-q">${esc(q)}</div><div class="sp-text${r.answer ? " md" : ""}">${r.answer ? chatMd.render(r.answer) : esc(r.error || "沒有回應")}</div>`;
+		chatMd.typeset(ans);
 		ans.classList.toggle("err", !r.answer);
 		acts.hidden = false;
 		acts.querySelector('[data-sp="agent"]').hidden = !(S.snap?.kind === "terminal" && S.pane?.agent && S.answer);

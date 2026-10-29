@@ -461,7 +461,7 @@ ${brief(this.deps.store, p, { recent: 5 })}
 	/** 不經過管家對話回答提問時用的系統提示:管家身分 + 專案簡報 + 最近的問答 */
 	private chatSystem(p: Project, dropLast = true): string {
 		const history = recentChat(p.id, 8).slice(0, dropLast ? -1 : undefined).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 1500)}`).join("\n");
-		return `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
+		return `${PERSONA()}\n\n你現在只負責回答【提問】,沒有任何工具可用。回答會顯示在網頁對話框,支援 Markdown(粗體、清單、行內程式、程式區塊、表格、小標題、引用;數學式用 $…$ 或 $$…$$),不要用 HTML。以下是這個專案目前的狀態:\n\n${brief(this.deps.store, p, { recent: 8 })}${history ? `\n\n最近的問答:\n${history}` : ""}`;
 	}
 
 	/**

@@ -161,6 +161,32 @@ section.content { padding: 16px; overflow-y: auto; overflow-x: hidden; overscrol
 .chat { display: flex; flex-direction: column; gap: 8px; }
 .chat .log { max-height: 280px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .msg { padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; max-width: 85%; }
+/* 管家回答的 Markdown */
+.md { white-space: normal; line-height: 1.6; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 .55em; }
+.md ul, .md ol { margin: 0 0 .55em; padding-left: 1.4em; }
+.md li { margin: .15em 0; }
+.md li > ul, .md li > ol { margin: .15em 0 0; }
+.md li.md-task { list-style: none; margin-left: -1.2em; }
+.md strong { font-weight: 650; }
+.md code { font: .92em/1.4 Menlo, Consolas, monospace; background: rgba(127,127,127,.16); padding: .05em .35em; border-radius: 4px; }
+.md pre.md-pre { margin: .3em 0 .6em; padding: 8px 10px; background: rgba(127,127,127,.12); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; white-space: pre; }
+.md pre.md-pre code { display: block; background: none; padding: 0; font: 12px/1.45 Menlo, Consolas, monospace; }
+.md .md-h { font-weight: 650; margin: .7em 0 .35em; }
+.md .md-h1, .md .md-h2 { font-size: 1.12em; }
+.md .md-h3 { font-size: 1.04em; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: .7em 0; }
+.md blockquote { margin: 0 0 .55em; padding: .1em .8em; border-left: 3px solid var(--line); color: var(--muted); }
+.md .md-table { overflow-x: auto; margin: .3em 0 .6em; }
+.md table { border-collapse: collapse; font-size: .95em; }
+.md th, .md td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; overflow-wrap: normal; word-break: keep-all; min-width: 2.5em; }
+.md th { white-space: nowrap; }
+.msg.bot:has(.md) { max-width: 94%; }
+.md th { background: rgba(127,127,127,.1); font-weight: 600; }
+.md a { color: var(--accent); }
+.md .md-math[data-display="1"] { margin: .4em 0; overflow-x: auto; text-align: center; }
 .msg.me { align-self: flex-end; background: var(--accent); color: #fff; }
 .msg.bot { align-self: flex-start; background: var(--chip); }
 .chat form { display: flex; gap: 8px; }
@@ -521,6 +547,7 @@ html, body { height: var(--appH, 100dvh); }
 #snapPop .sp-ans { overflow: auto; min-height: 0; flex: 1; }
 #snapPop .sp-q { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
 #snapPop .sp-text { white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+#snapPop .sp-text.md { white-space: normal; }
 #snapPop .sp-ans.err .sp-text { color: var(--bad); }
 #snapPop .sp-wait { color: var(--muted); }
 #ballSnap { position: fixed; z-index: 57; width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--accent); display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.2); cursor: pointer; }
@@ -781,6 +808,7 @@ form.tool { flex-direction: row; }
 		<div class="mfoot"><span class="hint" id="tidyNote"></span><button class="small primary" id="tidyGo" disabled>執行勾選的項目</button></div>
 	</div>
 </div>
+<script src="/web/chatmd.js"></script>
 <script>
 // ---------- 登入:/api 回 401/403 時顯示登入畫面 ----------
 {
@@ -2379,13 +2407,16 @@ function msgHtml(e) {
 	const q = via + imgs + files + (e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
 	const cloud = e.alt?.startsWith("看圖") ? `<span class="cloud" title="這一題有圖片,改用看得懂圖片的模型">${esc(e.alt)}</span>` : e.alt ? `<span class="cloud" title="這一則用備用模型回答:${esc(e.alt)}">備用 · ${esc(e.alt)}</span>` : e.cloud ? '<span class="cloud" title="這一則用雲端模型回答">雲端</span>' : "";
 	const retry = e.retryable ? `<button class="small retry" data-retry="${esc(e.id)}">改用備用模型回答這一題</button>` : "";
-	return `<div class="msg ${e.role}${e.error ? " err" : ""}">${q}${cloud}${esc(e.text)}${retry}</div>`;
+	// 管家的回答照 Markdown 顯示(粗體、清單、程式碼、表格…);自己問的照原文
+	const body = e.role === "bot" && !e.error ? `<div class="md">${chatMd.render(e.text)}</div>` : esc(e.text);
+	return `<div class="msg ${e.role}${e.error ? " err" : ""}">${q}${cloud}${body}${retry}</div>`;
 }
 function renderBall() {
 	const waiting = ball.pending.get(ball.pid) || 0;
 	$("bpLog").innerHTML = (ball.more ? '<div class="bp-more">往上捲載入更早的…</div>' : "")
 		+ (ball.items.length || waiting ? ball.items.map(msgHtml).join("") : '<div class="empty">問管家關於這個專案的事:進度、下一步、卡在哪裡,或貼一段程式碼問它。</div>')
 		+ (waiting ? '<div class="msg bot wait">思考中…</div>' : "");
+	chatMd.typeset($("bpLog"));
 	$("stewardBall").classList.toggle("busy", [...ball.pending.values()].some(Boolean));
 }
 function renderQuote() {
