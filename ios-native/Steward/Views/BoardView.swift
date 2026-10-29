@@ -149,7 +149,10 @@ struct BoardColumn: View {
                         let shown = id == "done" && !showAllDone ? Array(cards.prefix(Self.doneShown)) : cards
                         ForEach(shown) { c in
                             KCard(card: c, showProject: model.allCards)
-                                .draggable(c.id) { KCard(card: c).frame(width: 220).opacity(0.9) }
+                                // 拖拉時的預覽畫在 app 的畫面樹外面,拿不到 AppModel:只能用不讀環境的 KCardFace
+                                .draggable(c.id) {
+                                    KCardFace(card: c, projectName: nil).frame(width: 220).opacity(0.9)
+                                }
                         }
                         if id == "done" && cards.count > Self.doneShown {
                             Button(showAllDone ? "只看最近 \(Self.doneShown) 張" : "看更多(\(cards.count - Self.doneShown))") { showAllDone.toggle() }
@@ -202,11 +205,26 @@ struct BoardColumn: View {
     }
 }
 
-/// 網頁的 .kcard:粗體標題一行,右邊小標籤(有備註的點、第幾次派工、專案名稱)
+/// 網頁的 .kcard:粗體標題一行,右邊小標籤(有備註的點、第幾次派工、專案名稱)。點了打開工作卡視窗
 struct KCard: View {
     @Environment(AppModel.self) private var model
     let card: Card
     var showProject = false
+
+    var body: some View {
+        KCardFace(card: card, projectName: showProject ? model.project(card.projectId)?.name : nil)
+            .contentShape(Rectangle())
+            .onTapGesture { model.openCardId = card.id }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("打開工作卡")
+    }
+}
+
+/// 工作卡的樣子(不讀 app 的環境:拖拉預覽也能用)
+struct KCardFace: View {
+    let card: Card
+    let projectName: String?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -220,9 +238,7 @@ struct KCard: View {
                     Circle().fill(Theme.warn).frame(width: 8, height: 8).accessibilityLabel("有備註")
                 }
                 if let a = card.attempts, a > 1 { Text("×\(a)") }
-                if showProject, let p = model.project(card.projectId) {
-                    Text(p.name).lineLimit(1).frame(maxWidth: 90)
-                }
+                if let projectName { Text(projectName).lineLimit(1).frame(maxWidth: 90) }
             }
             .font(.system(size: 11))
             .foregroundStyle(Theme.muted)
@@ -231,11 +247,6 @@ struct KCard: View {
         .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
         .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
-        .contentShape(Rectangle())
-        .onTapGesture { model.openCardId = card.id }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("打開工作卡")
     }
 }
 
