@@ -251,6 +251,17 @@ body.term nav.open, body.code nav.open { transform: none; }
 #termView[hidden] { display: none; }
 .termwrap { position: relative; flex: 1; min-width: 0; }
 #term { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #1d2021; }
+/* 手機/平板(觸控):終端機下面一排按鍵(iPhone 鍵盤沒有方向鍵、Esc、Tab;Claude 要你選選項時用 ↑↓⏎) */
+.tkeys { display: none; }
+@media (pointer: coarse) {
+	body.term .tkeys { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; gap: 6px; align-items: center; padding: 0 8px; overflow-x: auto; overscroll-behavior-x: contain; background: #282828; border-top: 1px solid rgba(255,255,255,.08); scrollbar-width: none; }
+	body.term .tkeys::-webkit-scrollbar { display: none; }
+	body.term #term { height: calc(100% - 48px); }
+	body.term .tkeys { padding-right: 76px; } /* 貓咪浮動球在右下角:最後幾個鍵捲得出來 */
+}
+.tkeys button { flex: 0 0 auto; min-width: 42px; height: 34px; padding: 0 11px; border: 0; border-radius: 8px; background: #504945; color: #fbf1c7; font: 500 15px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; box-shadow: 0 1px 0 rgba(0,0,0,.45); touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.tkeys button:active, .tkeys button.on { background: #7c6f64; }
+.tkeys .tsep { flex: 0 0 1px; height: 22px; background: rgba(255,255,255,.14); }
 .termhint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #a89984; pointer-events: none; }
 .termhint[hidden] { display: none; }
 .hint { color: var(--muted); font-size: 12px; }
@@ -720,7 +731,13 @@ try {
 	<button class="gear" id="gearBtn" type="button" title="設定" aria-label="設定">⚙</button>
 </header>
 <section id="termView" hidden>
-	<div class="termwrap"><iframe id="term" title="herdr 終端機"></iframe><div class="termhint" id="termHint">連線到 herdr…</div></div>
+	<div class="termwrap"><iframe id="term" title="herdr 終端機"></iframe><div class="termhint" id="termHint">連線到 herdr…</div>
+		<div class="tkeys" id="tkeys" role="toolbar" aria-label="終端機按鍵">
+			<button type="button" data-k="kbd" aria-label="叫出或收起鍵盤">⌨︎</button><span class="tsep"></span>
+			<button type="button" data-k="up" aria-label="上">↑</button><button type="button" data-k="down" aria-label="下">↓</button><button type="button" data-k="left" aria-label="左">←</button><button type="button" data-k="right" aria-label="右">→</button><button type="button" data-k="enter" aria-label="Enter">⏎</button><span class="tsep"></span>
+			<button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button><button type="button" data-k="stab" aria-label="Shift Tab">⇧Tab</button><button type="button" data-k="ctrlc" aria-label="Control C">⌃C</button>
+		</div>
+	</div>
 	<aside id="drawer" class="sfade">
 		<div class="dhead"><div class="dt" id="dTitle"></div><button class="small" id="drawerClose">收起</button></div>
 		<div id="dBody"></div>
@@ -1458,6 +1475,42 @@ function focusTerm() {
 	if (touchDevice) return;
 	xterm()?.focus();
 }
+// ---------- 手機/平板:終端機按鍵列 ----------
+// iPhone 鍵盤沒有方向鍵、Esc、Tab:Claude 要你選選項時按 ↑↓ 再 ⏎;⌨︎ 叫出/收起鍵盤。按鍵當成在終端機裡打字送出
+const TKEYS = { esc: "\x1b", tab: "\t", stab: "\x1b[Z", up: "A", down: "B", right: "C", left: "D", enter: "\r", ctrlc: "\x03" };
+function sendTermKey(k) {
+	const t = xterm();
+	let s = TKEYS[k];
+	if (!t || !s) return;
+	if (s.length === 1 && "ABCD".includes(s)) s = (t.modes?.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + s;
+	t.input(s, true);
+}
+(function setupTermKeys() {
+	const bar = $("tkeys");
+	if (!bar) return;
+	let rep = null;
+	const stop = () => { clearTimeout(rep); clearInterval(rep); rep = null; bar.querySelector(".on")?.classList.remove("on"); };
+	// 按鍵不要搶走終端機的焦點(鍵盤開著就繼續開著);⌨︎ 例外,要用「點一下」才叫得出鍵盤
+	bar.addEventListener("touchstart", (e) => { if (e.target.closest("button[data-k]")?.dataset.k !== "kbd") e.preventDefault(); }, { passive: false });
+	bar.addEventListener("pointerdown", (e) => {
+		const b = e.target.closest("button[data-k]");
+		if (!b || b.dataset.k === "kbd") return;
+		e.preventDefault();
+		const k = b.dataset.k;
+		stop();
+		b.classList.add("on");
+		sendTermKey(k);
+		// 方向鍵按住連續送
+		if (["up", "down", "left", "right"].includes(k)) rep = setTimeout(() => { rep = setInterval(() => sendTermKey(k), 70); }, 380);
+	});
+	for (const ev of ["pointerup", "pointercancel", "pointerleave"]) bar.addEventListener(ev, stop);
+	bar.addEventListener("click", (e) => {
+		if (e.target.closest("button[data-k]")?.dataset.k !== "kbd") return;
+		const t = xterm(), ta = t?.textarea;
+		if (!ta) return;
+		if (ta.ownerDocument.activeElement === ta) ta.blur(); else t.focus();
+	});
+})();
 /** 終端機載入時會自己聚焦:手機上先移開(不要一進頁面就跳鍵盤) */
 function blurTermOnTouch() {
 	const ta = xterm()?.textarea;
@@ -2140,14 +2193,29 @@ function hookTouchScroll(win, t) {
 		lastY = p.clientY; lastT = now; x = p.clientX; y = p.clientY;
 		step(dy);
 	}, { passive: false, capture: true });
-	el.addEventListener("touchend", () => {
+	el.addEventListener("touchend", (e) => {
+		// 點一下(沒有滑動):herdr 開著滑鼠模式時當成滑鼠點一下(選 Claude 的選項、點窗格),不另外跳鍵盤(要打字按下面的 ⌨︎)
+		if (vertical === null && lastY !== null && e.changedTouches.length === 1 && performance.now() - lastT < 500) {
+			lastY = null;
+			const mode = t.modes?.mouseTrackingMode;
+			if (!mode || mode === "none") return;
+			e.preventDefault();
+			const p = e.changedTouches[0];
+			const o = { clientX: p.clientX, clientY: p.clientY, button: 0, buttons: 1, bubbles: true, cancelable: true, view: win };
+			const ta = t.textarea, typing = ta && ta.ownerDocument.activeElement === ta;
+			screen.dispatchEvent(new win.MouseEvent("mousedown", o));
+			screen.dispatchEvent(new win.MouseEvent("mouseup", { ...o, buttons: 0 }));
+			// xterm 收到點擊會把游標放進終端機(手機會跳鍵盤):原本鍵盤沒開就收回
+			if (!typing) ta?.blur();
+			return;
+		}
 		if (!vertical || lastY === null) { lastY = null; return; }
 		lastY = null;
 		// 放手後依速度慣性滑一小段
 		let v = velocity * 16;
 		const run = () => { if (Math.abs(v) < 0.5) return; step(v); v *= 0.92; fling = requestAnimationFrame(run); };
 		if (Math.abs(v) > 2) fling = requestAnimationFrame(run);
-	}, { passive: true, capture: true });
+	}, { passive: false, capture: true });
 	clog("touch-hooked", { touch: "ontouchstart" in win });
 }
 // ttyd 斷線重連時可能換一個新的終端機物件:定期檢查,新的就重新掛上
