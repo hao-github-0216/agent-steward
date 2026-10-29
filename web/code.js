@@ -2119,7 +2119,13 @@
 	}
 	// 跟 VS Code 一樣:按目前的圖示 = 收合/展開側欄;按另一個 = 切過去並展開
 	const activityClick = (v) => {
-		if (mobile()) { document.body.classList.remove("cv-editing"); return setView(v); }
+		if (mobile()) {
+			// 手機是單欄(側欄 ↔ 編輯器):側欄停在這一頁時再按一次 = 收起側欄回到編輯器;按另一個 = 切過去
+			const editing = document.body.classList.contains("cv-editing");
+			if (!editing && cm.view === v) { document.body.classList.add("cv-editing"); return; }
+			document.body.classList.remove("cv-editing");
+			return setView(v);
+		}
 		const collapsed = document.body.classList.contains("cv-side-collapsed");
 		if (cm.view === v && !collapsed) return setSideCollapsed(true);
 		setSideCollapsed(false);
