@@ -51,6 +51,8 @@ struct CodeTab: View {
                     case .history: HistoryView(project: p)
                     case .commit(let hash): CommitView(project: p, hash: hash)
                     }
+                } else {
+                    ContentUnavailableView("還沒有專案", systemImage: "tray")
                 }
             }
         }
@@ -136,7 +138,8 @@ struct FolderView: View {
         }
         .listStyle(.insetGrouped)
         .overlay { if entries == nil && error == nil { ProgressView() } }
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: dir.isEmpty ? "找檔名" : "在整個專案找檔名")
+        // 只有最上層有搜尋(搜的是整個專案);點進資料夾不再疊一條搜尋列
+        .modifier(SearchIfRoot(isRoot: dir.isEmpty, query: $query))
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
             guard !q.isEmpty else { results = []; return }
@@ -247,6 +250,14 @@ struct FolderView: View {
     }
 }
 
+struct SearchIfRoot: ViewModifier {
+    let isRoot: Bool
+    @Binding var query: String
+    func body(content: Content) -> some View {
+        if isRoot { content.searchable(text: $query, prompt: "找檔名") } else { content }
+    }
+}
+
 /// Git 標記(跟網頁的檔案樹一樣:U 新檔、M 修改、A 新增、D 刪除、! 衝突、• 資料夾裡有變更)
 struct GitMark: View {
     let code: String
@@ -314,6 +325,7 @@ struct FileView: View {
     @State private var conflict: SaveConflict?
     @State private var quickLookURL: URL?
     @State private var saveError: String?
+    @State private var quickLookedOnce = false
 
     private var ext: String { (path as NSString).pathExtension.lowercased() }
     private var isMarkdown: Bool { ["md", "markdown"].contains(ext) }
@@ -431,7 +443,8 @@ struct FileView: View {
             let f = try await api.readFile(project: project.id, path: path)
             file = f
             if f.kind == "image" || f.kind == "pdf" { data = try await api.rawFile(project: project.id, path: path) }
-            if f.kind == "office" { await openQuickLook() }
+            // Office 檔第一次打開時自動用 Quick Look 預覽(只一次;之後用按鈕)
+            if f.kind == "office", !quickLookedOnce { quickLookedOnce = true; await openQuickLook() }
         } catch {
             self.error = error.localizedDescription
         }
