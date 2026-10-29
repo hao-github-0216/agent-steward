@@ -13,7 +13,8 @@ export function herdrCli(args: string[], timeoutMs = 8000): any {
 			return out;
 		}
 	} catch (e: any) {
-		const out = e?.stdout?.toString?.();
+		// herdr 失敗時有時把 JSON 錯誤寫在 stderr
+		const out = e?.stdout?.toString?.().trim() || e?.stderr?.toString?.().trim();
 		try {
 			return out ? JSON.parse(out) : { error: { message: String(e?.message ?? e) } };
 		} catch {

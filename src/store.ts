@@ -79,6 +79,10 @@ export interface Branch {
 	terminalId?: string;
 	tabId?: string;
 	transcript?: string; // 支線自己的紀錄檔(找到後記下來)
+	placement?: "worktree" | "here"; // 開在獨立的 git worktree / 跟主線同一個資料夾
+	hereReason?: string; // 為什麼沒開 worktree(非 git、隱私專案、使用者選的…)
+	worktree?: { path: string; cwd: string; repoRoot: string; gitBranch: string; base: string; shared: string[]; removed?: boolean };
+	startupNote?: string; // 開的時候 agent 停在確認畫面,要使用者去處理
 	draft?: string; // 最近一次「帶回主線」的草稿
 	handoff?: { text: string; status: "queued" | "sent" | "failed"; at: string; sentAt?: string; note?: string };
 	createdAt: string;
@@ -201,8 +205,15 @@ export class Store {
 	branchOfPane(pane: { pane_id: string; terminal_id?: string }): Branch | undefined {
 		return this.branches().find((b) => (b.terminalId && pane.terminal_id ? b.terminalId === pane.terminal_id : b.paneId === pane.pane_id));
 	}
-	addBranch(b: Omit<Branch, "id" | "createdAt"> & { createdAt?: string }): Branch {
-		const branch: Branch = { createdAt: new Date().toISOString(), ...b, id: randomUUID().slice(0, 8) };
+	/** 新支線的 ID(開 worktree 時要先知道,路徑和分支名都用它) */
+	newBranchId(): string {
+		let id: string;
+		do id = randomUUID().slice(0, 8);
+		while (this.data.branches?.[id]);
+		return id;
+	}
+	addBranch(b: Omit<Branch, "id" | "createdAt"> & { id?: string; createdAt?: string }): Branch {
+		const branch: Branch = { createdAt: new Date().toISOString(), ...b, id: b.id ?? this.newBranchId() };
 		(this.data.branches ??= {})[branch.id] = branch;
 		this.save("branches");
 		return branch;

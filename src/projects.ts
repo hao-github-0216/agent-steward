@@ -37,7 +37,19 @@ export function ensureSpecial(store: Store, root: typeof MISC_ROOT | typeof OVER
  * 找出 cwd 所屬的專案。非 git、也沒登記過的資料夾會建立一筆 pending,
  * 在看板上問使用者要不要登記;決定前先歸到雜務。
  */
+/**
+ * 支線的 worktree 放在 ~/.agent-steward/worktrees/ 底下(不在專案資料夾裡),要對回開它的專案。
+ * 必須在其他判斷之前:不然 worktree 會被當成一個新的 git 專案自動登記。
+ */
+function worktreeOwner(store: Store, cwd: string): Project | undefined {
+	if (!cwd) return undefined;
+	const b = store.branches().find((x) => x.worktree && !x.worktree.removed && pathInside(cwd, x.worktree.path));
+	return b ? store.project(b.projectId) : undefined;
+}
+
 export function resolveProject(store: Store, cwd: string): Project {
+	const wt = worktreeOwner(store, cwd);
+	if (wt) return active(store, wt);
 	if (!cwd || MISC_ROOTS.includes(cwd.replace(/\/$/, ""))) return ensureSpecial(store, MISC_ROOT);
 
 	// 已登記的資料夾(含它的子資料夾),取最長的那個
@@ -65,6 +77,8 @@ export function resolveProject(store: Store, cwd: string): Project {
  * 子專案(拆出來的資料夾、巢狀 git repo)優先於上層,所以 course/hw2 的窗格不會算到 course。
  */
 export function ownerOf(store: Store, cwd: string): Project | undefined {
+	const wt = worktreeOwner(store, cwd);
+	if (wt) return wt.kind === "project" && wt.status === "active" ? wt : undefined;
 	return store
 		.projects()
 		.filter((p) => p.kind === "project" && p.status === "active" && pathInside(cwd, p.root))

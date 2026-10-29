@@ -167,7 +167,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				space: ws.label,
 				pane: pane?.pane_id,
 				agent: pane?.agent,
-				branch: b ? { id: b.id, label: b.label, mainLabel: b.mainLabel, mainAlive: mainAlive(b, panes), handoff: b.handoff?.status } : undefined,
+				branch: b
+					? { id: b.id, label: b.label, mainLabel: b.mainLabel, mainAlive: mainAlive(b, panes), handoff: b.handoff?.status, worktree: b.worktree && !b.worktree.removed ? { path: b.worktree.path, gitBranch: b.worktree.gitBranch } : undefined }
+					: undefined,
 			};
 		}
 		currentCache = { at: Date.now(), value };
@@ -1012,7 +1014,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					if (req.method === "POST" && path === "/api/branch") {
 						const b = await body(req);
 						const main = pickMainPane({ pane: b.pane || undefined, workspace: b.workspace || undefined });
-						const branch = openBranch(store, main.pane_id);
+						const branch = openBranch(store, main.pane_id, { here: !!b.here });
 						currentCache = null;
 						return send(res, 200, { branch });
 					}
@@ -1034,7 +1036,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 							currentCache = null;
 							return send(res, 200, { branch, status: branch.handoff?.status, note: branch.handoff?.note });
 						}
-						closeBranch(store, id);
+						const cb = await body(req);
+						closeBranch(store, id, { removeWorktree: !!cb.removeWorktree });
 						currentCache = null;
 						return send(res, 200, { ok: true });
 					}

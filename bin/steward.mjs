@@ -5,9 +5,10 @@
 //   steward projects                              列出所有專案
 //   steward report "做了什麼" [--agent X] 主動回報
 //   steward board                      開啟看板
-//   steward branch [窗格]              從 agent 窗格開一條支線(分叉主線的對話,在新 tab 另外問)
+//   steward branch [--here] [窗格]     從 agent 窗格開一條支線(分叉主線的對話,在新 tab 另外問);
+//                                      預設開在獨立的 git worktree,--here 開在跟主線同一個資料夾
 //   steward branch back [--send]       在支線裡:把結論整理成草稿,確認後帶回主線
-//   steward branch close               關掉這條支線
+//   steward branch close [--remove-worktree]  關掉這條支線(加參數一併移除 worktree,改動先存進支線分支)
 //   steward hook <agent>               給各 agent 的 SessionStart hook 用(失敗安靜略過)
 //   steward mcp                        以 MCP stdio server 執行
 import { execFileSync } from "node:child_process";
@@ -95,16 +96,19 @@ async function branch() {
 	const here = process.env.HERDR_PANE_ID;
 	try {
 		if (sub === "open") {
-			const r = JSON.parse(await post("/api/branch", { pane: args[0] ?? here, workspace: process.env.HERDR_WORKSPACE_ID }, 120_000));
+			const hereOnly = args.includes("--here");
+			const target = args.find((a) => !a.startsWith("--"));
+			const r = JSON.parse(await post("/api/branch", { pane: target ?? here, workspace: process.env.HERDR_WORKSPACE_ID, here: hereOnly }, 180_000));
 			const b = r.branch;
-			process.stdout.write(`已開支線「${b.label}」(${b.agent},窗格 ${b.paneId})\n${b.mode === "excerpt" ? "這個 agent 不能分叉(或找不到主線的 session),已經把主線最近的對話節錄送給它。\n" : "支線接著主線的對話,可以直接在那個 tab 問。\n"}問完要帶回主線:在支線裡執行 steward branch back\n`);
+			const where = b.worktree ? `開在獨立的 git worktree:${b.worktree.cwd}(分支 ${b.worktree.gitBranch})\n` : `開在跟主線同一個資料夾(${b.hereReason ?? "同資料夾"})\n`;
+			process.stdout.write(`已開支線「${b.label}」(${b.agent},窗格 ${b.paneId})\n${where}${b.mode === "excerpt" ? "這個 agent 不能分叉(或找不到主線的 session),已經把主線最近的對話節錄送給它。\n" : "支線接著主線的對話,可以直接在那個 tab 問。\n"}問完要帶回主線:在支線裡執行 steward branch back\n${b.startupNote ? `⚠ ${b.startupNote}\n` : ""}`);
 			return;
 		}
 		const pane = args.find((a) => !a.startsWith("--")) ?? here;
 		if (!pane) throw new Error("請在支線的窗格裡執行,或指定窗格 ID");
 		const b = JSON.parse(await api(`/api/branch/at?pane=${encodeURIComponent(pane)}`)).branch;
 		if (sub === "close") {
-			await post(`/api/branch/${b.id}/close`, {});
+			await post(`/api/branch/${b.id}/close`, { removeWorktree: args.includes("--remove-worktree") });
 			return;
 		}
 		const handoff = async (text) => {
@@ -127,7 +131,10 @@ async function branch() {
 		}
 		if (!ok) return void process.stdout.write("沒有送出。\n");
 		if (!(await handoff())) return;
-		if (await confirm("要關掉這條支線嗎?(y/N) ")) await post(`/api/branch/${b.id}/close`, {});
+		if (await confirm("要關掉這條支線嗎?(y/N) ")) {
+			const removeWorktree = b.worktree && !b.worktree.removed ? await confirm(`也移除 worktree 嗎?改動會先存進分支 ${b.worktree.gitBranch},分支保留。(y/N) `) : false;
+			await post(`/api/branch/${b.id}/close`, { removeWorktree: !!removeWorktree });
+		}
 	} catch (e) {
 		// 連不上管家照原本的提示;其他是管家回的錯誤,直接顯示
 		if (/fetch failed|ECONNREFUSED/.test(String(e.message))) throw e;
