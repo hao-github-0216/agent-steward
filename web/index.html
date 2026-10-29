@@ -460,7 +460,8 @@ textarea.nb-edit { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; m
 	.cv-act { flex-direction: row; flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 4px; }
 	.cv-act button { padding: 6px 12px; }
 	#codeView { flex-direction: column; }
-	.cv-side { flex: 1; border-right: 0; }
+	/* min-height: 0:側欄不能被內容撐高,檔案清單、Git 才捲得動 */
+	.cv-side { flex: 1; border-right: 0; min-height: 0; }
 	.cv-main { display: none; }
 	#cvSideSash, .cv-main .cv-sash-v, .cv-main .cv-sash-h, .cv-col:not(:has(.cv-group.active)), .cv-group:not(.active) { display: none; }
 	body.cv-editing .cv-side, body.cv-editing .cv-act { display: none; }
@@ -1385,6 +1386,43 @@ $("allCards").onchange = renderBoard;
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} };
 let fontSize = Number(pref("steward.font")) || (innerWidth < 800 ? 11 : 15); // 手機預設小一點,一次看得到更多欄
 function xterm() { try { return $("term").contentWindow.term; } catch { return undefined; } }
+// ---------- 終端機斷線自動重連 ----------
+// ttyd 斷線後只要中途出過錯(手機切到別的 app、鎖螢幕、換網路)或被正常關掉(herdr 更新),就停在「Press ⏎ to Reconnect」等人按 Enter。
+// 這裡替使用者按:終端機畫面看得到、有網路時才按;一直連不上就拉長間隔(1、3、10、30 秒),伺服器掛了也不會一直打。
+// 斷線時 ttyd 已經不收輸入,這個 Enter 只會觸發重連,不會送進 agent。按了還是連不上就整個重新載入終端機。
+const TERM_WAITING = "Press ⏎ to Reconnect";
+const termReconnect = { tries: 0, at: 0, okSince: 0 };
+function termWaiting() {
+	const t = xterm();
+	return !!t?.element && [...t.element.children].some((n) => n.textContent === TERM_WAITING);
+}
+function reconnectTerm(now = false) {
+	if (!document.body.classList.contains("term") || document.hidden || navigator.onLine === false) return;
+	if (!termWaiting()) {
+		// 連著超過 15 秒才把失敗次數歸零(剛連上又馬上斷的不算)
+		if (!termReconnect.okSince) termReconnect.okSince = Date.now();
+		else if (Date.now() - termReconnect.okSince > 15000) termReconnect.tries = 0;
+		return;
+	}
+	termReconnect.okSince = 0;
+	const wait = now ? 0 : [0, 1000, 3000, 10000, 30000][Math.min(termReconnect.tries, 4)];
+	if (Date.now() - termReconnect.at < wait) return;
+	termReconnect.at = Date.now();
+	termReconnect.tries++;
+	const t = xterm();
+	if (termReconnect.tries <= 2 && t?.textarea) {
+		const ev = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true });
+		// xterm 看 keyCode 判斷 Enter(建構子不能直接給)
+		Object.defineProperty(ev, "keyCode", { get: () => 13 });
+		Object.defineProperty(ev, "which", { get: () => 13 });
+		t.textarea.dispatchEvent(ev);
+	} else {
+		$("term").src = "/terminal/";
+	}
+}
+setInterval(reconnectTerm, 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(() => reconnectTerm(true), 400); });
+addEventListener("online", () => setTimeout(() => reconnectTerm(true), 400));
 // ---------- 手機鍵盤:畫面高度跟著「鍵盤上方看得到的高度」走 ----------
 // 鍵盤打開:整個 App 縮到鍵盤上方(終端機最下面的輸入列不會被擋住);收起:高度自動回來。
 // iOS 叫出鍵盤時會把頁面往上推,整頁不能捲所以自己回不來:每次都移回頂端。
