@@ -290,7 +290,7 @@
 		P.innerHTML = `<div class="sp-head"><span class="sp-src" title="${esc(src)}">⊙ ${esc(src)}</span><button class="small" data-sp="close" title="關閉(Esc)">×</button></div>
 			<details class="sp-peek"><summary>圈到的內容</summary>${res.text ? `<pre>${esc(res.text.slice(0, 4000))}</pre>` : ""}${S.images.map((i) => `<img src="${i.thumb}" alt="">`).join("")}</details>
 			<div class="sp-chips">${QUICK.map(([l, q]) => `<button class="small" data-q="${esc(q)}">${l}</button>`).join("")}<button class="small" data-sp="card">開工作卡</button></div>
-			<form class="sp-form"><input type="text" placeholder="問管家這一塊…" autocomplete="off"><button class="small primary">送出</button></form>
+			<form class="sp-form"><input type="text" placeholder="問這一塊,或寫要做的事(再按「開工作卡」)…" autocomplete="off"><button class="small primary">送出</button></form>
 			<div class="sp-ans" hidden></div>
 			<div class="sp-acts" hidden><button class="small" data-sp="copy">複製</button><button class="small" data-sp="ball">${inApp() ? "到問管家繼續" : "到浮動球繼續"}</button><button class="small" data-sp="card">開工作卡</button><button class="small primary" data-sp="agent" hidden>交給這個 agent</button></div>`;
 		document.body.appendChild(P);
@@ -355,14 +355,19 @@
 		if (act === "ball") { await go(); closePop(); toggleBall(true); return; }
 		if (act === "card") {
 			const s = S.snap, answer = S.answer;
+			// 輸入框裡寫的話(問題或要做的事)放最前面:管家照它擬工作卡
+			const box = S.pop?.querySelector(".sp-form input");
+			const task = box?.value.trim() || "";
+			if (box) box.value = "";
+			const msg = `依照這段圈選的內容開工作卡${task ? `\n要做的事:${task}` : ""}\n出處:${s.label}${s.from ? ` 第 ${s.from}–${s.to} 行` : ""}\n${s.text ? `內容:\n${s.text.slice(0, 3000)}` : "(圈到的是圖片)"}${answer ? `\n\n管家的看法:\n${answer.slice(0, 2000)}` : ""}`;
 			// iPhone app:工作卡草稿在 app 自己的問管家裡擬
 			if (inApp()) {
 				closePop();
-				toApp({ type: "draft", project: pid, message: `依照這段圈選的內容開工作卡\n出處:${s.label}${s.from ? ` 第 ${s.from}–${s.to} 行` : ""}\n${s.text ? `內容:\n${s.text.slice(0, 3000)}` : "(圈到的是圖片)"}${answer ? `\n\n管家的看法:\n${answer.slice(0, 2000)}` : ""}` });
+				toApp({ type: "draft", project: pid, message: msg });
 				return;
 			}
 			await go(); closePop(); toggleBall(true);
-			$("bpInput").value = `依照這段圈選的內容開工作卡\n出處:${s.label}${s.from ? ` 第 ${s.from}–${s.to} 行` : ""}\n${s.text ? `內容:\n${s.text.slice(0, 3000)}` : "(圈到的是圖片)"}${answer ? `\n\n管家的看法:\n${answer.slice(0, 2000)}` : ""}`;
+			$("bpInput").value = msg;
 			$("bpDraft").click();
 			return;
 		}

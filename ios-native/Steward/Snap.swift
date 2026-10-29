@@ -165,7 +165,7 @@ struct SnapSheet: View {
                         .resizable().scaledToFit()
                         .frame(maxHeight: 160)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.5)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent.opacity(0.6)))
                     DisclosureGroup(isExpanded: $showText) {
                         Text(hasText ? snap.text : "沒有讀到文字,會把圈到的圖片送給管家看。")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -178,13 +178,14 @@ struct SnapSheet: View {
                         ForEach(model.projects) { p in Text(p.name).tag(p.id) }
                     }
                     .disabled(busy || !turns.isEmpty)
+                    // 跟網頁的圈選小框一樣:還沒問之前是快速問題 + 開工作卡
                     if turns.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 6) {
                                 ForEach(Self.quick, id: \.0) { q in
-                                    Button(q.0) { Task { await ask(q.1, shown: q.0) } }.buttonStyle(.bordered)
+                                    Button(q.0) { Task { await ask(q.1, shown: q.0) } }.buttonStyle(.small)
                                 }
-                                Button("開工作卡") { Task { await draft() } }.buttonStyle(.bordered)
+                                Button("開工作卡") { Task { await draft() } }.buttonStyle(.small)
                             }
                         }
                         .disabled(busy)
@@ -192,27 +193,44 @@ struct SnapSheet: View {
                     ForEach(Array(turns.enumerated()), id: \.offset) { _, t in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(t.q).font(.caption).foregroundStyle(.secondary)
-                            if t.error { Text(t.a).foregroundStyle(.red) } else { MarkdownText(t.a) }
+                            if t.error { Text(t.a).foregroundStyle(Theme.bad) } else { MarkdownText(t.a) }
                         }
                         Divider()
                     }
                     if busy { HStack { ProgressView(); Text("管家想一下…").font(.footnote).foregroundStyle(.secondary) } }
+                    // 問過之後:複製、到問管家繼續、開工作卡(網頁的 sp-acts)
+                    if !turns.isEmpty && !busy {
+                        HStack(spacing: 6) {
+                            if let last = turns.last(where: { !$0.error })?.a {
+                                Button("複製") { UIPasteboard.general.string = last }.buttonStyle(.small)
+                            }
+                            Button("到問管家繼續") {
+                                model.switchProject(projectId)
+                                model.afterSnapOpenChat = true
+                                dismiss()
+                            }
+                            .buttonStyle(.small)
+                            Button("開工作卡") { Task { await draft() } }.buttonStyle(.small)
+                        }
+                    }
                 }
                 .padding()
             }
             .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 8) {
-                    TextField(turns.isEmpty ? "問這一塊…" : "接著問…", text: $question, axis: .vertical)
+                HStack(alignment: .bottom, spacing: 6) {
+                    // 寫問題按「送出」;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
+                    TextField(turns.isEmpty ? "問這一塊,或寫要做的事(再按「開工作卡」)…" : "接著問,或寫要做的事(再按「開工作卡」)…", text: $question, axis: .vertical)
                         .lineLimit(1...4)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-                    Button {
+                        .font(.system(size: 15))
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(Theme.bg, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
+                    Button("送出") {
                         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
                         question = ""
                         Task { await ask(q.isEmpty ? "解釋這段內容" : q, shown: q.isEmpty ? "解釋" : q) }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
                     }
+                    .buttonStyle(.smallPrimary)
                     .disabled(busy)
                 }
                 .padding()
@@ -222,15 +240,6 @@ struct SnapSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
-                if !turns.isEmpty {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("到問管家繼續") {
-                            model.switchProject(projectId)
-                            model.afterSnapOpenChat = true
-                            dismiss()
-                        }
-                    }
-                }
             }
         }
     }
@@ -255,13 +264,25 @@ struct SnapSheet: View {
         }
     }
 
-    /// 依圈到的內容開工作卡:到問管家裡請管家擬草稿(跟網頁圈選的「開工作卡」一樣)
+    /// 依圈到的內容開工作卡:到問管家裡請管家擬草稿(跟網頁圈選的「開工作卡」一樣)。
+    /// 輸入框裡寫的話(問題或要做的事)放最前面,管家照它擬;沒寫就讓管家從圈到的內容判斷
     private func draft() async {
+        let task = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        question = ""
         let body = hasText ? snap.text : "(圈到的是圖片,沒有文字)"
         let answer = turns.last(where: { !$0.error })?.a
         model.switchProject(projectId)
-        model.afterSnap = .draft("依照這段圈選的內容開工作卡\n出處:\(snap.label)\n內容:\n\(body.prefix(3000))\(answer.map { "\n\n管家的看法:\n\($0.prefix(2000))" } ?? "")")
+        model.afterSnap = .draft(Self.cardMessage(task: task, label: snap.label, body: body, answer: answer))
         model.afterSnapOpenChat = true
         dismiss()
+    }
+
+    /// 給管家擬工作卡的話(跟網頁 snap.js 的格式一樣)
+    static func cardMessage(task: String, label: String, body: String, answer: String?) -> String {
+        var m = "依照這段圈選的內容開工作卡"
+        if !task.isEmpty { m += "\n要做的事:\(task)" }
+        m += "\n出處:\(label)\n內容:\n\(body.prefix(3000))"
+        if let answer { m += "\n\n管家的看法:\n\(answer.prefix(2000))" }
+        return m
     }
 }
