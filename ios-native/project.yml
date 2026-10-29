@@ -1,0 +1,39 @@
+# 專案管家 iPhone 原生版(SwiftUI)。Xcode 專案由 xcodegen 產生:`xcodegen generate`
+name: Steward
+options:
+  bundleIdPrefix: io.github.haogithub0216
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: N8XLCRL5GL
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Steward:
+    type: application
+    platform: iOS
+    sources:
+      - Steward
+    settings:
+      base:
+        # 跟 Tauri 版(io.github.haogithub0216.agentsteward)分開,兩個可以同時裝在手機上比較
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Steward/Info.plist
+      properties:
+        CFBundleDisplayName: 專案管家 β
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: 連到你電腦上的專案管家
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.haogithub0216.agentsteward.native
+            CFBundleURLSchemes: [agentsteward]

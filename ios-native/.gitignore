@@ -1,0 +1,4 @@
+# Xcode 專案由 project.yml 產生(xcodegen generate)
+*.xcodeproj/
+build/
+DerivedData/

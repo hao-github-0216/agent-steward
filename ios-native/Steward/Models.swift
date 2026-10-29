@@ -1,0 +1,140 @@
+// 管家 API 回傳的資料。欄位一律可有可無:舊版管家或還沒整理過的專案會缺東西,不能讓整個畫面解不出來。
+import Foundation
+
+struct ProjectState: Codable, Hashable {
+    var goal: String?
+    var progress: String?
+    var nextSteps: [String]?
+    var decisions: [String]?
+    var blockers: [String]?
+    var recent: [RecentWork]?
+    var updatedAt: String?
+}
+
+struct RecentWork: Codable, Hashable {
+    var at: String?
+    var agent: String?
+    var summary: String?
+}
+
+struct Project: Codable, Hashable, Identifiable {
+    var id: String
+    var root: String?
+    var name: String
+    var kind: String?
+    var status: String?
+    var `private`: Bool?
+    var state: ProjectState?
+    var lastActivityAt: String?
+
+    /// 看板上要顯示的:真正的專案、而且在進行中(雜務、總覽、收起來的不算)
+    var isActiveProject: Bool { kind == "project" && status == "active" }
+
+    var lastActive: Date? { Fmt.date(lastActivityAt) ?? Fmt.date(state?.updatedAt) }
+}
+
+struct Card: Codable, Hashable, Identifiable {
+    var id: String
+    var projectId: String
+    var title: String
+    var agent: String?
+    var column: String
+    var note: String?
+    var updatedAt: String?
+
+    var columnLabel: String {
+        switch column {
+        case "proposed": "提案"
+        case "approved": "已核准"
+        case "running": "進行中"
+        case "blocked": "卡住"
+        case "done": "完成"
+        case "rejected": "退回"
+        default: column
+        }
+    }
+}
+
+struct SpaceInfo: Codable, Hashable {
+    var label: String?
+    var panes: Int?
+    var working: Int?
+}
+
+struct Board: Codable {
+    var projects: [Project]
+    var cards: [Card]?
+    var spaceInfo: [String: SpaceInfo]?
+}
+
+struct ChatQuote: Codable, Hashable {
+    var path: String?
+    var from: Int?
+    var to: Int?
+    var text: String?
+}
+
+struct ChatEntry: Codable, Hashable, Identifiable {
+    var id: String
+    var role: String // "me" | "bot"
+    var text: String
+    var quote: ChatQuote?
+    var via: String?
+    var files: [String]?
+    var at: String?
+    var error: Bool?
+    var alt: String?
+
+    var isMine: Bool { role == "me" }
+}
+
+struct ChatPage: Codable {
+    var items: [ChatEntry]
+    var more: Bool?
+}
+
+struct ChatReply: Codable {
+    var answer: String?
+    var error: String?
+    var me: ChatEntry?
+    var bot: ChatEntry?
+}
+
+struct Suggestions: Codable {
+    var items: [String]?
+}
+
+struct AuthStatus: Codable {
+    var authed: Bool
+    var how: String?
+    var user: String?
+    var hasPassword: Bool?
+    var reason: String?
+}
+
+enum Fmt {
+    // 管家的時間是 ISO 8601、帶毫秒(2026-10-29T07:41:07.420Z);沒毫秒的舊資料也要吃
+    private static let withMs: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let plain = ISO8601DateFormatter()
+
+    static func date(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        return withMs.date(from: s) ?? plain.date(from: s)
+    }
+
+    private static let relative: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "zh-Hant")
+        f.unitsStyle = .short
+        return f
+    }()
+
+    static func ago(_ d: Date?) -> String {
+        guard let d else { return "" }
+        return relative.localizedString(for: d, relativeTo: .now)
+    }
+}

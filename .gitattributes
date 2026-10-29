@@ -1,2 +1,3 @@
 # iPhone app 的原始碼不放進管家的安裝包(安裝程式用 git archive / GitHub 打包)
 ios-app export-ignore
+ios-native export-ignore
