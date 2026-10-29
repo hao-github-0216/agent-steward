@@ -29,7 +29,7 @@ struct StewardApp: App {
                 .onChange(of: scenePhase) { _, now in
                     // 回到前景:更新一次、接回即時事件、跟上別的裝置換過的專案;到背景就先斷開(iOS 本來就會停掉)
                     if now == .active, case .ready = model.phase { model.startEvents(); Task { await model.refresh(); await model.syncCurrentFromServer() } }
-                    if now == .background { model.stopEvents() }
+                    if now == .background { model.stopEvents(); model.code.flushDrafts() }
                 }
         }
     }

@@ -49,6 +49,12 @@ targets:
         NSCameraUsageDescription: 拍照附在問管家的問題裡
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: [remote-notification]
+        # 程式碼頁的分頁拖曳(只在這個 app 裡面用)
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: io.github.haogithub0216.agentsteward.native.tab
+            UTTypeDescription: 程式碼頁分頁
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: {}
         CFBundleURLTypes:
           - CFBundleURLName: io.github.haogithub0216.agentsteward.native
             CFBundleURLSchemes: [agentsteward]

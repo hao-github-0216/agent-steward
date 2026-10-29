@@ -75,7 +75,10 @@ final class AppModel {
 
     // MARK: 畫面狀態(跟網頁一樣記住:模式、看板收合、顯示所有專案的工作卡、浮動球角落)
 
-    private(set) var currentProjectId: String? = UserDefaults.standard.string(forKey: "currentProject")
+    private(set) var currentProjectId: String? = UserDefaults.standard.string(forKey: "currentProject") {
+        // 換專案:程式碼頁換成那個專案在這台裝置上的版面
+        didSet { if currentProjectId != oldValue { code.use(project: currentProjectId) } }
+    }
     var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .board {
         didSet {
             UserDefaults.standard.set(mode.rawValue, forKey: "mode")
@@ -106,18 +109,16 @@ final class AppModel {
     var ballCorner = BallCorner(rawValue: UserDefaults.standard.string(forKey: "ballCorner") ?? "") ?? .br {
         didSet { UserDefaults.standard.set(ballCorner.rawValue, forKey: "ballCorner") }
     }
-    /// 程式碼頁:目前看檔案還是版本控制、導覽路徑(資料夾、檔案、差異)
+    /// 程式碼頁:目前看檔案還是版本控制、導覽路徑(資料夾、提交紀錄;iPhone 還有編輯畫面)
     var codeSection = UserDefaults.standard.string(forKey: "codeSection") ?? "files" {
         didSet { UserDefaults.standard.set(codeSection, forKey: "codeSection") }
     }
     var codePath: [CodeRoute] = []
-    /// 程式碼頁正在看(或編輯中)的檔案:圈選時用來對回檔名和行號
-    @ObservationIgnored var openCodeFile: (path: String, content: String)?
+    /// 程式碼頁的編輯區版面(欄 → 格 → 分頁;每個專案在這台裝置各自記)
+    let code = CodeWorkspace()
     /// 連結帶的「打開檔案後選這幾行」「打開後尋找」(檔案畫面載好時拿走)
     @ObservationIgnored var codeOpenLines: (path: String, lines: ClosedRange<Int>)?
     @ObservationIgnored var codeOpenFind: (path: String, text: String)?
-    /// 程式碼頁編輯中還沒存的內容(問管家的「目前檔案」帶這份)
-    @ObservationIgnored var openCodeDraft: (path: String, text: String)?
     /// 程式碼頁:顯示 . 開頭的檔案(跟網頁檔案樹的「顯示 .」一樣)
     var showHiddenFiles = UserDefaults.standard.bool(forKey: "showHiddenFiles") {
         didSet { UserDefaults.standard.set(showHiddenFiles, forKey: "showHiddenFiles") }
@@ -157,18 +158,42 @@ final class AppModel {
         phase = server == nil ? .setup : .checking
         web = WebStore(model: self)
         snap.terminalText = { [weak self] rect in await self?.web.terminalText(in: rect) }
+        code.use(project: currentProjectId)
+    }
+
+    /// 在程式碼頁打開分頁(檔案或差異):開在目前這一格;iPhone 和窄視窗再推進編輯畫面
+    func openCode(_ tab: EditorTab, in paneId: UUID? = nil, zone: SplitZone = .center) {
+        if zone == .center { code.open(tab, in: paneId) } else { code.place(tab, at: paneId ?? code.activePaneID, zone: zone) }
+        mode = .code
+        if compact {
+            codePath.removeAll { $0 == .editor }
+            codePath.append(.editor)
+        }
+    }
+
+    /// 程式碼頁現在看得到編輯區(iPad 一直看得到;iPhone 和窄視窗要在編輯畫面)
+    var codeShowsFile: Bool { !compact || codePath.last == .editor }
+
+    /// 程式碼頁目前這一格打開的檔案(問管家的「目前檔案」、圈選用)
+    var activeCodeFile: (path: String, unsaved: String?)? {
+        guard let t = code.activeTab, t.kind == .file else { return nil }
+        return (t.path, code.dirty.contains(t.id) ? code.drafts[t.id]?.text : nil)
     }
 
     /// 開始圈選:終端機時把網頁畫面一起截進來;程式碼頁打開檔案時,圈到的字對回檔名和行號
     func beginSnap() {
-        snap.codeFile = mode == .code ? openCodeFile : nil
+        // 每一格目前顯示的檔案和它在視窗裡的位置:圈到哪一格就對回哪一格的行號
+        snap.codeFiles = mode == .code ? code.panes.compactMap { p in
+            guard let t = p.activeTab, t.kind == .file, let text = code.texts[t.id], let frame = code.paneFrames[p.id] else { return nil }
+            return (frame, t.path, text)
+        } : []
         snap.begin(web: mode == .terminal ? web.mainView : nil)
     }
 
     /// 圈選的種類:終端機 / 程式碼(有打開檔案)/ 其他畫面
     var snapKind: String {
         if mode == .terminal { return "terminal" }
-        if mode == .code, openCodeFile != nil, case .file = codePath.last { return "code" }
+        if mode == .code, codeShowsFile, code.activeTab?.kind == .file { return "code" }
         return "page"
     }
 
@@ -441,7 +466,7 @@ final class AppModel {
                 let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let v = { (k: String) in q.first { $0.name == k }?.value }
                 if let f = v("file") {
-                    codeSection = "files"; codePath = [.file(f)]
+                    codeSection = "files"; codePath = []; openCode(.file(f))
                     // &line=12 或 &line=12-20:打開後選好這幾行並捲過去;&find=字:打開後在檔案中尋找
                     let parts = (v("line") ?? "").split(separator: "-").compactMap { Int($0) }
                     if let a = parts.first, a > 0 { codeOpenLines = (f, a...max(a, parts.last ?? a)) }
@@ -456,7 +481,7 @@ final class AppModel {
                         }
                     }
                 }
-                else if let d = v("diff") { codeSection = "git"; codePath = [.diff(path: d, which: v("which") ?? "unstaged", commit: nil)] }
+                else if let d = v("diff") { codeSection = "git"; codePath = []; openCode(.diff(d, which: v("which") ?? "unstaged")) }
                 else if v("git") != nil { codeSection = "git"; codePath = [] }
             case "terminal": mode = .terminal
             default: mode = .board

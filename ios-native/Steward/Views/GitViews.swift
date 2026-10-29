@@ -35,6 +35,7 @@ struct GitView: View {
         .task { await load() }
         .refreshable { await load() }
         .onChange(of: model.uploads.refresh) { Task { await load() } }
+        .onChange(of: model.code.gitChanged) { Task { await load() } }
         .confirmationDialog(discarding.map { $0.count > 1 ? "捨棄 \($0.count) 個檔案的變更?" : "捨棄這些變更?" } ?? "", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } }), titleVisibility: .visible) {
             Button("捨棄", role: .destructive) { if let paths = discarding { Task { await run("discard", ["paths": paths]) } } }
         } message: {
@@ -129,7 +130,7 @@ struct GitView: View {
         if let list, !list.isEmpty {
             Section {
                 ForEach(list) { f in
-                    NavigationLink(value: CodeRoute.diff(path: f.path, which: which, commit: nil)) {
+                    DiffOpenRow(tab: .diff(f.path, which: which)) {
                         GitFileRow(file: f, untracked: which == "untracked")
                     }
                     .swipeActions(edge: .trailing) {
@@ -220,15 +221,59 @@ struct GitFileRow: View {
 
 // MARK: - 差異
 
+/// 清單裡一個有變更的檔案:點了打開差異分頁(iPhone 推進編輯畫面、iPad 開在目前那一格);iPad 上可以拖到編輯區
+struct DiffOpenRow<RowLabel: View>: View {
+    @Environment(AppModel.self) private var model
+    let tab: EditorTab
+    @ViewBuilder let label: () -> RowLabel
+
+    var body: some View {
+        let open = model.code.activeTab?.id == tab.id
+        Button { model.openCode(tab) } label: {
+            HStack(spacing: 0) {
+                label()
+                Spacer(minLength: 6)
+                if model.compact { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(!model.compact && open ? Theme.accent.opacity(0.14) : nil)
+        .if(!model.compact) { $0.draggable(tab) }
+        .contextMenu {
+            if !model.compact {
+                Button { model.openCode(tab, zone: .right) } label: { Label("在右邊打開", systemImage: "rectangle.righthalf.inset.filled") }
+                Button { model.openCode(tab, zone: .bottom) } label: { Label("在下面打開", systemImage: "rectangle.bottomhalf.inset.filled") }
+            }
+            Button { model.openCode(.file(tab.path)) } label: { Label("打開檔案", systemImage: "doc.text") }
+        }
+    }
+}
+
+// MARK: - 差異
+
 struct DiffView: View {
     @Environment(AppModel.self) private var model
     let project: Project
     let path: String
     let which: String
     let commit: String?
+    /// 這個分頁的 id(暫存/取消暫存後關掉分頁)
+    var tabId: String?
+    /// 在分割編輯區的格子裡:用格子自己的動作列,不用導覽列
+    var embedded = false
     @State private var rows: [DiffRow]?
     @State private var error: String?
     @State private var busy = false
+
+    private var kindLabel: String {
+        switch which {
+        case "staged": "已暫存的變更"
+        case "untracked": "新檔案"
+        case "commit": "提交 \((commit ?? "").prefix(7)) 的變更"
+        default: "還沒暫存的變更"
+        }
+    }
 
     var body: some View {
         Group {
@@ -238,32 +283,45 @@ struct DiffView: View {
                 if rows.isEmpty {
                     ContentUnavailableView("沒有差異", systemImage: "equal")
                 } else {
-                    ScrollView([.vertical, .horizontal]) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(rows) { r in DiffLine(row: r) }
-                        }
-                        .padding(.vertical, 8)
-                    }
-                    .background(Color(.systemBackground))
+                    DiffText(rows: rows)
                 }
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle((path as NSString).lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
+        .if(!embedded) { $0.navigationTitle((path as NSString).lastPathComponent).navigationBarTitleDisplayMode(.inline) }
         .toolbar {
-            if commit == nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if which == "staged" {
-                        Button("取消暫存") { Task { await act("unstage") } }.disabled(busy)
-                    } else {
-                        Button("暫存") { Task { await act("stage") } }.disabled(busy)
-                    }
+            if !embedded, commit == nil {
+                ToolbarItem(placement: .topBarTrailing) { stageButton }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if embedded {
+                HStack(spacing: 12) {
+                    Text("\(path) · \(kindLabel)").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    Spacer(minLength: 4)
+                    if commit == nil { stageButton.font(.subheadline) }
+                    Button { model.openCode(.file(path)) } label: { Image(systemName: "doc.text") }
+                        .font(.subheadline)
+                        .accessibilityLabel("打開檔案")
                 }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(.bar)
+                .overlay(alignment: .bottom) { Divider() }
             }
         }
         .task { await load() }
+    }
+
+    @ViewBuilder
+    private var stageButton: some View {
+        if which == "staged" {
+            Button("取消暫存") { Task { await act("unstage") } }.disabled(busy)
+        } else {
+            Button("暫存") { Task { await act("stage") } }.disabled(busy)
+        }
     }
 
     private func load() async {
@@ -282,10 +340,34 @@ struct DiffView: View {
         do {
             try await model.api?.git(project.id, action, ["paths": [path]])
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            if !model.codePath.isEmpty { model.codePath.removeLast() }
+            // 暫存/取消暫存之後這份差異就不在原本的清單了:關掉分頁(iPhone 只剩它就回清單)
+            model.code.gitChanged += 1
+            if let tabId { model.code.close(tabId) } else if !model.codePath.isEmpty { model.codePath.removeLast() }
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+/// 差異內容:照最長那一行算寬度(清單比螢幕寬,手指才左右拖得動)
+struct DiffText: View {
+    let rows: [DiffRow]
+
+    var body: some View {
+        let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+        let longest = rows.max { $0.text.utf16.count < $1.text.utf16.count }?.text ?? ""
+        let textW = (longest as NSString).size(withAttributes: [.font: font]).width
+        GeometryReader { geo in
+            let w = max(ceil(34 * 2 + 8 * 3 + 12 + textW * 1.05 + 16), geo.size.width)
+            ScrollView([.vertical, .horizontal]) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(rows) { r in DiffLine(row: r).frame(width: w, alignment: .leading) }
+                }
+                .frame(width: w, alignment: .leading)
+                .padding(.vertical, 8)
+            }
+        }
+        .background(Color(.systemBackground))
     }
 }
 
@@ -439,7 +521,7 @@ struct CommitView: View {
                 }
                 Section("改了 \(d.files.count) 個檔案") {
                     ForEach(d.files) { f in
-                        NavigationLink(value: CodeRoute.diff(path: f.path, which: "commit", commit: d.hash)) {
+                        DiffOpenRow(tab: .diff(f.path, which: "commit", commit: d.hash)) {
                             GitFileRow(file: f)
                         }
                     }

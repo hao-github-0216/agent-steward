@@ -110,6 +110,15 @@ extension API {
         return try await call(request(codePath(project, "file", q)), slow: true)
     }
 
+    /// 網頁版存在管家伺服器上的程式碼頁版面(帶入網頁版的版面用)
+    func codeSession(project: String) async throws -> [String: Any] {
+        let r = try request(codePath(project, "session"))
+        let (data, resp) = try await API.session.data(for: r)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else { throw APIError.server(code, "讀不到網頁版的版面") }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
     /// 檔案現在的指紋(看檔案在電腦上有沒有被改過、被刪掉)
     func stamps(project: String, paths: [String]) async throws -> [String: FileStamp] {
         try await call(request(codePath(project, "stamps"), method: "POST", body: ["paths": paths]))

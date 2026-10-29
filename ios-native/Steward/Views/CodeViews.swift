@@ -10,14 +10,91 @@ import SwiftUI
 
 enum CodeRoute: Hashable {
     case folder(String)
-    case file(String)
-    case diff(path: String, which: String, commit: String?)
+    /// iPhone 和窄視窗:單格的編輯畫面(上方分頁列)
+    case editor
     case history
     case commit(String)
 }
 
 struct CodeTab: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        Group {
+            // iPad(寬畫面):左側欄 + 右邊分割編輯區;iPhone 和窄視窗:清單 → 單格編輯畫面(上方分頁列)
+            if sizeClass == .regular { RegularCodeLayout() } else { CompactCodeLayout() }
+        }
+        // 窄 → 寬:編輯區一直看得到,不用再推進編輯畫面
+        .onChange(of: sizeClass) { _, c in if c == .regular { model.codePath.removeAll { $0 == .editor } } }
+        // 上傳進度(在浮動球下面一層,球不會被蓋住)
+        .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
+        // 浮動球和圈選鈕掛在整個程式碼分頁上:點進檔案、差異、提交紀錄也都在
+        .overlay { BallLayer().padding(.top, 50) }
+        .modifier(UploadConflictDialog())
+        // 管家側欄掛在最外層:iPad 是右邊獨立一欄(有自己的標題列),iPhone 是從底下升起的視窗
+        .modifier(DrawerInspector(mode: .code))
+    }
+}
+
+/// 程式碼頁共用的導覽目的地(資料夾、提交紀錄;iPhone 還有編輯畫面)
+struct CodeDestination: View {
+    @Environment(AppModel.self) private var model
+    let route: CodeRoute
+
+    var body: some View {
+        if let p = model.current {
+            switch route {
+            case .folder(let dir): FolderView(project: p, dir: dir).navigationTitle((dir as NSString).lastPathComponent)
+            case .editor: CompactEditor(project: p)
+            case .history: HistoryView(project: p)
+            case .commit(let hash): CommitView(project: p, hash: hash)
+            }
+        } else {
+            ContentUnavailableView("還沒有專案", systemImage: "tray")
+        }
+    }
+}
+
+/// 導覽列右邊:管家、設定、⋯(帶入網頁版的版面、關閉所有分頁)
+struct CodeToolbarItems: ToolbarContent {
+    @Environment(AppModel.self) private var model
+    @Binding var notice: String?
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button(model.drawerOpen ? "收起管家" : "管家") { model.drawerOpen.toggle() }
+            SettingsToolbarButton()
+            Menu {
+                Button { Task { await importWeb() } } label: { Label("帶入網頁版的版面", systemImage: "square.and.arrow.down.on.square") }
+                Button(role: .destructive) { for t in model.code.allTabs where !model.code.dirty.contains(t.id) { model.code.close(t.id) } } label: {
+                    Label("關閉所有分頁(沒存的留著)", systemImage: "xmark.square")
+                }
+                .disabled(model.code.allTabs.isEmpty)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel("程式碼頁選項")
+        }
+    }
+
+    /// 帶入電腦上網頁版的版面(只讀,不寫回)
+    private func importWeb() async {
+        guard let api = model.api, let pid = model.currentProjectId else { return }
+        do {
+            let n = model.code.importWeb(try await api.codeSession(project: pid))
+            notice = n > 0 ? "已帶入網頁版的版面(\(n) 個分頁)" : "網頁版還沒有存版面"
+            if n > 0, model.compact, model.codePath.last != .editor { model.codePath.append(.editor) }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+}
+
+/// iPhone 和窄視窗:原本的一層層點進去;打開檔案推進單格編輯畫面
+struct CompactCodeLayout: View {
+    @Environment(AppModel.self) private var model
+    @State private var notice: String?
 
     var body: some View {
         @Bindable var model = model
@@ -30,33 +107,59 @@ struct CodeTab: View {
                 }
             }
             .modifier(ProjectChrome())
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button(model.drawerOpen ? "收起管家" : "管家") { model.drawerOpen.toggle() }
-                    SettingsToolbarButton()
-                }
-            }
-            .navigationDestination(for: CodeRoute.self) { route in
-                if let p = model.current {
-                    switch route {
-                    case .folder(let dir): FolderView(project: p, dir: dir).navigationTitle((dir as NSString).lastPathComponent)
-                    case .file(let path): FileView(project: p, path: path)
-                    case .diff(let path, let which, let commit): DiffView(project: p, path: path, which: which, commit: commit)
-                    case .history: HistoryView(project: p)
-                    case .commit(let hash): CommitView(project: p, hash: hash)
+            .toolbar { CodeToolbarItems(notice: $notice) }
+            .navigationDestination(for: CodeRoute.self) { CodeDestination(route: $0) }
+        }
+        .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("好") {} }
+    }
+}
+
+/// iPad:側欄版面(像「檔案」app、Mac 上的 Xcode):左邊「檔案|版本控制」,右邊分割編輯區。
+/// 自己排兩欄(系統的分割視圖直式時會把側欄蓋在編輯區上面),直式橫式都並排;左上角按鈕收起/打開側欄
+struct RegularCodeLayout: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage("codeSidebar") private var showSidebar = true
+    @State private var notice: String?
+
+    var body: some View {
+        @Bindable var model = model
+        HStack(spacing: 0) {
+            if showSidebar {
+                NavigationStack(path: $model.codePath) {
+                    Group {
+                        if let p = model.current {
+                            CodeHome(project: p).id(p.id)
+                        } else {
+                            ContentUnavailableView("還沒有專案", systemImage: "tray")
+                        }
                     }
-                } else {
-                    ContentUnavailableView("還沒有專案", systemImage: "tray")
+                    .navigationTitle("程式碼")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationDestination(for: CodeRoute.self) { CodeDestination(route: $0) }
+                }
+                .frame(width: 320)
+                .transition(.move(edge: .leading))
+                Divider().ignoresSafeArea()
+            }
+            NavigationStack {
+                Group {
+                    if let p = model.current {
+                        EditorArea(project: p).id(p.id)
+                    } else {
+                        ContentUnavailableView("還沒有專案", systemImage: "tray")
+                    }
+                }
+                .modifier(ProjectChrome())
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { withAnimation(.snappy) { showSidebar.toggle() } } label: { Image(systemName: "sidebar.left") }
+                            .accessibilityLabel(showSidebar ? "收起側欄" : "打開側欄")
+                    }
+                    CodeToolbarItems(notice: $notice)
                 }
             }
         }
-        // 上傳進度(在浮動球下面一層,球不會被蓋住)
-        .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
-        // 浮動球和圈選鈕掛在整個程式碼分頁上:點進檔案、差異、提交紀錄也都在
-        .overlay { BallLayer().padding(.top, 50) }
-        .modifier(UploadConflictDialog())
-        // 管家側欄掛在最外層:iPad 是右邊獨立一欄(有自己的標題列),iPhone 是從底下升起的視窗
-        .modifier(DrawerInspector(mode: .code))
+        .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("好") {} }
     }
 }
 
@@ -131,7 +234,7 @@ struct FolderView: View {
                 Section("搜尋結果") {
                     if results.isEmpty { Text("找不到").foregroundStyle(.secondary) }
                     ForEach(results, id: \.self) { rel in
-                        NavigationLink(value: CodeRoute.file(rel)) {
+                        FileOpenRow(rel: rel) {
                             Label {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text((rel as NSString).lastPathComponent)
@@ -139,6 +242,7 @@ struct FolderView: View {
                                 }
                             } icon: { Image(systemName: fileIcon(rel)) }
                         }
+                        .contextMenu { openMenu(rel) }
                     }
                 }
             } else {
@@ -163,6 +267,7 @@ struct FolderView: View {
         .task(id: model.showHiddenFiles) { await load() }
         .refreshable { await load() }
         .onChange(of: model.uploads.refresh) { Task { await load() } }
+        .onChange(of: model.code.gitChanged) { Task { await load() } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -202,11 +307,10 @@ struct FolderView: View {
             })
             .ignoresSafeArea()
         }
-        .onDrop(of: [.item], isTargeted: $dropTargeted) { providers in
+        .onDrop(of: [.item], delegate: UploadDropDelegate(targeted: $dropTargeted) { providers in
             let base = dir
             Task { await startUpload(to: base) { await model.uploads.importDropped(providers) } }
-            return true
-        }
+        })
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.accent, lineWidth: 3).padding(6).allowsHitTesting(false)
@@ -273,7 +377,16 @@ struct FolderView: View {
         if e.isDir {
             NavigationLink(value: CodeRoute.folder(e.rel)) { label }
         } else {
-            NavigationLink(value: CodeRoute.file(e.rel)) { label }
+            FileOpenRow(rel: e.rel) { label }
+        }
+    }
+
+    /// iPad:檔案開在右邊/下面(長按選單)
+    @ViewBuilder
+    private func openMenu(_ rel: String) -> some View {
+        if !model.compact {
+            Button { model.openCode(.file(rel), zone: .right) } label: { Label("在右邊打開", systemImage: "rectangle.righthalf.inset.filled") }
+            Button { model.openCode(.file(rel), zone: .bottom) } label: { Label("在下面打開", systemImage: "rectangle.bottomhalf.inset.filled") }
         }
     }
 
@@ -281,6 +394,7 @@ struct FolderView: View {
     @ViewBuilder
     private func menu(_ e: FileEntry) -> some View {
         if !e.isDir {
+            openMenu(e.rel)
             Button { model.pendingChat = .file(e.rel); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
         } else {
             Menu { uploadButtons(to: e.rel) } label: { Label("上傳到這個資料夾", systemImage: "square.and.arrow.up") }
@@ -327,6 +441,50 @@ struct FolderView: View {
 }
 
 /// 系統樣式的搜尋框(系統的 .searchable 只能放在導覽列,這個可以放在「檔案|版本控制」下面)
+/// 清單裡的一個檔案:點了打開成分頁(iPhone 推進編輯畫面、iPad 開在目前那一格);
+/// iPad 上目前開著的檔案標亮,也可以拖到右邊編輯區的某一格
+struct FileOpenRow<RowLabel: View>: View {
+    @Environment(AppModel.self) private var model
+    let rel: String
+    @ViewBuilder let label: () -> RowLabel
+
+    var body: some View {
+        let open = model.code.activeTab?.id == EditorTab.file(rel).id
+        Button { model.openCode(.file(rel)) } label: {
+            HStack(spacing: 0) {
+                label()
+                if model.compact {
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("row-\(rel)")
+        .listRowBackground(!model.compact && open ? Theme.accent.opacity(0.14) : nil)
+        .if(!model.compact) { $0.draggable(EditorTab.file(rel)) }
+    }
+}
+
+/// 從「檔案」app 拖檔案進清單 = 上傳;app 裡拖的分頁不算
+struct UploadDropDelegate: DropDelegate {
+    @Binding var targeted: Bool
+    let onDrop: ([NSItemProvider]) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { !info.hasItemsConforming(to: [.stewardTab]) && info.hasItemsConforming(to: [.item]) }
+    func dropEntered(info: DropInfo) { targeted = validateDrop(info: info) }
+    func dropExited(info: DropInfo) { targeted = false }
+    func dropUpdated(info: DropInfo) -> DropProposal? { validateDrop(info: info) ? DropProposal(operation: .copy) : DropProposal(operation: .forbidden) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        targeted = false
+        guard validateDrop(info: info) else { return false }
+        onDrop(info.itemProviders(for: [.item]))
+        return true
+    }
+}
+
 struct SearchField: View {
     let prompt: String
     @Binding var text: String
@@ -415,7 +573,15 @@ struct FileView: View {
     @Environment(AppModel.self) private var model
     let project: Project
     let path: String
+    /// 這個分頁的 id:編輯中還沒存的內容記在版面資料裡(切分頁、重開 app 都還在)
+    var tabId: String?
+    /// 在分割編輯區的格子裡:用格子自己的動作列,不用導覽列
+    var embedded = false
+    /// 是目前這一格(⌘S、⌘F 只給它)
+    var isActive = true
     @State private var file: CodeFile?
+    /// 開始編輯時檔案的指紋(存檔時偵測別人改過)
+    @State private var baseHash: String?
     @State private var error: String?
     @State private var data: Data?
     @State private var showPreview = true
@@ -445,34 +611,58 @@ struct FileView: View {
     private var isNotebook: Bool { ext == "ipynb" }
 
     var body: some View {
-        Group {
-            if let error {
-                ContentUnavailableView("打不開", systemImage: "exclamationmark.triangle", description: Text(error))
-            } else if let file {
-                content(file)
-            } else {
-                ProgressView()
+        dialogs(lifecycle(chrome))
+    }
+
+    /// 內容 + 導覽列/動作列。
+    /// 格子裡:動作列和提示列直接排在內容上面(用浮在上面的列的話,iPad 格子裡的編輯框會拿不到焦點);
+    /// 不在格子裡:提示列浮在上面、按鈕在導覽列
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            if embedded { topBars }
+            Group {
+                if let error {
+                    ContentUnavailableView("打不開", systemImage: "exclamationmark.triangle", description: Text(error))
+                } else if let file {
+                    content(file)
+                } else {
+                    ProgressView()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationTitle((path as NSString).lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbar }
-        .safeAreaInset(edge: .top, spacing: 0) { topBars }
+        .if(!embedded) {
+            $0.navigationTitle((path as NSString).lastPathComponent)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { toolbar }
+                .safeAreaInset(edge: .top, spacing: 0) { topBars }
+        }
+    }
+
+    /// 載入、監看、記下編輯中的內容
+    private func lifecycle(_ v: some View) -> some View {
+        v
         .task { await load() }
         // 沒在編輯時每 4 秒看一次電腦上的檔案有沒有被改(跟網頁一樣)
         .task(id: editing) { await watch() }
-        .onChange(of: file?.content) { _, c in if file?.kind == "text", let c { model.openCodeFile = (path, c) } }
+        .onChange(of: file?.content) { _, c in if file?.kind == "text", !editing, let c, let tabId { model.code.texts[tabId] = c } }
         .onChange(of: draft) { _, d in
-            guard editing else { return }
-            model.openCodeFile = (path, d)
-            model.openCodeDraft = d != file?.content ? (path, d) : nil
+            guard editing, let tabId else { return }
+            model.code.texts[tabId] = d
+            model.code.setDraft(tabId, EditorDraft(text: d, baseHash: baseHash ?? file?.hash), dirty: d != file?.content)
         }
-        .onChange(of: editing) { _, e in if !e { model.openCodeDraft = nil } }
+        .onChange(of: editing) { _, e in
+            guard !e, let tabId else { return }
+            model.code.setDraft(tabId, nil, dirty: false)
+            if let c = file?.content { model.code.texts[tabId] = c }
+        }
         .onChange(of: findText) { findIndex = 0 }
-        .onDisappear {
-            if model.openCodeFile?.path == path { model.openCodeFile = nil }
-            if model.openCodeDraft?.path == path { model.openCodeDraft = nil }
-        }
+        .onDisappear { if let tabId { model.code.texts[tabId] = nil } }
+    }
+
+    /// Quick Look、歷史版本、存檔失敗、被改過的提醒
+    private func dialogs(_ v: some View) -> some View {
+        v
         .quickLookPreview($quickLookURL)
         .sheet(isPresented: $showHistory) {
             OfficeHistoryView(project: project, path: path) { Task { await reloadFromDisk(note: "已還原") } }
@@ -487,6 +677,7 @@ struct FileView: View {
             Button("放棄我的、載入新版") {
                 if let c = conflict { file?.content = c.diskContent; file?.hash = c.diskHash; stamp = c.diskHash; draft = c.diskContent }
                 editing = false
+                baseHash = nil
             }
             Button("取消", role: .cancel) {}
         } message: {
@@ -541,11 +732,91 @@ struct FileView: View {
         }
     }
 
+    private var canEdit: Bool { file?.kind == "text" && file?.readonly != true && (!isNotebook || !showPreview) }
+    private var hasPreview: Bool { file?.kind == "text" && (isMarkdown || isNotebook) }
+
+    private func startEdit() {
+        guard let f = file else { return }
+        draft = f.content ?? ""
+        baseHash = f.hash
+        lineSel = nil
+        editing = true
+        showPreview = false
+    }
+
+    private func cancelEdit() {
+        editing = false
+        draft = file?.content ?? ""
+        baseHash = nil
+    }
+
+    /// 「⋯」選單(導覽列和格子的動作列共用)
+    @ViewBuilder
+    private var moreMenu: some View {
+        Button { model.pendingChat = .file(path); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
+        if let f = file, f.kind == "text", !editing, !(isMarkdown && showPreview), !(isNotebook && showPreview) {
+            Button { finding = true; findFocused = true } label: { Label("在檔案中尋找", systemImage: "magnifyingglass") }
+            if f.truncated == nil {
+                Button { lineSel = 1...1 } label: { Label("選取幾行來問管家或開工作卡", systemImage: "text.line.first.and.arrowtriangle.forward") }
+            }
+        }
+        if file?.kind == "office" {
+            Button { showHistory = true } label: { Label("歷史版本", systemImage: "clock.arrow.circlepath") }
+        }
+        Button { UIPasteboard.general.string = path } label: { Label("複製路徑", systemImage: "doc.on.doc") }
+        Button { model.present(.web(.codeEditor)) } label: { Label("在網頁版編輯器打開", systemImage: "safari") }
+    }
+
+    /// 格子裡的動作列(像 Xcode 編輯器上方那一條):路徑、預覽/原文、編輯(或取消/儲存)、尋找、⋯
+    private var actionBar: some View {
+        HStack(spacing: 14) {
+            Text(path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+            Spacer(minLength: 4)
+            if editing {
+                Button("取消") { cancelEdit() }
+                Button { Task { await save(force: false) } } label: {
+                    if saving { ProgressView() } else { Text("儲存").bold() }
+                }
+                .keyboardShortcut(isActive ? KeyboardShortcut("s", modifiers: .command) : nil)
+                .disabled(saving || draft == file?.content)
+            } else {
+                if hasPreview {
+                    Picker("檢視", selection: $showPreview) {
+                        Text("預覽").tag(true)
+                        Text("原文").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 110)
+                }
+                if canEdit { Button("編輯") { startEdit() } }
+            }
+            if file?.kind == "text" {
+                Button { finding.toggle() } label: { Image(systemName: "magnifyingglass") }
+                    .keyboardShortcut(isActive ? KeyboardShortcut("f", modifiers: .command) : nil)
+                    .accessibilityLabel("在檔案中尋找")
+            }
+            Menu { moreMenu } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("更多")
+        }
+        .font(.subheadline)
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 12)
+        .frame(height: 38)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    /// 導覽列上的按鈕(格子裡不用,改用格子自己的動作列)
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if !embedded { navToolbar }
+    }
+
+    @ToolbarContentBuilder
+    private var navToolbar: some ToolbarContent {
         if editing {
             ToolbarItem(placement: .cancellationAction) {
-                Button("取消") { editing = false; draft = file?.content ?? "" }
+                Button("取消") { cancelEdit() }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button { Task { await save(force: false) } } label: {
@@ -569,23 +840,10 @@ struct FileView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 120)
                 }
-                if let f = file, f.kind == "text", f.readonly != true, !isNotebook || !showPreview {
-                    Button("編輯") { draft = f.content ?? ""; lineSel = nil; editing = true; showPreview = false }
+                if canEdit {
+                    Button("編輯") { startEdit() }
                 }
-                Menu {
-                    Button { model.pendingChat = .file(path); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
-                    if let f = file, f.kind == "text", !(isMarkdown && showPreview), !(isNotebook && showPreview) {
-                        Button { finding = true; findFocused = true } label: { Label("在檔案中尋找", systemImage: "magnifyingglass") }
-                        if f.truncated == nil {
-                            Button { lineSel = 1...1 } label: { Label("選取幾行來問管家或開工作卡", systemImage: "text.line.first.and.arrowtriangle.forward") }
-                        }
-                    }
-                    if file?.kind == "office" {
-                        Button { showHistory = true } label: { Label("歷史版本", systemImage: "clock.arrow.circlepath") }
-                    }
-                    Button { UIPasteboard.general.string = path } label: { Label("複製路徑", systemImage: "doc.on.doc") }
-                    Button { model.present(.web(.codeEditor)) } label: { Label("在網頁版編輯器打開", systemImage: "safari") }
-                } label: {
+                Menu { moreMenu } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("更多")
@@ -599,11 +857,26 @@ struct FileView: View {
             let f = try await api.readFile(project: project.id, path: path, more: more)
             file = f
             stamp = f.hash
+            if let tabId {
+                if let d = model.code.drafts[tabId], f.kind == "text" {
+                    draft = d.text
+                    baseHash = d.baseHash
+                    editing = true
+                    showPreview = false
+                    model.code.texts[tabId] = d.text
+                } else if let c = f.content {
+                    model.code.texts[tabId] = c
+                }
+            }
             if let o = model.codeOpenLines, o.path == path { model.codeOpenLines = nil; if f.kind == "text", f.truncated == nil { lineSel = o.lines; showPreview = false } }
             if let o = model.codeOpenFind, o.path == path { model.codeOpenFind = nil; if f.kind == "text" { findText = o.text; finding = true; showPreview = false } }
             if f.kind == "image" || f.kind == "pdf" { data = try await api.rawFile(project: project.id, path: path) }
             // Office 檔第一次打開時自動用 Quick Look 預覽(只一次;之後用按鈕)
-            if f.kind == "office", !quickLookedOnce { quickLookedOnce = true; await openQuickLook() }
+            if f.kind == "office", !quickLookedOnce, tabId.map({ !model.code.quickLooked.contains($0) }) ?? true {
+                quickLookedOnce = true
+                if let tabId { model.code.quickLooked.insert(tabId) }
+                await openQuickLook()
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -660,6 +933,7 @@ struct FileView: View {
     @ViewBuilder
     private var topBars: some View {
         VStack(spacing: 0) {
+            if embedded { actionBar }
             if gone {
                 Label("這個檔案已經被刪除或改名了", systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote).foregroundStyle(.orange)
@@ -750,11 +1024,13 @@ struct FileView: View {
         saving = true
         defer { saving = false }
         do {
-            let hash = try await api.saveFile(project: project.id, path: path, content: draft, baseHash: file?.hash, force: force)
+            let hash = try await api.saveFile(project: project.id, path: path, content: draft, baseHash: baseHash ?? file?.hash, force: force)
             file?.content = draft
             file?.hash = hash
             stamp = hash
+            baseHash = nil
             editing = false
+            model.code.gitChanged += 1
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch let c as SaveConflict {
             conflict = c
@@ -1085,5 +1361,13 @@ struct OfficeHistoryView: View {
             self.error = error.localizedDescription
             UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
+    }
+}
+
+extension View {
+    /// 條件成立才套用(例如只有不在格子裡時才設導覽列標題)
+    @ViewBuilder
+    func `if`<T: View>(_ condition: Bool, _ transform: (Self) -> T) -> some View {
+        if condition { transform(self) } else { self }
     }
 }

@@ -18,8 +18,8 @@ final class SnapState {
     private var webFrame: CGRect?
     /// 終端機:給網頁座標的範圍,回傳那一塊終端機的原文(AppModel 接上 WebStore)
     @ObservationIgnored var terminalText: ((CGRect) async -> String?)?
-    /// 程式碼頁打開的檔案(圈選開始時記下來)
-    @ObservationIgnored var codeFile: (path: String, content: String)?
+    /// 程式碼頁每一格顯示的檔案和它在視窗裡的位置(圈選開始時記下來;圈到哪一格就對回哪一格)
+    @ObservationIgnored var codeFiles: [(frame: CGRect, path: String, content: String)] = []
 
     /// web:終端機的網頁畫面。一般截圖截不到網頁內容,另外截下來合成進凍結的畫面
     func begin(web: WKWebView? = nil) {
@@ -61,7 +61,12 @@ final class SnapState {
             }
             var r = SnapResult(image: crop, text: text, context: around, label: label, kind: kind)
             // 圈到程式碼:讀到的字對回檔案的行號,改用檔案原文 + 前後 30 行(跟網頁版圈選一樣)
-            if kind == "code", let f = codeFile, let m = Self.matchLines(ocr: text, in: f.content) {
+            // 圈的範圍跨好幾格:以重疊最多的那一格為準
+            let f = codeFiles.max { a, b in
+                let ia = a.frame.intersection(rect), ib = b.frame.intersection(rect)
+                return (ia.isNull ? 0 : ia.width * ia.height) < (ib.isNull ? 0 : ib.width * ib.height)
+            }
+            if kind == "code", let f, !f.frame.intersection(rect).isNull, let m = Self.matchLines(ocr: text, in: f.content) {
                 let lines = f.content.components(separatedBy: "\n")
                 r.text = lines[(m.from - 1)...(m.to - 1)].joined(separator: "\n")
                 r.path = f.path

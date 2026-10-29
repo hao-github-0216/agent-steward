@@ -299,7 +299,7 @@ private struct ChatContent: View {
         loading = false
         model.chatUnread = false
         // 在程式碼頁打開:正在看的檔案當「目前檔案」
-        if model.mode == .code, case .file(let p) = model.codePath.last { currentFile = (p, model.openCodeDraft?.path == p ? model.openCodeDraft?.text : nil) }
+        if model.mode == .code, model.codeShowsFile, let f = model.activeCodeFile { currentFile = f }
         suggestions = (try? await api.suggestions(project: project.id)) ?? []
     }
 
