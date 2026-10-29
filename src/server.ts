@@ -151,15 +151,23 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		return undefined;
 	};
 
-	// herdr 目前停在哪個專案(側欄跟著切換用;多個瀏覽器同時輪詢,快取 1.5 秒)
-	let currentCache: { at: number; value: unknown } | null = null;
-	const terminalCurrent = () => {
-		if (currentCache && Date.now() - currentCache.at < 1500) return currentCache.value;
-		const ws = listWorkspaces().find((w) => w.focused);
+	// herdr 目前停在哪個專案(側欄跟著切換用;多個瀏覽器同時輪詢,快取 1.5 秒)。
+	// herdr 0.9 起每個畫面(電腦上的 herdr、每個網頁終端機)用自己的介面換 space 時各看各的,herdr 只回報「最近有操作的那個畫面」停在哪:
+	// 網頁終端機帶 space(從自己的視窗標題讀到的)就回那個 space 的狀態,電腦上換 space 不會把它拉走;沒帶就照舊。
+	// 注意:用指令跳轉(workspace/tab/agent focus)是全場的,其他畫面下次打字就會跟過去、字也打到那裡(herdr 0.9.5 實測)
+	const currentCache = new Map<string, { at: number; value: unknown }>();
+	const terminalCurrent = (space?: string) => {
+		const hit = currentCache.get(space ?? "");
+		if (hit && Date.now() - hit.at < 1500) return hit.value;
+		const all = listWorkspaces();
+		const focusedWs = all.find((w) => w.focused);
+		const ws = space ? (all.find((w) => w.label === space && w.focused) ?? all.find((w) => w.label === space) ?? focusedWs) : focusedWs;
 		let value: { project: string | null; via?: string; space?: string; pane?: string; agent?: string; branch?: unknown } = { project: null };
 		if (ws) {
 			const panes = listPanes() ?? [];
-			const pane = panes.find((x) => x.workspace_id === ws.workspace_id && x.focused);
+			const inWs = panes.filter((x) => x.workspace_id === ws.workspace_id);
+			// 焦點窗格只有「最近有操作的畫面」看的那個 space 才有;別的 space 用它目前分頁裡的 agent(沒有就第一個窗格)
+			const pane = inWs.find((x) => x.focused) ?? inWs.filter((x) => x.tab_id === ws.active_tab_id).sort((a, b) => Number(!!b.agent) - Number(!!a.agent))[0];
 			const cwd = pane?.foreground_cwd || pane?.cwd;
 			const byPane = cwd ? ownerOf(store, cwd) : undefined;
 			const bySpace = projectOfSpace(store, ws.workspace_id);
@@ -177,7 +185,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					: undefined,
 			};
 		}
-		currentCache = { at: Date.now(), value };
+		currentCache.set(space ?? "", { at: Date.now(), value });
 		return value;
 	};
 
@@ -975,7 +983,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (!pane) return send(res, 404, { error: "這張卡的窗格已經不在了" });
 				const r = pane.agent ? herdrCli(["agent", "focus", pane.pane_id]) : herdrCli(["tab", "focus", pane.tab_id]);
 				if (r?.error) return send(res, 500, { error: String(r.error.message ?? "herdr 拒絕切換") });
-				currentCache = null;
+				currentCache.clear();
 				return send(res, 200, { ok: true, pane: pane.pane_id });
 			}
 			m = path.match(/^\/api\/cards\/([^/]+)\/move$/);
@@ -1048,7 +1056,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				const { project, create } = await body(req);
 				const p = store.project(project);
 				if (!p || p.kind !== "project") return send(res, 404, { error: "unknown project" });
-				currentCache = null; // 跳完馬上查要拿到新位置
+				currentCache.clear(); // 跳完馬上查要拿到新位置
 				return send(res, 200, focusProject(store, p, { create: create !== false }));
 			}
 			// ---------- 支線 ----------
@@ -1059,7 +1067,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 						const b = await body(req);
 						const main = pickMainPane({ pane: b.pane || undefined, workspace: b.workspace || undefined });
 						const branch = openBranch(store, main.pane_id, { here: !!b.here });
-						currentCache = null;
+						currentCache.clear();
 						return send(res, 200, { branch });
 					}
 					// 這個窗格是不是支線
@@ -1077,12 +1085,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 							const b = await body(req);
 							const text = typeof b.text === "string" ? b.text : (store.branch(id)?.draft ?? "");
 							const branch = queueHandoff(store, id, text, (paneId) => watcher.expectWork.add(paneId));
-							currentCache = null;
+							currentCache.clear();
 							return send(res, 200, { branch, status: branch.handoff?.status, note: branch.handoff?.note });
 						}
 						const cb = await body(req);
 						closeBranch(store, id, { removeWorktree: !!cb.removeWorktree });
-						currentCache = null;
+						currentCache.clear();
 						return send(res, 200, { ok: true });
 					}
 					return send(res, 404, { error: "not found" });
@@ -1117,7 +1125,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 			if (req.method === "GET" && path === "/api/plugins") return send(res, 200, { latex: pluginEnabled("latex"), notebook: pluginEnabled("notebook"), office: pluginEnabled("office") });
 			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: listAgents().filter((a) => a.installed && a.dispatch).map((a) => ({ id: a.id, name: a.name })) });
-			if (req.method === "GET" && path === "/api/terminal/current") return send(res, 200, terminalCurrent());
+			if (req.method === "GET" && path === "/api/terminal/current") return send(res, 200, terminalCurrent(url.searchParams.get("space") || undefined));
 			// 三個頁面共用的「目前專案」
 			if (req.method === "GET" && path === "/api/current") return send(res, 200, getCurrent() ?? {});
 			if (req.method === "PUT" && path === "/api/current") {

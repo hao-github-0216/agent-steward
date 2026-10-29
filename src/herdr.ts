@@ -44,7 +44,9 @@ export function listPanes(): HerdrPane[] | undefined {
 export interface HerdrWorkspace {
 	workspace_id: string;
 	label?: string;
+	/** 「最近有操作的那個畫面」正在看這個 workspace(herdr 0.9 起每個畫面各看各的) */
 	focused?: boolean;
+	active_tab_id?: string;
 }
 
 export function listWorkspaces(): HerdrWorkspace[] {

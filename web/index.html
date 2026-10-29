@@ -2004,6 +2004,16 @@ function hookClipboard() {
 	const t = xterm();
 	if (!t || t._stewardOsc52) return;
 	t._stewardOsc52 = true;
+	// herdr 的視窗標題是「主機: space」(每個畫面自己的):記下這個網頁終端機停在哪個 space
+	termSpace = null;
+	const onTitle = (data) => {
+		const m = /^[^:]*: (.+)$/.exec(data || "");
+		const s = m ? m[1].trim() : null;
+		if (s && s !== termSpace) { termSpace = s; setTimeout(pollTerminalCurrent, 0); }
+		return false; // 讓 xterm 照常處理標題
+	};
+	t.parser.registerOscHandler(0, onTitle);
+	t.parser.registerOscHandler(2, onTitle);
 	// herdr 是全螢幕程式,xterm 沒有可捲的內容,右側捲動條拉了也沒用:藏起來(滾輪照常送給 herdr)
 	try {
 		if (!win.document.getElementById("steward-no-scrollbar")) {
@@ -2183,10 +2193,14 @@ function toggleDrawer(open) {
 	setTimeout(() => { try { $("term").contentWindow.dispatchEvent(new Event("resize")); } catch {} }, 220);
 	if (!on) focusTerm();
 }
-let termCurrent = { project: null }; // herdr 目前停在哪(/api/terminal/current)
+let termCurrent = { project: null }; // 這個網頁終端機的 herdr 畫面停在哪(/api/terminal/current)
 let herdrSeen = null; // 上次看到的 herdr 位置:只有「變了」才算使用者在 herdr 選了專案
 let termEntering = false, termNeedCreate = null, termAgain = false;
-const fetchTermCurrent = () => fetch("/api/terminal/current").then((x) => (x.ok ? x.json() : null)).catch(() => null);
+// herdr 0.9 起每個畫面(電腦上的 herdr、每個網頁終端機)用自己的介面換 space 時各看各的,但 herdr 只回報「最近有操作的那個畫面」停在哪。
+// termSpace:這個網頁終端機自己停在哪個 space(從 herdr 的視窗標題「主機: space」讀);問位置時帶上,
+// 電腦上換 space 就不會把這裡的專案拉走。讀不到(例如改過視窗標題格式)就照舊
+let termSpace = null;
+const fetchTermCurrent = () => fetch(`/api/terminal/current${termSpace ? `?space=${encodeURIComponent(termSpace)}` : ""}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
 /** 切進終端機頁面(或切回這個分頁):herdr 不在目前專案就跳一次;沒有 space 也沒有窗格就不新建,只提示 */
 async function enterTerminal({ create = false } = {}) {
 	if (!sel) return;
