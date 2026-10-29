@@ -2208,8 +2208,11 @@ async function enterTerminal({ create = false } = {}) {
 	termEntering = true;
 	try {
 		const now = await fetchTermCurrent();
+		// 跳轉是全場的(其他畫面下次打字會跟過去):「最近有操作的畫面」(常是電腦上的 herdr)已經在這個專案就不再跳,
+		// 不然這個終端機還沒跟過去時,每次切回來都會把電腦上的畫面拉來拉去
+		const active = termSpace ? await fetch("/api/terminal/current").then((x) => (x.ok ? x.json() : null)).catch(() => null) : now;
 		termNeedCreate = null;
-		if (now?.project !== sel || create) {
+		if ((now?.project !== sel && active?.project !== sel) || create) {
 			const r = await post("/api/terminal/focus", { project: sel, create }).catch(() => ({ ok: false }));
 			if (r.needCreate) { termNeedCreate = sel; if (inApp()) toApp({ type: "needSpace", project: sel }); else toast("這個專案還沒有 herdr space:打開右邊的管家側欄可以「建立並跳過去」"); }
 			else if (r.ok) toast(`herdr 已跳到 ${r.where}`);
