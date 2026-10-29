@@ -203,7 +203,7 @@ function procStartMs(pid: number): number | undefined {
  * 先看 ~/.claude/sessions/<pid>.json;窗格裡的 claude 只是前端、對話跑在背景 process 時,
  * 用「同一個目錄、幾乎同時啟動」對上背景 session,只對到一個才算數(猜錯比沒有更糟)。
  */
-function claudeSessionOfPane(pane: HerdrPane): string | undefined {
+export function claudeSessionOfPane(pane: HerdrPane): string | undefined {
 	const info = herdrCli(["pane", "process-info", "--pane", pane.pane_id])?.result?.process_info;
 	const procs: { pid: number; argv0?: string; name?: string; cwd?: string }[] = info?.foreground_processes ?? [];
 	const proc = procs.find((x) => /claude/i.test(`${x.argv0 ?? ""}`)) ?? procs[0];
