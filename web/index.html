@@ -879,7 +879,7 @@ function selectProject(id, source, { push = true } = {}) {
 	const changed = id !== sel;
 	sel = id; selSource = source || selSource;
 	try { localStorage.setItem("steward.sel", sel); } catch {}
-	if (changed && source !== "app" && inApp()) toApp({ type: "project", id });
+	if (changed && push && source !== "app" && inApp()) toApp({ type: "project", id }); // 網頁裡真的換了(herdr 切了 space、圈選)才告訴 app
 	if (push) fetch("/api/current", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: id, source }) }).catch(() => {});
 	if (changed) editing = null;
 	render();
@@ -889,6 +889,7 @@ function selectProject(id, source, { push = true } = {}) {
 }
 /** 其他裝置可能換過:打開網頁、切回分頁時從伺服器拿最後選的(不即時拉走正在看的畫面) */
 async function syncCurrent() {
+	if (inApp()) return; // iPhone app 自己跟管家同步目前專案,網頁不另外拉(兩邊會互相蓋)
 	const r = await fetch("/api/current").then((x) => (x.ok ? x.json() : null)).catch(() => null);
 	if (r?.project && state.projects.some((p) => p.id === r.project)) {
 		if (r.project !== sel) selectProject(r.project, r.source, { push: false });
