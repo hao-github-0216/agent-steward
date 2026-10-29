@@ -14,16 +14,20 @@ const RECHECK_MS = 90_000;
 
 export interface SessionSyncDeps {
 	resolve: (pane: HerdrPane) => string | undefined;
-	report: (pane: HerdrPane, sessionId: string) => boolean;
+	report: (pane: HerdrPane, sessionId: string, replacing: boolean) => boolean;
 	now: () => number;
 }
 
-/** 照官方 Claude hook 的格式回報(source herdr:claude、奈秒 seq),herdr 才會在重開時用它接回對話 */
-function reportToHerdr(pane: HerdrPane, sessionId: string): boolean {
+/**
+ * 照官方 Claude hook 的格式回報(source herdr:claude、奈秒 seq),herdr 才會在重開時用它接回對話。
+ * 窗格已經有別的 ID 時要帶 --session-start-source,herdr 才肯換(不帶會默默忽略,實測過)。
+ */
+function reportToHerdr(pane: HerdrPane, sessionId: string, replacing: boolean): boolean {
 	const seq = (BigInt(Date.now()) * 1_000_000n).toString();
 	const args = ["pane", "report-agent-session", "--source", "herdr:claude", "--agent", "claude", "--seq", seq, "--agent-session-id", sessionId];
 	const path = transcriptPath({ agent: "claude", kind: "id", value: sessionId });
 	if (path) args.push("--agent-session-path", path);
+	if (replacing) args.push("--session-start-source", "resume");
 	args.push(pane.pane_id);
 	return !herdrCli(args)?.error;
 }
@@ -55,7 +59,7 @@ export class ClaudeSessionSync {
 			this.checked.set(pane.pane_id, now);
 			const id = this.deps.resolve(pane);
 			if (!id || id === known) continue;
-			if (this.deps.report(pane, id)) reported.push(pane.pane_id);
+			if (this.deps.report(pane, id, !!known)) reported.push(pane.pane_id);
 		}
 		for (const id of this.checked.keys()) if (!seen.has(id)) this.checked.delete(id);
 		return reported;

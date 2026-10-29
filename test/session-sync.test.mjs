@@ -8,7 +8,7 @@ function setup(found) {
 	const calls = [];
 	const sync = new ClaudeSessionSync({
 		resolve: (p) => found[p.pane_id],
-		report: (p, id) => (calls.push([p.pane_id, id]), true),
+		report: (p, id, replacing) => (calls.push(replacing ? [p.pane_id, id, "replace"] : [p.pane_id, id]), true),
 		now: () => t,
 	});
 	return { sync, calls, tick: (ms) => (t += ms) };
@@ -46,7 +46,7 @@ test("已經有 ID:90 秒才對一次,換了對話才更新", () => {
 	assert.deepEqual(calls, []); // 還沒到重新檢查的時間
 	tick(61_000);
 	sync.sync([pane]);
-	assert.deepEqual(calls, [["w1:p1", "bbb"]]);
+	assert.deepEqual(calls, [["w1:p1", "bbb", "replace"]]); // 換 ID 要讓 herdr 知道是換對話
 });
 
 test("還沒有 ID 的窗格每輪都找", () => {
