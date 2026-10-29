@@ -1864,6 +1864,16 @@ function hookClipboard() {
 	const t = xterm();
 	if (!t || t._stewardOsc52) return;
 	t._stewardOsc52 = true;
+	// herdr 是全螢幕程式,xterm 沒有可捲的內容,右側捲動條拉了也沒用:藏起來(滾輪照常送給 herdr)
+	try {
+		if (!win.document.getElementById("steward-no-scrollbar")) {
+			const st = win.document.createElement("style");
+			st.id = "steward-no-scrollbar";
+			st.textContent = ".xterm .xterm-viewport{scrollbar-width:none!important}.xterm .xterm-viewport::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}";
+			win.document.head.appendChild(st);
+			win.dispatchEvent(new win.Event("resize")); // 讓 xterm 把原本留給捲動條的寬度拿回來
+		}
+	} catch {}
 	clog("hooked", { secure: win.isSecureContext, proto: location.protocol, host: location.host, ua: navigator.userAgent, clip: !!win.navigator.clipboard?.writeText });
 	// 記錄滑鼠放開(對照「有拖曳但 herdr 沒送複製」的情況)
 	try { win.document.addEventListener("mouseup", (e) => clog("mouseup", { button: e.button, shift: e.shiftKey, alt: e.altKey }), true); } catch {}
