@@ -7,7 +7,7 @@ it is easy to lose track of where each project stands, who is doing what, and wh
 
 - **Records progress automatically**: when an agent finishes a chunk of work, the steward reads its terminal output and keeps each project's goal, progress, next steps and blockers up to date.
 - **Briefs agents on start**: an agent starting work in a project gets the latest state, so you don't have to repeat yourself.
-- **Dispatches from a kanban board**: the steward proposes work cards; drag one to "Approved" and it opens a terminal and hands the task to the chosen agent.
+- **Dispatches from a kanban board**: the steward proposes work cards; drag one to "Approved" and it opens a terminal and hands the task to the chosen agent. Once a card is done (or stuck), you can **ask follow-up questions** right in the card; they go to the agent that did the work, and the questions and full replies stay as a thread.
 - **Answers questions**: a floating chat button lets you ask "where is this project at?" any time.
 - **Works in the browser**: board, code (editor, Git, diff) and terminal in one web page, usable from phones and tablets.
 

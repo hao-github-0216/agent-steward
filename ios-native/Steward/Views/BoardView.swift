@@ -228,6 +228,14 @@ struct KCardFace: View {
                     Label("\(a)", systemImage: "arrow.triangle.2.circlepath").labelStyle(.titleAndIcon)
                         .accessibilityLabel("第 \(a) 次派工")
                 }
+                // 追問過幾次(在等回覆時用藍色)
+                let asked = card.thread?.filter(\.isUser).count ?? 0
+                if asked > 0 {
+                    let waiting = card.thread?.contains { $0.status == "sent" || $0.status == "queued" } == true
+                    Label("\(asked)", systemImage: "bubble.left.and.bubble.right.fill").labelStyle(.titleAndIcon)
+                        .foregroundStyle(waiting ? Theme.accent : .secondary)
+                        .accessibilityLabel(waiting ? "追問 \(asked) 次,等回覆中" : "追問 \(asked) 次")
+                }
                 if let n = card.note, !n.isEmpty {
                     Image(systemName: "text.bubble.fill").foregroundStyle(.orange).accessibilityLabel("有備註")
                 }

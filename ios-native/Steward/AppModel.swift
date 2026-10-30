@@ -385,6 +385,20 @@ final class AppModel {
         await refresh()
     }
 
+    /// 追問這張卡
+    func ask(_ cardId: String, _ text: String) async throws {
+        guard let api else { return }
+        let updated = try await api.askCard(cardId, text: text)
+        if let i = cards.firstIndex(where: { $0.id == cardId }) { cards[i] = updated }
+    }
+
+    /// 取消排隊中的問題(cancel)/ 送不出去的再送(retry)
+    func followUp(_ cardId: String, turn: String, _ action: String) async throws {
+        guard let api else { return }
+        let updated = try await api.followUp(cardId, turn: turn, action)
+        if let i = cards.firstIndex(where: { $0.id == cardId }) { cards[i] = updated }
+    }
+
     /// 在終端機看這張卡的窗格
     func showInTerminal(_ card: Card) async throws {
         try await api?.focusCard(card.id)

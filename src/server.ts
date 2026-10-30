@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { brief } from "./brief.ts";
 import { DATA_DIR, HOME, HOSTS, isPrivatePath, MISC_ROOTS, PORT, publicUrl, TERMINAL_PORT } from "./config.ts";
 import { dispatchCard, focusProject } from "./dispatch.ts";
+import { askCard, cancelQuestion, FollowUpError, retryQuestion } from "./followup.ts";
 import { BranchError, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
 import { herdrCli, listPanes, listWorkspaces } from "./herdr.ts";
 import { boundSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
@@ -985,6 +986,30 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (r?.error) return send(res, 500, { error: String(r.error.message ?? "herdr 拒絕切換") });
 				currentCache.clear();
 				return send(res, 200, { ok: true, pane: pane.pane_id });
+			}
+			// 工作卡追問:完成/卡住的卡接著問做這張卡的 agent;進行中的先排隊,這一輪做完再送
+			m = path.match(/^\/api\/cards\/([^/]+)\/ask(?:\/([^/]+)\/(cancel|retry))?$/);
+			if (req.method === "POST" && m) {
+				try {
+					const card = m[2]
+						? m[3] === "cancel"
+							? cancelQuestion(store, m[1], m[2])
+							: retryQuestion(store, m[1], m[2])
+						: askCard(store, m[1], String((await body(req)).text ?? ""));
+					send(res, 200, card);
+					// 能送就馬上送(要開新 agent 的話會等一下,先回應再送)
+					if (m[3] !== "cancel") setImmediate(() => {
+						try {
+							watcher.sendFollowUps();
+						} catch (e) {
+							console.error("[followup] 送出失敗", e);
+						}
+					});
+					return;
+				} catch (e) {
+					if (e instanceof FollowUpError) return send(res, e.status, { error: e.message });
+					throw e;
+				}
 			}
 			m = path.match(/^\/api\/cards\/([^/]+)\/move$/);
 			if (req.method === "POST" && m) {

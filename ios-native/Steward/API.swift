@@ -268,6 +268,16 @@ struct API {
         try await call(request("api/cards/\(id)/move", method: "POST", body: ["column": column]))
     }
 
+    /// 追問這張卡(完成/卡住的馬上送給做這張卡的 agent;進行中的先排隊)
+    func askCard(_ id: String, text: String) async throws -> Card {
+        try await call(request("api/cards/\(id)/ask", method: "POST", body: ["text": text]))
+    }
+
+    /// 取消還沒送出的問題 / 送不出去的再送一次
+    func followUp(_ id: String, turn: String, _ action: String) async throws -> Card {
+        try await call(request("api/cards/\(id)/ask/\(turn)/\(action)", method: "POST", body: [:]))
+    }
+
     /// 在終端機切到這張卡的窗格
     func focusCard(_ id: String) async throws {
         struct OK: Decodable { var ok: Bool? }

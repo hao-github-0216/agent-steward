@@ -41,6 +41,21 @@ export interface Project {
 
 export type CardColumn = "proposed" | "approved" | "running" | "blocked" | "done" | "rejected";
 
+/** 工作卡的追問對話:使用者的問題、做這張卡的 agent 的回覆 */
+export interface CardTurn {
+	id: string;
+	role: "user" | "agent";
+	text: string;
+	at: string;
+	/** 問題的狀態:queued 排隊(agent 還在做)/ sent 已送出、等回覆 / answered 已回覆 / failed 送不出去 */
+	status?: "queued" | "sent" | "answered" | "failed";
+	sentAt?: string;
+	/** 送不出去的原因 */
+	note?: string;
+	/** 第一次追問時記下的「原本的結果」(agent 那一輪最後的回答,讀不到就用當時的最新狀態) */
+	original?: boolean;
+}
+
 export interface Card {
 	id: string;
 	projectId: string;
@@ -57,6 +72,8 @@ export interface Card {
 	revisedAt?: string;
 	/** 派工前正在請管家依最新進度改寫(管家重啟後會接著做) */
 	refreshing?: boolean;
+	/** 追問對話(完成/卡住後接著問做這張卡的 agent) */
+	thread?: CardTurn[];
 	createdAt: string;
 	updatedAt: string;
 }

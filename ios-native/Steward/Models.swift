@@ -34,6 +34,21 @@ struct Project: Codable, Hashable, Identifiable {
     var lastActive: Date? { Fmt.date(lastActivityAt) ?? Fmt.date(state?.updatedAt) }
 }
 
+/// 工作卡追問對話的一則:使用者的問題、做這張卡的 agent 的回覆
+struct CardTurn: Codable, Hashable, Identifiable {
+    var id: String
+    var role: String
+    var text: String
+    var at: String?
+    /// 問題的狀態:queued 排隊 / sent 等回覆 / answered 已回覆 / failed 送不出去
+    var status: String?
+    var note: String?
+    /// 第一次追問時記下的「原本的結果」
+    var original: Bool?
+
+    var isUser: Bool { role == "user" }
+}
+
 struct Card: Codable, Hashable, Identifiable {
     var id: String
     var projectId: String
@@ -46,10 +61,14 @@ struct Card: Codable, Hashable, Identifiable {
     var paneId: String?
     var terminalId: String?
     var attempts: Int?
+    /// 追問對話(完成/卡住後接著問做這張卡的 agent)
+    var thread: [CardTurn]?
     var createdAt: String?
     var updatedAt: String?
 
     var lastChanged: Date? { Fmt.date(updatedAt) ?? Fmt.date(createdAt) }
+    /// 可以追問:完成、卡住;進行中的先排隊(這一輪做完再送)
+    var askable: Bool { ["done", "blocked", "running"].contains(column) }
 
     /// 這張卡現在可以做的動作(跟管家的 moveRule 一致)
     var actions: [CardAction] {

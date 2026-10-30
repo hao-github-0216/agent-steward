@@ -570,4 +570,40 @@ final class GestureTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["tab-file:README.en.md"].waitForExistence(timeout: 8), "點連結沒有打開 README.en.md")
         shot(app, "md-3-link-opened")
     }
+
+    /// 工作卡追問(隔離的管家,先塞好兩張卡):完成的卡顯示對話串(原本的結果、問題、agent 的回覆)和輸入框;
+    /// 進行中的卡:送出問題 → 排隊中 → 取消
+    ///   TEST_RUNNER_STEWARD_TEST_SERVER=http://127.0.0.1:8797 TEST_RUNNER_STEWARD_FU_DONE=<完成的卡> TEST_RUNNER_STEWARD_FU_RUNNING=<進行中的卡>
+    func testCardFollowUp() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let done = env["STEWARD_FU_DONE"], let running = env["STEWARD_FU_RUNNING"] else { throw XCTSkip("要接隔離的管家才跑") }
+        var app = XCUIApplication()
+        app.launchArguments = ["-noPush", "YES", "-serverURL", server, "-openURL", "agentsteward://card/\(done)"]
+        app.launch()
+        sleep(8)
+        let any = { (id: String) in app.descendants(matching: .any)[id].firstMatch }
+        XCTAssertTrue(app.staticTexts["原本的結果"].waitForExistence(timeout: 8), "沒有對話串")
+        XCTAssertTrue(app.staticTexts["為什麼投影不會改變 loss?"].exists, "沒有問題")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '內積不變'")).firstMatch.exists, "沒有 agent 的回覆")
+        XCTAssertTrue(any("card-ask-field").exists, "完成的卡沒有追問輸入框")
+        shot(app, "fu-1-done-thread")
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["-noPush", "YES", "-serverURL", server, "-openURL", "agentsteward://card/\(running)"]
+        app.launch()
+        sleep(8)
+        let field = app.descendants(matching: .any)["card-ask-field"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 8), "進行中的卡沒有追問輸入框")
+        field.tap()
+        field.typeText("做完順便說明哪些測試失敗")
+        app.descendants(matching: .any)["card-ask-send"].firstMatch.tap()
+        let queued = app.staticTexts["排隊中,這一輪做完就送出"]
+        XCTAssertTrue(queued.waitForExistence(timeout: 8), "送出後沒有排隊中")
+        XCTAssertTrue(app.staticTexts["做完順便說明哪些測試失敗"].exists, "對話裡沒有剛問的問題")
+        shot(app, "fu-2-queued")
+        app.buttons["取消"].firstMatch.tap()
+        sleep(3)
+        XCTAssertFalse(queued.exists, "取消後還在排隊")
+        shot(app, "fu-3-cancelled")
+    }
 }

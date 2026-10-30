@@ -1,5 +1,6 @@
 // 管家常駐程式進入點(launchd 啟動)。
 import { STORE_PATH } from "./config.ts";
+import { justAnswered } from "./followup.ts";
 import { notify } from "./notify.ts";
 import { ensureSpecial, MISC_ROOT, OVERVIEW_ROOT } from "./projects.ts";
 import { startServer } from "./server.ts";
@@ -60,7 +61,9 @@ store.onChange((what) => {
 		const c = store.card(id)!;
 		if (!c.paneId) continue; // 沒派出去過(例如直接拖到完成)就不吵
 		const p = store.project(c.projectId);
-		void notify(`✅ 工作完成(${p?.name ?? "?"})\n${c.title}\n${(c.note ?? "").slice(0, 300)}`, { projectId: c.projectId, iphoneOnly: true });
+		// 追問有回覆:推回覆的開頭
+		const reply = justAnswered(c) ? c.thread!.at(-1)!.text : undefined;
+		void notify(reply ? `💬 追問有回覆(${p?.name ?? "?"})\n${c.title}\n${reply.slice(0, 300)}` : `✅ 工作完成(${p?.name ?? "?"})\n${c.title}\n${(c.note ?? "").slice(0, 300)}`, { projectId: c.projectId, iphoneOnly: true });
 	}
 	lastDone = done;
 });

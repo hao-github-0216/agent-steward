@@ -153,6 +153,19 @@ section.content { padding: 16px; overflow-y: auto; overflow-x: hidden; overscrol
 .cardpop h4 { margin: 0; font-size: 12px; color: var(--muted); }
 .cardpop .ctext { white-space: pre-wrap; word-break: break-word; font: 13px/1.5 Menlo, monospace; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 0; max-height: 40vh; overflow: auto; }
 .cardpop .mfoot .sp { flex: 1; }
+/* 工作卡追問:問題靠右、agent 的回覆照 Markdown 排;輸入框在下面 */
+.cardpop .thread { display: flex; flex-direction: column; gap: 12px; }
+.cardpop .turn.me { align-self: flex-end; max-width: 85%; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.cardpop .turn.me .bubble { background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 14px; padding: 8px 12px; white-space: pre-wrap; word-break: break-word; }
+.cardpop .turn .st { font-size: 12px; color: var(--muted); }
+.cardpop .turn .st.err { color: var(--bad); }
+.cardpop .turn.ag .who { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 2px; }
+.cardpop .turn.ag .md { font-size: 14px; }
+.cardpop .turn.wait { color: var(--muted); font-size: 13px; }
+.cardpop .cask { display: flex; gap: 8px; align-items: flex-end; padding: 10px 16px; border-top: 1px solid var(--line); }
+.cardpop .cask[hidden] { display: none; }
+.cardpop .cask textarea { flex: 1; resize: none; min-height: 36px; max-height: 140px; border: 1px solid var(--line); border-radius: 16px; padding: 8px 12px; font: inherit; font-size: 14px; background: var(--bg); color: var(--ink); }
+.cardpop button.link { background: none; border: 0; color: var(--accent); padding: 0 2px; cursor: pointer; font: inherit; }
 @media (max-width: 800px) {
 	.modal.cardpop { place-items: end stretch; padding: 0; }
 	.modal.cardpop .box { width: 100%; border-radius: 14px 14px 0 0; max-height: 85vh; max-height: 85dvh; }
@@ -1096,7 +1109,9 @@ const DONE_SHOWN = 8;
 let showAllDone = false;
 /** 一行卡片:標題 + 小標記(有備註=橘點、第 2 次以後 ×N、全部專案時標專案名) */
 function cardLine(c, projName = "") {
-	const tags = `${c.note ? '<span class="dn" title="有備註,點開看"></span>' : ""}${(c.attempts ?? 0) > 1 ? `<span title="第 ${c.attempts} 次派工">×${c.attempts}</span>` : ""}${projName ? `<span class="pn">${esc(projName)}</span>` : ""}`;
+	const asked = (c.thread || []).filter((t) => t.role === "user").length;
+	const waiting = (c.thread || []).some((t) => t.status === "sent" || t.status === "queued");
+	const tags = `${c.note ? '<span class="dn" title="有備註,點開看"></span>' : ""}${(c.attempts ?? 0) > 1 ? `<span title="第 ${c.attempts} 次派工">×${c.attempts}</span>` : ""}${asked ? `<span title="${waiting ? "追問等回覆中" : `追問 ${asked} 次`}"${waiting ? ' style="color:var(--accent)"' : ""}>💬${asked}</span>` : ""}${projName ? `<span class="pn">${esc(projName)}</span>` : ""}`;
 	return `<div class="kcard" data-card="${c.id}" title="${esc(c.title)}"><span class="t">${esc(c.title)}</span>${tags ? `<span class="tags">${tags}</span>` : ""}</div>`;
 }
 // ---------- 資訊卡 ----------
@@ -1123,16 +1138,82 @@ function renderCardPop() {
 		done: '<button class="small" data-move="approved">重做一次</button>',
 	}[c.column] || "";
 	const canJump = (c.terminalId || c.paneId) && ["running", "blocked", "done"].includes(c.column);
-	wrap.innerHTML = `<div class="box" role="dialog" aria-label="${esc(c.title)}" data-card="${c.id}">
-		<div class="mhead"><h3>${esc(c.title)}</h3><button class="small" data-closecard>關閉</button></div>
-		<div class="mbody">
-			<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>· 第 ${c.attempts} 次派工</span>` : ""}<span>· 更新於 ${esc(ago(c.updatedAt))}</span>${c.paneId ? `<span>· 窗格 ${esc(c.paneId)}</span>` : ""}</div>
+	// 外框只在換卡時建一次:看板一直在更新,輸入框不能跟著重建(打到一半的字、注音選字才不會不見)
+	if (wrap.dataset.card !== c.id) {
+		wrap.dataset.card = c.id;
+		delete wrap.dataset.turns;
+		wrap.innerHTML = `<div class="box" role="dialog" data-card="${c.id}">
+		<div class="mhead"><h3 data-cp="title"></h3><button class="small" data-closecard>關閉</button></div>
+		<div class="mbody" data-cp="body"></div>
+		<form class="cask" data-cp="ask" hidden><textarea id="cardAsk" rows="1" aria-label="追問這張卡"></textarea><button class="small primary" type="submit">送出</button></form>
+		<div class="mfoot" data-cp="foot"></div>
+	</div>`;
+		const form = wrap.querySelector("[data-cp=ask]");
+		form.addEventListener("submit", (e) => { e.preventDefault(); askCard(c.id); });
+		// ⌘/Ctrl + Enter 送出(單按 Enter 是換行,注音選字也用 Enter)
+		form.querySelector("textarea").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.isComposing) { e.preventDefault(); askCard(c.id); } });
+		form.querySelector("textarea").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`; });
+	}
+	const box = wrap.querySelector(".box");
+	box.setAttribute("aria-label", c.title);
+	wrap.querySelector("[data-cp=title]").textContent = c.title;
+	const body = wrap.querySelector("[data-cp=body]");
+	const turns = (c.thread || []).length;
+	const prevTurns = wrap.dataset.turns === undefined ? null : Number(wrap.dataset.turns);
+	const atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
+	const scroll = body.scrollTop;
+	body.innerHTML = `<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>· 第 ${c.attempts} 次派工</span>` : ""}<span>· 更新於 ${esc(ago(c.updatedAt))}</span>${c.paneId ? `<span>· 窗格 ${esc(c.paneId)}</span>` : ""}</div>
 			${c.note ? `<div class="cnote">${esc(c.note)}</div>` : ""}
 			<h4>指示</h4><pre class="ctext">${esc(c.instructions || "(沒有)")}</pre>
 			<h4>完成標準</h4><div>${esc(c.doneCriteria || "(沒有)")}</div>
-		</div>
-		<div class="mfoot">${canJump ? '<button class="small" data-jumpcard>在終端機看這個窗格</button>' : ""}<span class="sp"></span>${acts}</div>
-	</div>`;
+			${threadHtml(c)}`;
+	if (typeof chatMd !== "undefined") chatMd.typeset(body);
+	// 有對話時:剛打開、多了一則、或原本就在最下面 → 捲到最後;不然停在原本的位置
+	if (turns && (prevTurns === null || turns > prevTurns || atEnd)) body.scrollTop = body.scrollHeight;
+	else body.scrollTop = scroll;
+	wrap.dataset.turns = String(turns);
+	const ask = wrap.querySelector("[data-cp=ask]");
+	ask.hidden = !["done", "blocked", "running"].includes(c.column);
+	ask.querySelector("textarea").placeholder = c.column === "running" ? "追問(這一輪做完就送出)⌘↩︎ 送出" : "追問這張卡…  ⌘↩︎ 送出";
+	wrap.querySelector("[data-cp=foot]").innerHTML = `${canJump ? '<button class="small" data-jumpcard>在終端機看這個窗格</button>' : ""}<span class="sp"></span>${acts}`;
+}
+/** 追問對話:原本的結果、問題(排隊中可以取消,送不出去可以重送)、agent 的完整回覆 */
+function threadHtml(c) {
+	const t = c.thread || [];
+	if (!t.length) return "";
+	const status = (x) => {
+		if (x.status === "queued") return `<div class="st">${c.column === "running" ? "排隊中,這一輪做完就送出" : "準備送出…"} <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
+		if (x.status === "sent") return '<div class="st">已送出,等回覆</div>';
+		if (x.status === "failed") return `<div class="st err">${esc(x.note || "送不出去")} <button class="link" data-askretry="${esc(x.id)}">重送</button> <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
+		return "";
+	};
+	const rows = t.map((x) => x.role === "user"
+		? `<div class="turn me"><div class="bubble">${esc(x.text)}</div>${status(x)}</div>`
+		: `<div class="turn ag"><div class="who">${x.original ? "原本的結果" : esc(c.agent || "agent")}</div><div class="md">${chatMd.render(x.text)}</div></div>`).join("");
+	const waiting = c.column === "running" && t.some((x) => x.status === "sent") ? `<div class="turn wait">${esc(c.agent || "agent")} 回覆中…</div>` : "";
+	return `<h4>追問</h4><div class="thread">${rows}${waiting}</div>`;
+}
+async function askCard(id) {
+	const ta = $("cardAsk");
+	const text = ta?.value.trim();
+	if (!text) return;
+	const btn = ta.form.querySelector("button[type=submit]");
+	btn.disabled = true;
+	const r = await post(`/api/cards/${id}/ask`, { text }).catch(() => ({ error: "連不上管家" }));
+	btn.disabled = false;
+	if (r.error) return toast(r.error);
+	ta.value = "";
+	ta.style.height = "auto";
+	const i = state.cards.findIndex((x) => x.id === id);
+	if (i >= 0) state.cards[i] = r;
+	renderCardPop();
+}
+async function followUp(id, turn, action) {
+	const r = await post(`/api/cards/${id}/ask/${turn}/${action}`, {}).catch(() => ({ error: "連不上管家" }));
+	if (r.error) return toast(r.error);
+	const i = state.cards.findIndex((x) => x.id === id);
+	if (i >= 0) state.cards[i] = r;
+	renderCardPop();
 }
 async function jumpToCard(id) {
 	const c = state.cards.find((x) => x.id === id);
@@ -1367,6 +1448,7 @@ document.addEventListener("click", (e) => {
 	}
 	if (t.dataset.move) { const id = t.closest("[data-card]")?.dataset.card; if (t.closest("#cardPop")) closeCard(); if (id) move(id, t.dataset.move); }
 	if (t.closest("[data-jumpcard]")) jumpToCard(t.closest("[data-card]").dataset.card);
+	if (t.dataset.askcancel || t.dataset.askretry) followUp(t.closest("[data-card]").dataset.card, t.dataset.askcancel || t.dataset.askretry, t.dataset.askcancel ? "cancel" : "retry");
 	if (t.closest("[data-moredone]")) { showAllDone = !showAllDone; renderBoard(); }
 	if (t.closest("#dBody .kcard")) openCard(t.closest(".kcard").dataset.card);
 });

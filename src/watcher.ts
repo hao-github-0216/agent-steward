@@ -8,6 +8,7 @@ import { syncClosedSpaces, type SpaceSnapshot } from "./spaces.ts";
 import type { Steward } from "./steward.ts";
 import type { Project, Store } from "./store.ts";
 import { deliverHandoffs } from "./branch.ts";
+import { collectReplies, deliverFollowUps, justAnswered } from "./followup.ts";
 import { ClaudeSessionSync } from "./session-sync.ts";
 import { offsetSince, paneExcerpt, resolveSession, transcriptExcerpt, transcriptPath, type AgentSessionRef } from "./transcripts.ts";
 
@@ -20,6 +21,8 @@ interface PaneTrack {
 	status: string;
 	workedSinceReport: boolean; // 上次回報後有沒有工作過
 	idleSince?: number;
+	/** 最後一次看到在工作(或等核准)的時間:追問送出後要看到工作過才算回答完 */
+	lastWorkAt?: number;
 	reporting?: boolean;
 }
 
@@ -91,6 +94,7 @@ export class Watcher {
 			if (status === "working" || status === "blocked") {
 				t.workedSinceReport = true;
 				t.idleSince = undefined;
+				t.lastWorkAt = now;
 				this.expectWork.delete(pane.pane_id);
 			} else if (status === "idle" || status === "done") {
 				if (t.idleSince === undefined) t.idleSince = now;
@@ -112,6 +116,29 @@ export class Watcher {
 		for (const id of this.tracks.keys()) if (!seen.has(id)) this.tracks.delete(id);
 		// 支線「帶回主線」:主線閒下來就送;送出後主線會開始工作,照派工一樣算進回報
 		deliverHandoffs(this.store, panes, (paneId) => this.expectWork.add(paneId));
+		// 工作卡追問:能送的問題送出去;agent 回答完的把回覆收進卡片
+		this.sendFollowUps(panes);
+		collectReplies(this.store, panes, (id) => this.tracks.get(id));
+	}
+
+	/** 工作卡追問:能送的問題送出去(使用者問完也會馬上叫,不用等下一輪) */
+	sendFollowUps(panes: HerdrPane[] = listPanes() ?? []): void {
+		deliverFollowUps(this.store, panes, {
+			onSent: (card, paneId, terminalId) => {
+				this.expect(paneId);
+				this.steward.watchCard(card.id, paneId, terminalId).catch((e) => console.error("[followup] 超時提醒建立失敗", e));
+			},
+		});
+	}
+
+	/** 剛送了東西給這個窗格的 agent:算成在工作,停下來的時間從現在重算 */
+	private expect(paneId: string): void {
+		this.expectWork.add(paneId);
+		const t = this.tracks.get(paneId);
+		if (t) {
+			t.workedSinceReport = true;
+			t.idleSince = undefined;
+		}
 	}
 
 	/**
@@ -151,9 +178,12 @@ export class Watcher {
 			return undefined;
 		}
 		const card = this.store.cards().find((c) => c.paneId === pane.pane_id && (c.column === "running" || c.column === "blocked"));
+		// 剛回答完追問的卡(已經自動標成完成):回覆裡說做不下去才改成卡住
+		const followUp = card ? undefined : this.store.cards().find((c) => c.paneId === pane.pane_id && c.column === "done" && justAnswered(c));
 		const header = [
 			`【回報】agent=${pane.agent} 窗格=${pane.pane_id} 目錄=${cwd} 來源=${found.source === "transcript" ? "對話記錄" : "窗格畫面"}`,
 			card ? `這個窗格正在執行工作卡 [${card.id}]「${card.title}」,完成標準:${card.doneCriteria}。請判斷是否完成並用 update_card 更新(完成→done,做不下去→blocked 並寫原因)。` : "",
+			followUp ? `這個窗格剛回答了工作卡 [${followUp.id}]「${followUp.title}」的追問(卡片已經標成完成)。如果 agent 說它做不下去或在等使用者回覆,用 update_card 改成 blocked 並寫原因;否則不用動卡片。` : "",
 		]
 			.filter(Boolean)
 			.join("\n");
