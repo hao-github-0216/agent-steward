@@ -25,12 +25,12 @@ struct CodeTab: View {
             // iPad(寬畫面):左側欄 + 右邊分割編輯區;iPhone 和窄視窗:清單 → 單格編輯畫面(上方分頁列)
             if sizeClass == .regular { RegularCodeLayout() } else { CompactCodeLayout() }
         }
-        // 窄 → 寬:編輯區一直看得到,不用再推進編輯畫面
-        .onChange(of: sizeClass) { _, c in if c == .regular { model.codePath.removeAll { $0 == .editor } } }
+        // 寬畫面:編輯區一直看得到,不用推進編輯畫面(窄 → 寬、或開 app 時已經推進去的都拿掉)
+        .onChange(of: sizeClass, initial: true) { _, c in if c == .regular { model.codePath.removeAll { $0 == .editor } } }
         // 上傳進度(在浮動球下面一層,球不會被蓋住)
         .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
         // 浮動球和圈選鈕掛在整個程式碼分頁上:點進檔案、差異、提交紀錄也都在
-        .overlay { BallLayer().padding(.top, 50) }
+        .overlay { if !model.isReaderFullScreen { BallLayer().padding(.top, 50) } }
         .modifier(UploadConflictDialog())
         // 管家側欄掛在最外層:iPad 是右邊獨立一欄(有自己的標題列),iPhone 是從底下升起的視窗
         .modifier(DrawerInspector(mode: .code))
@@ -125,7 +125,8 @@ struct RegularCodeLayout: View {
     var body: some View {
         @Bindable var model = model
         HStack(spacing: 0) {
-            if showSidebar {
+            // 看檔案全螢幕時側欄先收起來(記著的開關不動)
+            if showSidebar && !model.isReaderFullScreen {
                 NavigationStack(path: $model.codePath) {
                     Group {
                         if let p = model.current {
@@ -601,6 +602,8 @@ struct FileView: View {
     @State private var note: String?
     /// 點行號選取的行(問管家、開工作卡、複製)
     @State private var lineSel: ClosedRange<Int>?
+    /// 這一格剛變成目前這一格的時間(那一下點擊是用來換格子的,不切全螢幕)
+    @State private var activatedAt = Date.distantPast
     @State private var finding = false
     @State private var findText = ""
     @State private var findIndex = 0
@@ -620,7 +623,7 @@ struct FileView: View {
     /// 不在格子裡:提示列浮在上面、按鈕在導覽列
     private var chrome: some View {
         VStack(spacing: 0) {
-            if embedded { topBars }
+            if embedded && !fullScreen { topBars }
             Group {
                 if let error {
                     ContentUnavailableView("打不開", systemImage: "exclamationmark.triangle", description: Text(error))
@@ -636,8 +639,36 @@ struct FileView: View {
             $0.navigationTitle((path as NSString).lastPathComponent)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
-                .safeAreaInset(edge: .top, spacing: 0) { topBars }
+                .safeAreaInset(edge: .top, spacing: 0) { if !fullScreen { topBars } }
         }
+        // 全螢幕:導覽列、底下的分頁列收起來(狀態列在 AppShell 收;其他的列和按鈕看 model.isReaderFullScreen 自己收)
+        .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .tabBar)
+        .background {
+            // 外接鍵盤 Esc 也能結束全螢幕
+            if fullScreen { Button("結束全螢幕") { toggleFullScreen() }.keyboardShortcut(.escape, modifiers: []).hidden() }
+        }
+    }
+
+    // MARK: 全螢幕閱讀(點一下畫面切換,像「照片」「檔案」app)
+
+    /// 全螢幕記的是哪一個分頁(沒有分頁就用路徑)
+    private var readerKey: String { tabId ?? "file:\(path)" }
+    private var fullScreen: Bool { model.readerFullScreen == readerKey }
+    /// 看(不是編輯)的時候才能全螢幕:編輯中、選行、尋找時點一下不切換
+    private var canFullScreen: Bool {
+        guard let f = file, !editing, lineSel == nil, !finding else { return false }
+        return ["text", "image", "pdf"].contains(f.kind)
+    }
+
+    private func toggleFullScreen() {
+        // iPad 分割:點別格先只是換到那一格(PDF、圖片收不到格子的點擊,這裡自己換),再點一下才全螢幕。
+        // PDF、圖片的單擊要等雙擊沒成立才算,那時格子可能已經被點成目前這一格:剛換過來的這一下也不算
+        if embedded && !fullScreen && (!isActive || Date.now.timeIntervalSince(activatedAt) < 0.6) {
+            if !isActive, let tabId, let p = model.code.paneOf(tab: tabId) { model.code.focus(p) }
+            return
+        }
+        guard fullScreen || canFullScreen else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { model.readerFullScreen = fullScreen ? nil : readerKey }
     }
 
     /// 載入、監看、記下編輯中的內容
@@ -658,7 +689,16 @@ struct FileView: View {
             if let c = file?.content { model.code.texts[tabId] = c }
         }
         .onChange(of: findText) { findIndex = 0 }
-        .onDisappear { if let tabId { model.code.texts[tabId] = nil } }
+        .onDisappear {
+            if let tabId { model.code.texts[tabId] = nil }
+            if fullScreen { model.readerFullScreen = nil }
+        }
+        // 換到別的分頁、開始編輯:結束全螢幕
+        .onChange(of: isActive) { _, a in
+            if a { activatedAt = .now }
+            if !a, fullScreen { model.readerFullScreen = nil }
+        }
+        .onChange(of: editing) { _, e in if e, fullScreen { model.readerFullScreen = nil } }
     }
 
     /// Quick Look、歷史版本、存檔失敗、被改過的提醒
@@ -699,9 +739,9 @@ struct FileView: View {
                     .padding(.horizontal, 8)
                     .findNavigator(isPresented: $finding)
             } else if isNotebook && showPreview, let d = (f.content ?? "").data(using: .utf8) {
-                NotebookView(json: d)
+                NotebookView(json: d).modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
             } else if isMarkdown && showPreview {
-                ScrollView { MarkdownText(f.content ?? "").padding() }
+                ScrollView { MarkdownText(f.content ?? "").padding() }.modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
             } else {
                 CodeText(
                     text: f.content ?? "",
@@ -712,11 +752,20 @@ struct FileView: View {
                     // 只顯示頭尾的大檔行號不連續:不給選
                     selection: f.truncated == nil ? $lineSel : nil
                 )
+                .modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
             }
         case "image":
-            if let data, let img = UIImage(data: data) { ZoomableImage(image: img) } else { ProgressView() }
+            if let data, let img = UIImage(data: data) {
+                ZoomableImage(image: img) { toggleFullScreen() }
+                    .ignoresSafeArea(edges: fullScreen ? .all : [])
+                    .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { toggleFullScreen() }
+            } else { ProgressView() }
         case "pdf":
-            if let data { PDFKitView(data: data).ignoresSafeArea(edges: .bottom) } else { ProgressView() }
+            if let data {
+                PDFKitView(data: data) { toggleFullScreen() }
+                    .ignoresSafeArea(edges: fullScreen ? .all : .bottom)
+                    .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { toggleFullScreen() }
+            } else { ProgressView() }
         case "office":
             VStack(spacing: 16) {
                 Image(systemName: fileIcon(path)).font(.system(size: 56)).foregroundStyle(.secondary)
@@ -1159,37 +1208,215 @@ extension String {
     func leftPad(_ n: Int) -> String { count >= n ? self : String(repeating: " ", count: n - count) + self }
 }
 
-struct ZoomableImage: View {
-    let image: UIImage
-    @State private var scale: CGFloat = 1
-    @State private var last: CGFloat = 1
+/// 文字類的檢視(程式碼、Markdown、Notebook):點一下切換全螢幕(點行號選行、長按選字照常)
+struct ReaderTap: ViewModifier {
+    let fullScreen: Bool
+    let action: () -> Void
 
-    var body: some View {
-        ScrollView([.vertical, .horizontal]) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(width: UIScreen.main.bounds.width * scale)
-                .padding()
-        }
-        .gesture(MagnifyGesture().onChanged { v in scale = max(1, min(6, last * v.magnification)) }.onEnded { _ in last = scale })
-        .onTapGesture(count: 2) { withAnimation { scale = scale > 1 ? 1 : 2.5; last = scale } }
-        .background(Color(.systemBackground))
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onTapGesture { action() }
+            .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { action() }
     }
 }
 
+/// 圖片:系統的縮放(雙指在手指的位置放大、雙擊放大/還原);最小只能縮到圖片寬度剛好塞滿畫面;點一下切換全螢幕
+struct ZoomableImage: UIViewRepresentable {
+    let image: UIImage
+    var onTap: () -> Void = {}
+
+    func makeUIView(context: Context) -> ImageZoomView { ImageZoomView(image: image) }
+    func updateUIView(_ v: ImageZoomView, context: Context) { v.onTap = onTap }
+}
+
+final class ImageZoomView: UIScrollView, UIScrollViewDelegate {
+    private let imageView: UIImageView
+    var onTap: () -> Void = {}
+    /// 圖片寬度剛好塞滿畫面的縮放(最小只能縮到這裡)
+    private var fitScale: CGFloat = 0
+
+    init(image: UIImage) {
+        imageView = UIImageView(image: image)
+        super.init(frame: .zero)
+        delegate = self
+        addSubview(imageView)
+        imageView.frame = CGRect(origin: .zero, size: image.size)
+        contentSize = image.size
+        contentInsetAdjustmentBehavior = .never
+        showsHorizontalScrollIndicator = false
+        decelerationRate = .fast
+        backgroundColor = .systemBackground
+        let double = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
+        double.numberOfTapsRequired = 2
+        let single = UITapGestureRecognizer(target: self, action: #selector(singleTapped))
+        single.require(toFail: double)
+        addGestureRecognizer(double)
+        addGestureRecognizer(single)
+        accessibilityIdentifier = "image-view"
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { center(); report() }
+
+    /// 縮放(塞滿寬度 = 100%):VoiceOver 和 UI 測試讀這個
+    private func report() {
+        guard fitScale > 0 else { return }
+        accessibilityValue = "縮放 \(Int((zoomScale / fitScale * 100).rounded()))%"
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let w = imageView.image?.size.width ?? 0
+        guard w > 0, bounds.width > 1 else { return }
+        let fit = bounds.width / w
+        if abs(fit - fitScale) > 0.0001 {
+            // 原本就是塞滿寬度(或還沒設過):畫面變寬變窄(轉向、拖格子)後還是塞滿
+            let wasFit = fitScale == 0 || zoomScale <= fitScale + 0.0001
+            fitScale = fit
+            minimumZoomScale = fit
+            maximumZoomScale = max(fit * 6, 3)
+            if wasFit || zoomScale < fit { zoomScale = fit }
+        }
+        center()
+        report()
+    }
+
+    /// 圖比畫面矮(或縮小時比畫面窄)就置中
+    private func center() {
+        let dx = max(0, (bounds.width - contentSize.width) / 2)
+        let dy = max(0, (bounds.height - contentSize.height) / 2)
+        let inset = UIEdgeInsets(top: dy, left: dx, bottom: dy, right: dx)
+        if contentInset != inset { contentInset = inset }
+    }
+
+    @objc private func doubleTapped(_ g: UITapGestureRecognizer) {
+        if zoomScale > minimumZoomScale + 0.001 {
+            setZoomScale(minimumZoomScale, animated: true)
+        } else {
+            let s = min(maximumZoomScale, minimumZoomScale * 2.5)
+            let p = g.location(in: imageView)
+            let size = CGSize(width: bounds.width / s, height: bounds.height / s)
+            zoom(to: CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height), animated: true)
+        }
+    }
+
+    @objc private func singleTapped() { onTap() }
+}
+
+/// PDF:最小只能縮到最寬的那一頁剛好塞滿寬度(不會無限縮小);點一下切換全螢幕
+/// (等雙擊放大沒成立才算;點到連結、有選取文字時照 PDF 原本的行為)
 struct PDFKitView: UIViewRepresentable {
     let data: Data
+    var onTap: () -> Void = {}
 
-    func makeUIView(context: Context) -> PDFView {
-        let v = PDFView()
-        v.autoScales = true
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> FitPDFView {
+        let v = FitPDFView()
         v.displayMode = .singlePageContinuous
+        v.displayDirection = .vertical
+        v.autoScales = false
         v.document = PDFDocument(data: data)
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))
+        tap.delegate = context.coordinator
+        v.addGestureRecognizer(tap)
+        context.coordinator.tap = tap
+        context.coordinator.pdfView = v
         return v
     }
 
-    func updateUIView(_ v: PDFView, context: Context) {}
+    func updateUIView(_ v: FitPDFView, context: Context) {
+        context.coordinator.onTap = onTap
+        context.coordinator.waitForDoubleTaps()
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        weak var pdfView: PDFView?
+        weak var tap: UITapGestureRecognizer?
+        var onTap: () -> Void = {}
+        private var waited = Set<ObjectIdentifier>()
+
+        @objc func tapped() { onTap() }
+
+        /// PDF 自己的雙擊(放大)要先失敗,單擊才算(PDF 內部的手勢是之後才建的,每次更新都補一次)
+        func waitForDoubleTaps() {
+            guard let v = pdfView, let tap else { return }
+            func walk(_ view: UIView) {
+                for g in view.gestureRecognizers ?? [] {
+                    if let t = g as? UITapGestureRecognizer, t !== tap, t.numberOfTapsRequired >= 2, waited.insert(ObjectIdentifier(t)).inserted {
+                        tap.require(toFail: t)
+                    }
+                }
+                view.subviews.forEach(walk)
+            }
+            walk(v)
+        }
+
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            waitForDoubleTaps()
+            guard let v = pdfView else { return true }
+            // 有選取的文字:這一下是取消選取
+            if v.currentSelection != nil { return false }
+            // 點到連結:照常開連結
+            let p = g.location(in: v)
+            if let page = v.page(for: p, nearest: false), let a = page.annotation(at: v.convert(p, to: page)),
+               a.type == "Link" || a.url != nil || a.action != nil {
+                return false
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
+}
+
+final class FitPDFView: PDFView {
+    /// 最寬的那一頁剛好塞滿寬度的縮放(最小只能縮到這裡)
+    private var fitScale: CGFloat = 0
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        accessibilityIdentifier = "pdf-view"
+        NotificationCenter.default.addObserver(self, selector: #selector(report), name: .PDFViewScaleChanged, object: self)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateFit()
+    }
+
+    /// 縮放(最寬的那頁塞滿寬度 = 100%):VoiceOver 和 UI 測試讀這個
+    @objc private func report() {
+        guard fitScale > 0 else { return }
+        accessibilityValue = "縮放 \(Int((scaleFactor / fitScale * 100).rounded()))%"
+    }
+
+    private func updateFit() {
+        guard let doc = document, doc.pageCount > 0, bounds.width > 1 else { return }
+        var widest: CGFloat = 0
+        // 很多頁的檔案只看前 500 頁(夠用,也不會卡)
+        for i in 0..<min(doc.pageCount, 500) {
+            guard let page = doc.page(at: i) else { continue }
+            let b = page.bounds(for: displayBox)
+            widest = max(widest, page.rotation % 180 == 0 ? b.width : b.height)
+        }
+        guard widest > 0 else { return }
+        let m = pageBreakMargins
+        let fit = (bounds.width - safeAreaInsets.left - safeAreaInsets.right - m.left - m.right) / widest
+        guard fit > 0, abs(fit - fitScale) > 0.0001 else { return }
+        // 原本就是塞滿寬度(或還沒設過):畫面變寬變窄(轉向、拖格子、全螢幕)後還是塞滿
+        let wasFit = fitScale == 0 || scaleFactor <= fitScale + 0.0001
+        fitScale = fit
+        minScaleFactor = fit
+        maxScaleFactor = max(fit * 8, 4)
+        if wasFit || scaleFactor < fit { scaleFactor = fit }
+        report()
+    }
 }
 
 /// Notebook(.ipynb):Markdown 格子照排版、程式格子等寬、文字和圖片輸出;要執行用網頁版

@@ -20,11 +20,17 @@ struct EditorArea: View {
             let cols = ws.layout.columns
             let total = cols.reduce(0) { $0 + $1.size }
             let avail = max(0, geo.size.width - CGFloat(cols.count - 1))
+            // 看檔案全螢幕:目前這一格佔滿,其他格縮成 0(不拿掉,回來時不用重新載入)
+            let full: UUID? = model.isReaderFullScreen ? ws.activePaneID : nil
             HStack(spacing: 0) {
                 ForEach(Array(cols.enumerated()), id: \.element.id) { ci, col in
-                    ColumnView(project: project, column: col, ci: ci, height: geo.size.height)
-                        .frame(width: max(0, avail * col.size / total))
-                    if ci < cols.count - 1 {
+                    let shown = full.map { id in col.panes.contains { $0.id == id } } ?? true
+                    ColumnView(project: project, column: col, ci: ci, height: geo.size.height, fullPane: full)
+                        .frame(width: full == nil ? max(0, avail * col.size / total) : (shown ? geo.size.width : 0))
+                        .opacity(shown ? 1 : 0)
+                        .allowsHitTesting(shown)
+                        .accessibilityHidden(!shown)
+                    if ci < cols.count - 1 && full == nil {
                         SplitDivider(axis: .vertical) { delta in
                             let start = dragStart ?? cols.map(\.size)
                             if dragStart == nil { dragStart = start }
@@ -65,6 +71,8 @@ struct ColumnView: View {
     let column: EditorColumn
     let ci: Int
     let height: CGFloat
+    /// 看檔案全螢幕的那一格(nil = 沒有全螢幕)
+    var fullPane: UUID?
     @State private var dragStart: [Double]?
 
     var body: some View {
@@ -73,11 +81,15 @@ struct ColumnView: View {
         let avail = max(0, height - CGFloat(column.panes.count - 1))
         VStack(spacing: 0) {
             ForEach(Array(column.panes.enumerated()), id: \.element.id) { pi, pane in
+                let shown = fullPane.map { $0 == pane.id } ?? true
                 PaneView(project: project, pane: pane)
-                    .frame(height: max(0, avail * pane.size / total))
+                    .frame(height: fullPane == nil ? max(0, avail * pane.size / total) : (shown ? height : 0))
+                    .opacity(shown ? 1 : 0)
+                    .allowsHitTesting(shown)
+                    .accessibilityHidden(!shown)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("pane-\(ci)-\(pi)")
-                if pi < column.panes.count - 1 {
+                if pi < column.panes.count - 1 && fullPane == nil {
                     SplitDivider(axis: .horizontal) { delta in
                         let start = dragStart ?? column.panes.map(\.size)
                         if dragStart == nil { dragStart = start }
@@ -146,7 +158,9 @@ struct PaneView: View {
         let ws = model.code
         let isActive = ws.activePaneID == pane.id
         VStack(spacing: 0) {
-            TabStrip(tabs: pane.tabs, activeId: pane.activeTab?.id, paneId: pane.id, highlighted: isActive && ws.paneCount > 1)
+            if !model.isReaderFullScreen {
+                TabStrip(tabs: pane.tabs, activeId: pane.activeTab?.id, paneId: pane.id, highlighted: isActive && ws.paneCount > 1)
+            }
             if let t = pane.activeTab {
                 TabContent(project: project, tab: t, embedded: true, isActive: isActive)
                     .id(t.id)
@@ -433,7 +447,7 @@ struct CompactEditor: View {
         let tabs = ws.allTabs
         let active = ws.activeTab
         VStack(spacing: 0) {
-            TabStrip(tabs: tabs, activeId: active?.id, paneId: nil)
+            if !model.isReaderFullScreen { TabStrip(tabs: tabs, activeId: active?.id, paneId: nil) }
             if let t = active {
                 TabContent(project: project, tab: t, embedded: false, isActive: true)
                     .id(t.id)

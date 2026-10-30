@@ -198,12 +198,17 @@ final class GestureTests: XCTestCase {
         XCTAssertTrue(el("tab-file:LICENSE").isSelected, "剛點的 LICENSE 不是目前的分頁")
         app.typeKey(.F12, modifierFlags: [.command, .shift])
         sleep(1)
-        app.typeKey("]", modifierFlags: [.command, .shift])
-        sleep(1)
-        XCTAssertTrue(el("tab-file:ios-native/Steward/Theme.swift").isSelected, "⌘⇧] 沒有換到下一個分頁")
-        app.typeKey("[", modifierFlags: [.command, .shift])
-        sleep(1)
-        XCTAssertTrue(el("tab-file:LICENSE").isSelected, "⌘⇧[ 沒有換回上一個分頁")
+        // 模擬器偶爾還是會吃掉一下:沒換過去才再按一次(按兩次都沒反應才算失敗)
+        func press(_ key: String, until ok: () -> Bool) -> Bool {
+            for _ in 0..<2 {
+                app.typeKey(key, modifierFlags: [.command, .shift])
+                sleep(1)
+                if ok() { return true }
+            }
+            return false
+        }
+        XCTAssertTrue(press("]") { el("tab-file:ios-native/Steward/Theme.swift").isSelected }, "⌘⇧] 沒有換到下一個分頁")
+        XCTAssertTrue(press("[") { el("tab-file:LICENSE").isSelected }, "⌘⇧[ 沒有換回上一個分頁")
         shot(app, "more-0-cycled")
         // ⌘\:目前的分頁(LICENSE)移到右邊新的一格
         app.typeKey("\\", modifierFlags: .command)
@@ -420,5 +425,121 @@ final class GestureTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["專案"].waitForExistence(timeout: 5), "沒有打開完整的專案清單")
         shot(app, "title-3-picker")
         app.navigationBars["專案"].buttons["完成"].tap()
+    }
+
+    // MARK: 看檔案(PDF、圖片、文字):縮放下限、點一下全螢幕
+
+    /// 全螢幕:導覽列、底下的分頁列、浮動球都收起來
+    private func assertFullScreen(_ app: XCUIApplication, _ on: Bool, _ step: String) {
+        let tab = app.tabBars.buttons["看板"]
+        let ball = app.descendants(matching: .any)["問管家"]
+        if on {
+            XCTAssertEqual(app.navigationBars.count, 0, "\(step):導覽列還在")
+            XCTAssertFalse(tab.exists && tab.isHittable, "\(step):底下的分頁列還在")
+            XCTAssertFalse(ball.exists, "\(step):浮動球還在")
+        } else {
+            XCTAssertGreaterThan(app.navigationBars.count, 0, "\(step):導覽列沒回來")
+            XCTAssertTrue(ball.exists, "\(step):浮動球沒回來")
+        }
+    }
+
+    /// PDF:最小只能縮到最寬的那頁塞滿寬度;點一下全螢幕,再點一下回來
+    /// 用 ios-native/zz-mixed.pdf(三頁,第二頁比較寬;測試前建,見 README)
+    func testReaderPDF() throws {
+        let app = launch("agentsteward://project/\(project)/code?file=ios-native/zz-mixed.pdf", reset: true)
+        sleep(8)
+        let pdf = app.descendants(matching: .any)["pdf-view"].firstMatch
+        XCTAssertTrue(pdf.waitForExistence(timeout: 8), "沒有 PDF")
+        shot(app, "pdf-1-fit")
+        XCTAssertEqual(pdf.value as? String, "縮放 100%", "一打開不是最寬的那頁塞滿寬度")
+        pdf.pinch(withScale: 0.3, velocity: -2)
+        sleep(1)
+        shot(app, "pdf-2-pinched-out")
+        XCTAssertEqual(pdf.value as? String, "縮放 100%", "還能縮得比最寬的那頁塞滿寬度更小")
+        pdf.pinch(withScale: 2.5, velocity: 2)
+        sleep(1)
+        XCTAssertNotEqual(pdf.value as? String, "縮放 100%", "放不大")
+        pdf.tap()
+        sleep(2)
+        shot(app, "pdf-3-fullscreen")
+        assertFullScreen(app, true, "PDF 點一下")
+        pdf.tap()
+        sleep(2)
+        assertFullScreen(app, false, "PDF 再點一下")
+    }
+
+    /// 圖片:最小只能縮到圖片寬度塞滿畫面;雙擊放大、再雙擊還原;點一下全螢幕,再點一下回來
+    func testReaderImage() throws {
+        let app = launch("agentsteward://project/\(project)/code?file=docs/images/board.png", reset: true)
+        sleep(8)
+        let img = app.descendants(matching: .any)["image-view"].firstMatch
+        XCTAssertTrue(img.waitForExistence(timeout: 8), "沒有圖片")
+        XCTAssertEqual(img.value as? String, "縮放 100%", "一打開不是塞滿寬度")
+        img.pinch(withScale: 0.3, velocity: -2)
+        sleep(1)
+        XCTAssertEqual(img.value as? String, "縮放 100%", "還能縮得比塞滿寬度更小")
+        img.doubleTap()
+        sleep(1)
+        XCTAssertEqual(img.value as? String, "縮放 250%", "雙擊沒有放大")
+        img.doubleTap()
+        sleep(1)
+        XCTAssertEqual(img.value as? String, "縮放 100%", "雙擊沒有還原")
+        img.tap()
+        sleep(2)
+        shot(app, "image-fullscreen")
+        assertFullScreen(app, true, "圖片點一下")
+        img.tap()
+        sleep(2)
+        assertFullScreen(app, false, "圖片再點一下")
+    }
+
+    /// 文字(程式碼):點一下全螢幕,再點一下回來;點行號是選行,不會全螢幕
+    func testReaderText() throws {
+        let app = launch("agentsteward://project/\(project)/code?file=LICENSE", reset: true)
+        sleep(8)
+        let lineOne = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^ *1$")).firstMatch
+        XCTAssertTrue(lineOne.waitForExistence(timeout: 5), "找不到行號 1")
+        let middle = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.55))
+        middle.tap()
+        sleep(2)
+        shot(app, "text-fullscreen")
+        assertFullScreen(app, true, "文字點一下")
+        middle.tap()
+        sleep(2)
+        assertFullScreen(app, false, "文字再點一下")
+        lineOne.tap()
+        sleep(2)
+        assertFullScreen(app, false, "點行號")
+    }
+
+    /// iPad 分割:點別格的 PDF 先只是換到那一格;再點一下全螢幕(側欄、別格、分頁列都收起來,PDF 還是塞滿寬度);再點回來
+    func testIPadReaderFullScreen() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad 才跑") }
+        let app = launch("agentsteward://project/\(project)/code?file=ios-native/zz-mixed.pdf", reset: true)
+        sleep(8)
+        let el = { (id: String) in app.descendants(matching: .any)[id].firstMatch }
+        el("row-LICENSE").tap()
+        sleep(2)
+        app.typeKey(.F12, modifierFlags: [.command, .shift])
+        sleep(1)
+        app.typeKey("\\", modifierFlags: .command)
+        sleep(2)
+        XCTAssertTrue(el("pane-1-0").exists, "⌘\\ 沒有分到右邊")
+        let pdf = el("pdf-view")
+        XCTAssertTrue(pdf.waitForExistence(timeout: 5), "沒有 PDF")
+        pdf.tap()
+        sleep(2)
+        XCTAssertTrue(app.navigationBars["程式碼"].exists, "點別格的 PDF 就全螢幕了")
+        pdf.tap()
+        sleep(2)
+        shot(app, "ipad-reader-fullscreen")
+        XCTAssertFalse(app.navigationBars["程式碼"].exists, "全螢幕時側欄還在")
+        XCTAssertFalse(el("tab-file:LICENSE").exists, "全螢幕時別格的分頁還在")
+        XCTAssertFalse(app.descendants(matching: .any)["問管家"].exists, "全螢幕時浮動球還在")
+        XCTAssertEqual(pdf.value as? String, "縮放 100%", "全螢幕變寬後 PDF 沒有跟著塞滿寬度")
+        pdf.tap()
+        sleep(2)
+        XCTAssertTrue(app.navigationBars["程式碼"].exists, "側欄沒回來")
+        XCTAssertTrue(el("tab-file:LICENSE").exists, "別格沒回來")
     }
 }

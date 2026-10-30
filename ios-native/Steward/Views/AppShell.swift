@@ -23,6 +23,9 @@ struct AppShell: View {
                 .tabItem { Label("終端機", systemImage: "terminal") }
                 .tag(Mode.terminal)
         }
+        // 看檔案全螢幕:狀態列、Home 列也收起來(要掛在最外層,掛在分頁裡面系統不理)
+        .statusBarHidden(model.isReaderFullScreen)
+        .persistentSystemOverlays(model.isReaderFullScreen ? .hidden : .automatic)
         // 圈選層(看板用的原生圈選):截圖鋪滿螢幕,提示放在安全區域裡
         .overlay {
             if let screen = snap.screen {
@@ -320,7 +323,8 @@ struct DrawerInspector: ViewModifier {
     @State private var detent: PresentationDetent = .medium
 
     func body(content: Content) -> some View {
-        content.inspector(isPresented: Binding(get: { model.drawerOpen && model.mode == mode }, set: { if !$0 { model.drawerCardId = nil; model.drawerOpen = false } })) {
+        // 看檔案全螢幕時先收起來(結束全螢幕再出來)
+        content.inspector(isPresented: Binding(get: { model.drawerOpen && model.mode == mode && !model.isReaderFullScreen }, set: { if !$0 && !model.isReaderFullScreen { model.drawerCardId = nil; model.drawerOpen = false } })) {
             StewardDrawer()
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationDragIndicator(.visible)

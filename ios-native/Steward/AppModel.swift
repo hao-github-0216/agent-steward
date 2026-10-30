@@ -3,6 +3,7 @@
 // 「目前專案」在最上層,三種模式都是看這個專案(跟網頁的 sel 一樣,跨裝置同步)。
 import Foundation
 import Observation
+import UIKit
 
 enum Mode: String, CaseIterable, Identifiable {
     case board, code, terminal
@@ -77,12 +78,16 @@ final class AppModel {
 
     private(set) var currentProjectId: String? = UserDefaults.standard.string(forKey: "currentProject") {
         // 換專案:程式碼頁換成那個專案在這台裝置上的版面
-        didSet { if currentProjectId != oldValue { code.use(project: currentProjectId) } }
+        didSet { if currentProjectId != oldValue { code.use(project: currentProjectId); readerFullScreen = nil } }
     }
+    /// 看檔案時點一下畫面的全螢幕(記是哪一個分頁或檔案):導覽列、分頁列、浮動球、管家側欄都收起來;換模式、換專案就結束
+    var readerFullScreen: String?
+    var isReaderFullScreen: Bool { readerFullScreen != nil }
     var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .board {
         didSet {
             UserDefaults.standard.set(mode.rawValue, forKey: "mode")
             web.setMode(mode)
+            if mode != oldValue { readerFullScreen = nil }
         }
     }
     var showProjectPicker = false
@@ -94,7 +99,9 @@ final class AppModel {
     /// 管家側欄裡點開的工作卡(疊在側欄上面一層)
     var drawerCardId: String?
     /// 窄畫面(iPhone、iPad 分割畫面的窄邊):管家側欄是從底下升起的視窗;寬畫面(iPad)是右邊一欄
-    var compact = true
+    /// 先照裝置猜(iPad 先當寬畫面),畫面量好後 AppShell 會改成實際的;
+    /// 不然開 app 時連結打開的檔案會在 iPad 側欄裡推進 iPhone 的編輯畫面
+    var compact = UIDevice.current.userInterfaceIdiom != .pad
     /// 管家側欄是不是正用「從底下升起的視窗」開著(這時其他視窗要等它收好才開得起來)
     var drawerShown: Bool { drawerOpen && mode != .board && compact }
     var allCards = UserDefaults.standard.bool(forKey: "allCards") {
