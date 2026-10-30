@@ -6,13 +6,16 @@ import XCTest
 
 final class GestureTests: XCTestCase {
     private var project: String { ProcessInfo.processInfo.environment["STEWARD_PROJECT"] ?? "" }
+    /// 有給隔離的管家(TEST_RUNNER_STEWARD_TEST_SERVER)就接它:用連結打開專案會把它記成「目前專案」,
+    /// 接真的管家會把你其他裝置的專案也換掉
+    private var serverArgs: [String] { ProcessInfo.processInfo.environment["STEWARD_TEST_SERVER"].map { ["-serverURL", $0] } ?? [] }
 
     override func setUp() { continueAfterFailure = true }
 
     /// reset:程式碼頁從空的版面開始(-resetCodeLayout,也清掉記著的草稿)
     private func launch(_ link: String, reset: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-noPush", "YES"] + (reset ? ["-resetCodeLayout", "YES"] : []) + ["-openURL", link]
+        app.launchArguments = ["-noPush", "YES"] + serverArgs + (reset ? ["-resetCodeLayout", "YES"] : []) + ["-openURL", link]
         app.launch()
         return app
     }
@@ -254,7 +257,7 @@ final class GestureTests: XCTestCase {
     func testIPadSplitAndUnsavedClose() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad 才跑") }
         let app = XCUIApplication()
-        app.launchArguments = ["-noPush", "YES", "-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=ios-native/zz-scratch.txt"]
+        app.launchArguments = ["-noPush", "YES"] + serverArgs + ["-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=ios-native/zz-scratch.txt"]
         app.launch()
         sleep(8)
         let el = { (id: String) in app.descendants(matching: .any)[id].firstMatch }
@@ -298,7 +301,7 @@ final class GestureTests: XCTestCase {
     func testIPhoneUnsavedClose() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iPhone 才跑") }
         let app = XCUIApplication()
-        app.launchArguments = ["-noPush", "YES", "-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=ios-native/zz-scratch.txt"]
+        app.launchArguments = ["-noPush", "YES"] + serverArgs + ["-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=ios-native/zz-scratch.txt"]
         app.launch()
         sleep(8)
         let el = { (id: String) in app.descendants(matching: .any)[id].firstMatch }
@@ -328,7 +331,7 @@ final class GestureTests: XCTestCase {
     func testIPadPaneEditorFocus() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad 才跑") }
         let app = XCUIApplication()
-        app.launchArguments = ["-noPush", "YES", "-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=LICENSE"]
+        app.launchArguments = ["-noPush", "YES"] + serverArgs + ["-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=LICENSE"]
         app.launch()
         sleep(8)
         let pane = app.descendants(matching: .any)["pane-0-0"].firstMatch
@@ -349,5 +352,73 @@ final class GestureTests: XCTestCase {
         let tab = again.descendants(matching: .any)["tab-file:LICENSE"].firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
         XCTAssertFalse(tab.label.contains("還沒存"), "沒改的分頁重開後被當成還沒存:\(tab.label)")
+    }
+
+    /// 標題列(要接隔離的管家:會換專案,不能碰真的管家):長名字不被右邊的按鈕蓋住、隱私專案有副標題;
+    /// 點標題出選單,選別的專案就換過去;「所有專案…」打開完整的專案清單
+    ///   TEST_RUNNER_STEWARD_TEST_SERVER=http://127.0.0.1:8797 TEST_RUNNER_STEWARD_TITLE_PROJECT=<長名字、隱私的專案 id>
+    ///   TEST_RUNNER_STEWARD_TITLE_NAME=<它的名字> TEST_RUNNER_STEWARD_TITLE_OTHER=<另一個專案的名字>
+    func testProjectTitleMenu() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let proj = env["STEWARD_TITLE_PROJECT"],
+              let name = env["STEWARD_TITLE_NAME"], let other = env["STEWARD_TITLE_OTHER"] else { throw XCTSkip("要接隔離的管家才跑") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-noPush", "YES", "-serverURL", server, "-openURL", "agentsteward://project/\(proj)/code"]
+        app.launch()
+        sleep(8)
+        // 標題在哪一條導覽列(iPad 有側欄、編輯區、管家側欄好幾條;只有專案標題是按鈕)
+        func titleIn(_ n: String) -> (bar: XCUIElement, title: XCUIElement)? {
+            let pred = NSPredicate(format: "label CONTAINS %@", n)
+            for bar in app.navigationBars.allElementsBoundByIndex {
+                let t = bar.buttons.matching(pred).firstMatch
+                if t.exists { return (bar, t) }
+            }
+            return nil
+        }
+        // 標題整個在畫面裡,也不跟同一排的任何按鈕重疊(工具列按鈕不一定在導覽列底下,用位置找同一排的)
+        func assertNotCovered(_ n: String, _ step: String) {
+            guard let (_, title) = titleIn(n) else { return XCTFail("\(step):標題列找不到專案名稱") }
+            let tf = title.frame
+            XCTAssertGreaterThanOrEqual(tf.minX, 0, "\(step):標題左邊被切掉")
+            XCTAssertLessThanOrEqual(tf.maxX, app.windows.firstMatch.frame.maxX, "\(step):標題右邊超出畫面")
+            var checked: [String] = []
+            for b in app.buttons.allElementsBoundByIndex where b.exists && !b.label.contains(n) {
+                let f = b.frame
+                guard f.height > 0, f.height < 120, abs(f.midY - tf.midY) < 30 else { continue }
+                checked.append(b.label)
+                XCTAssertFalse(tf.intersects(f), "\(step):標題被「\(b.label)」蓋住")
+            }
+            let a = XCTAttachment(string: "\(step) 標題 \(tf) 檢查過的按鈕:\(checked)")
+            a.name = "covered-check"; a.lifetime = .keepAlways; add(a)
+            XCTAssertFalse(checked.isEmpty, "\(step):同一排找不到其他按鈕,檢查沒有意義")
+        }
+        XCTAssertTrue(app.navigationBars.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch.waitForExistence(timeout: 5), "標題列找不到專案名稱")
+        shot(app, "title-1-long")
+        assertNotCovered(name, "長名字")
+        XCTAssertTrue(app.navigationBars.staticTexts["隱私專案"].exists, "隱私專案沒有副標題")
+        if UIDevice.current.userInterfaceIdiom == .pad, let (bar, _) = titleIn(name) {
+            // iPad:再打開管家側欄,中間那欄最窄的時候標題還是不能被蓋住
+            _ = bar
+            app.buttons["管家"].firstMatch.tap()
+            sleep(3)
+            shot(app, "title-1b-ipad-drawer")
+            assertNotCovered(name, "iPad 打開管家側欄")
+            if app.buttons["收起管家"].firstMatch.exists { app.buttons["收起管家"].firstMatch.tap(); sleep(2) }
+        }
+        // 點標題 → 選單 → 選另一個專案
+        titleIn(name)?.title.tap()
+        XCTAssertTrue(app.buttons["所有專案…"].waitForExistence(timeout: 5), "點標題沒有出選單")
+        shot(app, "title-2-menu")
+        app.buttons[other].firstMatch.tap()
+        sleep(2)
+        XCTAssertNotNil(titleIn(other), "選單選了專案沒有換過去")
+        XCTAssertFalse(app.navigationBars.staticTexts["隱私專案"].exists, "換到一般專案還有隱私副標題")
+        // 再點標題 →「所有專案…」→ 完整的專案清單
+        titleIn(other)?.title.tap()
+        XCTAssertTrue(app.buttons["所有專案…"].waitForExistence(timeout: 5))
+        app.buttons["所有專案…"].tap()
+        XCTAssertTrue(app.navigationBars["專案"].waitForExistence(timeout: 5), "沒有打開完整的專案清單")
+        shot(app, "title-3-picker")
+        app.navigationBars["專案"].buttons["完成"].tap()
     }
 }

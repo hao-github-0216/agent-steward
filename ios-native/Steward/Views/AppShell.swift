@@ -1,6 +1,6 @@
 // app 的骨架:結構跟管家網頁一樣(專案在最上層,下面是看板/程式碼/終端機),元件用 Apple 的:
 //   底部系統分頁列:看板 · 程式碼 · 終端機(跟網頁的三個模式同順序)
-//   每一頁頂端的系統導覽列:標題是目前專案,點一下打開專案清單換專案
+//   每一頁頂端的系統導覽列:標題是目前專案,點一下打開選單換專案(或打開完整的專案清單)
 //   右下角:貓咪浮動球(問管家)和它旁邊的圈選鈕(全 app 只有這一個圈選入口)
 import SwiftUI
 
@@ -66,37 +66,58 @@ struct CardRef: Identifiable { let id: String }
 
 // MARK: - 每一頁共用的頂端:標題是目前專案(點了換專案)
 
+/// 標題用系統的導覽列標題:名字太長系統會自己縮短,右邊的按鈕放不下時收進「⋯」,不會互相蓋住
+/// (自己畫的標題系統不會幫忙讓位,長名字會被右邊的按鈕蓋住、左邊被切掉)。
+/// 點標題打開選單:直接換專案,或打開完整的專案清單(建立、改名、停止追蹤…)
 struct ProjectChrome: ViewModifier {
+    @Environment(AppModel.self) private var model
+
     func body(content: Content) -> some View {
         content
+            .navigationTitle(model.current?.name ?? "選專案")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) { ProjectTitleButton() }
-            }
+            .toolbarTitleMenu { ProjectTitleMenu() }
+            .modifier(PrivateSubtitle(isPrivate: model.current?.private == true))
     }
 }
 
-struct ProjectTitleButton: View {
+/// 點標題的選單:最近有動靜的專案在前、目前的打勾;雜務/總覽;最後是完整的專案清單
+struct ProjectTitleMenu: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button { model.present(.projectPicker) } label: {
-            HStack(spacing: 4) {
-                if model.current?.private == true {
-                    Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary)
-                }
-                Text(model.current?.name ?? "選專案")
-                    .font(.headline)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
-            .foregroundStyle(.primary)
-            .frame(maxWidth: 240)
+        let selection = Binding(get: { model.currentProjectId ?? "" }, set: { model.switchProject($0) })
+        Picker("專案", selection: selection) {
+            ForEach(model.projects) { p in item(p).tag(p.id) }
         }
-        .accessibilityLabel("目前專案:\(model.current?.name ?? "未選")")
-        .accessibilityHint("點一下換專案")
+        .pickerStyle(.inline)
+        if !model.specialProjects.isEmpty {
+            Picker("其他", selection: selection) {
+                ForEach(model.specialProjects) { p in item(p).tag(p.id) }
+            }
+            .pickerStyle(.inline)
+        }
+        Section {
+            Button { model.present(.projectPicker) } label: { Label("所有專案…", systemImage: "list.bullet") }
+        }
+    }
+
+    @ViewBuilder
+    private func item(_ p: Project) -> some View {
+        if p.private == true { Label(p.name, systemImage: "lock.fill") } else { Text(p.name) }
+    }
+}
+
+/// 隱私專案:標題下面多一行「隱私專案」(iOS 26 起才有副標題;判斷 iOS 版本的分支固定不變,換專案時畫面不會重建)
+private struct PrivateSubtitle: ViewModifier {
+    let isPrivate: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.navigationSubtitle(isPrivate ? Text("隱私專案") : Text(""))
+        } else {
+            content
+        }
     }
 }
 

@@ -221,7 +221,16 @@ final class AppModel {
 
     /// 換目前專案。fromWeb:網頁(herdr 自己切了 space)告訴我們的,不用再叫網頁換
     func switchProject(_ id: String, fromWeb: Bool = false) {
-        guard id != currentProjectId, project(id) != nil else { return }
+        guard project(id) != nil else { return }
+        guard id != currentProjectId else {
+            // 已經是這個專案(例如點通知、連結打開):還是算「剛在這台選的」,
+            // 不然開 app 時的同步會拿別的裝置換過的專案蓋回來。不叫網頁 select(同一個專案不用重選,herdr 也不會跳)
+            if !fromWeb {
+                lastLocalSwitch = .now
+                if let api { Task { try? await api.putCurrent(project: id) } }
+            }
+            return
+        }
         currentProjectId = id
         UserDefaults.standard.set(id, forKey: "currentProject")
         needSpace = nil
