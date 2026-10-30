@@ -432,7 +432,7 @@ final class GestureTests: XCTestCase {
     /// 全螢幕:導覽列、底下的分頁列、浮動球都收起來
     private func assertFullScreen(_ app: XCUIApplication, _ on: Bool, _ step: String) {
         let tab = app.tabBars.buttons["看板"]
-        let ball = app.descendants(matching: .any)["問管家"]
+        let ball = app.descendants(matching: .any)["steward-ball"]
         if on {
             XCTAssertEqual(app.navigationBars.count, 0, "\(step):導覽列還在")
             XCTAssertFalse(tab.exists && tab.isHittable, "\(step):底下的分頁列還在")
@@ -535,11 +535,39 @@ final class GestureTests: XCTestCase {
         shot(app, "ipad-reader-fullscreen")
         XCTAssertFalse(app.navigationBars["程式碼"].exists, "全螢幕時側欄還在")
         XCTAssertFalse(el("tab-file:LICENSE").exists, "全螢幕時別格的分頁還在")
-        XCTAssertFalse(app.descendants(matching: .any)["問管家"].exists, "全螢幕時浮動球還在")
+        XCTAssertFalse(app.descendants(matching: .any)["steward-ball"].exists, "全螢幕時浮動球還在")
         XCTAssertEqual(pdf.value as? String, "縮放 100%", "全螢幕變寬後 PDF 沒有跟著塞滿寬度")
         pdf.tap()
         sleep(2)
         XCTAssertTrue(app.navigationBars["程式碼"].exists, "側欄沒回來")
         XCTAssertTrue(el("tab-file:LICENSE").exists, "別格沒回來")
+    }
+
+    /// Markdown 預覽跟網頁一樣排版:標題、專案裡的圖片(經 app 讀)、表格;點文字全螢幕、再點回來;點連結打開專案裡的檔案
+    func testReaderMarkdown() throws {
+        let app = launch("agentsteward://project/\(project)/code?file=README.md", reset: true)
+        sleep(8)
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 10), "沒有 Markdown 預覽")
+        let title = web.staticTexts["專案管家 agent-steward"]
+        XCTAssertTrue(title.waitForExistence(timeout: 15), "標題沒有排出來(排版程式沒載到?)")
+        let img = web.images["看板"]
+        XCTAssertTrue(img.waitForExistence(timeout: 10), "沒有圖片")
+        XCTAssertGreaterThan(img.frame.height, 20, "專案裡的圖片沒載到")
+        shot(app, "md-1-top")
+        web.swipeUp()
+        sleep(1)
+        shot(app, "md-2-tables")
+        web.swipeDown()
+        sleep(1)
+        title.tap()
+        sleep(2)
+        assertFullScreen(app, true, "Markdown 點一下")
+        title.tap()
+        sleep(2)
+        assertFullScreen(app, false, "Markdown 再點一下")
+        web.links["English"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["tab-file:README.en.md"].waitForExistence(timeout: 8), "點連結沒有打開 README.en.md")
+        shot(app, "md-3-link-opened")
     }
 }

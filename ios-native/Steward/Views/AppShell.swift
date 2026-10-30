@@ -257,6 +257,7 @@ struct BallLayer: View {
                     .simultaneousGesture(TapGesture().onEnded { openChat() })
                     .accessibilityElement()
                     .accessibilityLabel("問管家")
+                    .accessibilityIdentifier("steward-ball")
                     .accessibilityHint("可以拖到畫面四個角落")
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { openChat() }

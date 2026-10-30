@@ -604,6 +604,8 @@ struct FileView: View {
     @State private var lineSel: ClosedRange<Int>?
     /// 這一格剛變成目前這一格的時間(那一下點擊是用來換格子的,不切全螢幕)
     @State private var activatedAt = Date.distantPast
+    /// Markdown 的網頁排版載不到(沒網路):改用原生的簡單預覽
+    @State private var mdFallback = false
     @State private var finding = false
     @State private var findText = ""
     @State private var findIndex = 0
@@ -741,7 +743,13 @@ struct FileView: View {
             } else if isNotebook && showPreview, let d = (f.content ?? "").data(using: .utf8) {
                 NotebookView(json: d).modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
             } else if isMarkdown && showPreview {
-                ScrollView { MarkdownText(f.content ?? "").padding() }.modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
+                if mdFallback {
+                    ScrollView { MarkdownText(f.content ?? "").padding() }.modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
+                } else {
+                    // 跟網頁一樣的排版(表格、圖片、HTML、清單…);點連結照常、點其他地方切換全螢幕
+                    MarkdownWebView(project: project.id, path: path, source: f.content ?? "", onTap: { toggleFullScreen() }, onFallback: { mdFallback = true })
+                        .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { toggleFullScreen() }
+                }
             } else {
                 CodeText(
                     text: f.content ?? "",
