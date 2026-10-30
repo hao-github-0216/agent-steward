@@ -153,6 +153,17 @@ test("窗格關掉了:開新 tab、啟動同一種 agent,帶著卡片紀錄和�
 	assert.equal(c.column, "running");
 });
 
+test("舊卡沒有終端機 ID:認不出窗格是不是同一個,不打進那個窗格,改開新的 agent", () => {
+	const { store, card } = setup("noterm", {});
+	store.updateCard(card.id, { terminalId: undefined });
+	askCard(store, card.id, "這是舊卡的追問");
+	deliverFollowUps(store, listPanes());
+	const ps = prompts();
+	assert.equal(ps.length, 1);
+	assert.equal(ps[0][2], "w1:p9", "要送到新開的窗格,不是 w1:p1");
+	assert.ok(calls().some((a) => a[0] === "tab" && a[1] === "create"));
+});
+
 test("取消排隊中的問題;送不出去標成失敗,可以重送", () => {
 	const { store, card } = setup("cancel", { column: "running" });
 	const q = askCard(store, card.id, "不問了").thread.at(-1);

@@ -222,7 +222,7 @@ private struct TurnRow: View {
         switch turn.status {
         case "queued":
             HStack(spacing: 10) {
-                Text(card.column == "running" ? "排隊中,這一輪做完就送出" : "準備送出…").font(.caption).foregroundStyle(.secondary)
+                Text(card.column == "running" ? "排隊中,這一輪做完就送出" : "等這個 agent 空下來就送出").font(.caption).foregroundStyle(.secondary)
                 Button("取消") { onAction("cancel") }.font(.caption).buttonStyle(.borderless)
             }
         case "sent":

@@ -1182,7 +1182,7 @@ function threadHtml(c) {
 	const t = c.thread || [];
 	if (!t.length) return "";
 	const status = (x) => {
-		if (x.status === "queued") return `<div class="st">${c.column === "running" ? "排隊中,這一輪做完就送出" : "準備送出…"} <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
+		if (x.status === "queued") return `<div class="st">${c.column === "running" ? "排隊中,這一輪做完就送出" : "等這個 agent 空下來就送出"} <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
 		if (x.status === "sent") return '<div class="st">已送出,等回覆</div>';
 		if (x.status === "failed") return `<div class="st err">${esc(x.note || "送不出去")} <button class="link" data-askretry="${esc(x.id)}">重送</button> <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
 		return "";

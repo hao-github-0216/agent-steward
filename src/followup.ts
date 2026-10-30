@@ -73,10 +73,13 @@ export function retryQuestion(store: Store, cardId: string, id: string): Card {
 	return store.updateCard(card.id, { thread: card.thread!.map((x) => (x.id === id ? { ...x, status: "queued" as const, note: undefined } : x)) });
 }
 
-/** 這張卡的窗格:有終端機 ID 就只用它找(窗格搬過 space 也找得到,也不會認錯成重用同一個 ID 的別的窗格) */
+/**
+ * 這張卡的窗格:只用終端機 ID 找(窗格搬過 space 也找得到)。
+ * 舊卡沒有終端機 ID:窗格 ID 在 tab 關掉後會被重用,認不出是不是同一個,就當作窗格已經不在(開新的 agent 帶紀錄),
+ * 才不會把問題打進別人的窗格
+ */
 function paneOf(card: Card, panes: HerdrPane[]): HerdrPane | undefined {
-	if (card.terminalId) return panes.find((p) => p.terminal_id === card.terminalId);
-	return card.paneId ? panes.find((p) => p.pane_id === card.paneId) : undefined;
+	return card.terminalId ? panes.find((p) => p.terminal_id === card.terminalId) : undefined;
 }
 
 /** 每輪監看、使用者問完都叫:能送的問題就送出去 */
