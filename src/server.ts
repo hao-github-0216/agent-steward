@@ -33,7 +33,7 @@ import { brief } from "./brief.ts";
 import { DATA_DIR, HOME, HOSTS, isPrivatePath, MISC_ROOTS, PORT, publicUrl, TERMINAL_PORT } from "./config.ts";
 import { dispatchCard, focusProject } from "./dispatch.ts";
 import { askCard, cancelQuestion, FollowUpError, retryQuestion } from "./followup.ts";
-import { BranchError, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
+import { BranchError, callerPane, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
 import { herdrCli, listPanes, listWorkspaces } from "./herdr.ts";
 import { boundSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
 import { createProject } from "./create.ts";
@@ -647,7 +647,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				const p = projectFrom(url.searchParams) ?? ensureSpecial(store, MISC_ROOT);
 				const text = brief(store, p);
-				return url.searchParams.get("format") === "json" ? send(res, 200, { project: p, text }) : send(res, 200, text, "text/plain; charset=utf-8");
+				if (url.searchParams.get("format") !== "json") return send(res, 200, text, "text/plain; charset=utf-8");
+				// 這個專案的 herdr space(給 agent 開新分頁用;HERDR_* 環境變數在窗格搬過 space 後會過期)
+				const w = p.kind === "project" ? boundSpace(store, p) : undefined;
+				return send(res, 200, { project: p, text, space: w ? { id: w.workspace_id, label: w.label ?? "" } : null });
 			}
 			if (req.method === "POST" && path === "/api/ask") {
 				const b = await body(req);
@@ -1090,7 +1093,21 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					// 開支線:指定窗格(指令列帶 HERDR_PANE_ID)或用 herdr 目前焦點的窗格(網頁)
 					if (req.method === "POST" && path === "/api/branch") {
 						const b = await body(req);
-						const main = pickMainPane({ pane: b.pane || undefined, workspace: b.workspace || undefined });
+						const panes = listPanes() ?? [];
+						let pane: string | undefined = b.pane || undefined;
+						let workspace: string | undefined = b.workspace || undefined;
+						// 指令列沒指定窗格(用環境變數):先認出真的是從哪個窗格來的;認不出來(窗格搬過 space)就用呼叫的資料夾所屬專案的 space
+						if (b.fromEnv) {
+							const real = callerPane(store, { pane, session: b.session || undefined, cwd: b.cwd || undefined }, panes);
+							pane = real?.pane_id;
+							if (real) workspace = real.workspace_id;
+							else {
+								const p = b.cwd ? resolveProject(store, String(b.cwd)) : undefined;
+								workspace = p?.kind === "project" ? boundSpace(store, p)?.workspace_id : undefined;
+								if (!workspace) throw new BranchError("認不出你在哪個窗格(窗格可能被搬過 space,herdr 記的位置過期了),請指定窗格 ID:steward branch <窗格>");
+							}
+						}
+						const main = pickMainPane({ pane, workspace }, panes);
 						const branch = openBranch(store, main.pane_id, { here: !!b.here });
 						currentCache.clear();
 						return send(res, 200, { branch });
@@ -1098,7 +1115,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					// 這個窗格是不是支線
 					if (req.method === "GET" && path === "/api/branch/at") {
 						const id = url.searchParams.get("pane") ?? "";
-						const pane = (listPanes() ?? []).find((x) => x.pane_id === id);
+						const panes = listPanes() ?? [];
+						// 用環境變數來的(帶了 session / cwd):先認出真的窗格
+						const session = url.searchParams.get("session") ?? undefined;
+						const cwd = url.searchParams.get("cwd") ?? undefined;
+						const pane = session || cwd ? callerPane(store, { pane: id, session, cwd }, panes) : panes.find((x) => x.pane_id === id);
 						const branch = pane ? store.branchOfPane(pane) : undefined;
 						return branch ? send(res, 200, { branch }) : send(res, 404, { error: "這個窗格不是支線" });
 					}

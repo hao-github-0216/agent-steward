@@ -12,6 +12,9 @@
 //   steward hook <agent>               給各 agent 的 SessionStart hook 用(失敗安靜略過)
 //   steward mcp                        以 MCP stdio server 執行
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const BASE = process.env.STEWARD_URL ?? `http://127.0.0.1:${process.env.STEWARD_PORT ?? 8791}`;
 const args = process.argv.slice(2);
@@ -58,9 +61,14 @@ async function hook(agent) {
 	} catch {
 		return; // 管家沒開:不影響 agent 開場
 	}
-	// 雜務/總覽、或還沒有紀錄的專案:不注入,避免雜訊
-	if (data.project.kind !== "project" || !data.project.state?.updatedAt) return;
-	const text = `${data.text}\n\n(以上由專案管家自動提供,反映其他 session/agent 的最新進度;與現場不符時以現場為準。)`;
+	// 雜務/總覽不注入;還沒有紀錄的專案只給 herdr 的提示,避免雜訊
+	if (data.project.kind !== "project") return;
+	const parts = [];
+	if (data.project.state?.updatedAt) parts.push(`${data.text}\n\n(以上由專案管家自動提供,反映其他 session/agent 的最新進度;與現場不符時以現場為準。)`);
+	// 窗格被搬到別的 space 後,HERDR_PANE_ID / HERDR_WORKSPACE_ID 和 herdr pane current 還是舊的位置(可能是別的專案):直接告訴 agent 這個專案的 space
+	if (data.space) parts.push(`【在 herdr 開新分頁】這個專案的 herdr space 是「${data.space.label}」(${data.space.id}),資料夾 ${data.project.root}。要開新分頁或新的 agent 時用 herdr tab create --workspace ${data.space.id} --cwd "${data.project.root}" --no-focus;不要用 herdr pane current、HERDR_PANE_ID、HERDR_WORKSPACE_ID 判斷自己在哪(窗格被搬過 space 後那些還是舊的位置,會開到別的專案)。`);
+	if (!parts.length) return;
+	const text = parts.join("\n\n");
 	if (agent === "claude") {
 		process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: text } }));
 	} else if (agent === "codex") {
@@ -91,6 +99,24 @@ async function confirm(question) {
 	}
 }
 
+/**
+ * 這個指令是在哪個 Claude session 裡跑的:往上找父程序的 ~/.claude/sessions/<pid>.json(找不到就 undefined)。
+ * 用來認出真的窗格:窗格被搬到別的 space 後,HERDR_PANE_ID 還是舊的位置
+ */
+function claudeSession() {
+	try {
+		let pid = process.ppid;
+		for (let i = 0; i < 8 && pid > 1; i++) {
+			const f = join(homedir(), ".claude", "sessions", `${pid}.json`);
+			if (existsSync(f)) return JSON.parse(readFileSync(f, "utf8")).sessionId || undefined;
+			pid = Number(execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8" }).trim());
+		}
+	} catch {
+		/* 沒有 ps(Windows)或不是在 Claude 裡跑 */
+	}
+	return undefined;
+}
+
 async function branch() {
 	const sub = args[0] === "back" || args[0] === "close" ? args.shift() : "open";
 	const here = process.env.HERDR_PANE_ID;
@@ -98,15 +124,19 @@ async function branch() {
 		if (sub === "open") {
 			const hereOnly = args.includes("--here");
 			const target = args.find((a) => !a.startsWith("--"));
-			const r = JSON.parse(await post("/api/branch", { pane: target ?? here, workspace: process.env.HERDR_WORKSPACE_ID, here: hereOnly }, 180_000));
+			// 沒指定窗格:伺服器用 Claude session、資料夾核對環境變數(窗格搬過 space 後 HERDR_PANE_ID 會過期)
+			const r = JSON.parse(await post("/api/branch", target ? { pane: target, here: hereOnly } : { pane: here, workspace: process.env.HERDR_WORKSPACE_ID, here: hereOnly, fromEnv: true, session: claudeSession(), cwd: process.cwd() }, 180_000));
 			const b = r.branch;
 			const where = b.worktree ? `開在獨立的 git worktree:${b.worktree.cwd}(分支 ${b.worktree.gitBranch})\n` : `開在跟主線同一個資料夾(${b.hereReason ?? "同資料夾"})\n`;
 			process.stdout.write(`已開支線「${b.label}」(${b.agent},窗格 ${b.paneId})\n${where}${b.mode === "excerpt" ? "這個 agent 不能分叉(或找不到主線的 session),已經把主線最近的對話節錄送給它。\n" : "支線接著主線的對話,可以直接在那個 tab 問。\n"}問完要帶回主線:在支線裡執行 steward branch back\n${b.startupNote ? `⚠ ${b.startupNote}\n` : ""}`);
 			return;
 		}
-		const pane = args.find((a) => !a.startsWith("--")) ?? here;
-		if (!pane) throw new Error("請在支線的窗格裡執行,或指定窗格 ID");
-		const b = JSON.parse(await api(`/api/branch/at?pane=${encodeURIComponent(pane)}`)).branch;
+		const given = args.find((a) => !a.startsWith("--"));
+		const pane = given ?? here;
+		const session = given ? undefined : claudeSession();
+		if (!pane && !session) throw new Error("請在支線的窗格裡執行,或指定窗格 ID");
+		const q = given ? `pane=${encodeURIComponent(given)}` : `pane=${encodeURIComponent(here ?? "")}&cwd=${encodeURIComponent(process.cwd())}${session ? `&session=${encodeURIComponent(session)}` : ""}`;
+		const b = JSON.parse(await api(`/api/branch/at?${q}`)).branch;
 		if (sub === "close") {
 			await post(`/api/branch/${b.id}/close`, { removeWorktree: args.includes("--remove-worktree") });
 			return;

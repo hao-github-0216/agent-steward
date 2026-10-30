@@ -24,6 +24,24 @@ const tabLabel = (tabId: string) => (herdrCli(["tab", "get", tabId])?.result?.ta
  *  - 指定的窗格有 agent → 就是它(在 Claude Code 裡打 `! steward branch` 時就是那個 Claude)
  *  - 否則看同一個 space:焦點所在的窗格有 agent 就用它;只有一個 agent 也用它;好幾個就請使用者指定
  */
+/**
+ * 在 agent 的窗格裡跑 steward 指令時,真的是從哪個窗格來的:
+ *  - Claude:用 session ID 找(最準)
+ *  - 環境變數 HERDR_PANE_ID:窗格被搬到別的 space 後 ID 會變,但程式裡記的還是舊的(可能已經是別人的窗格),
+ *    指到的窗格跟呼叫的資料夾不是同一個專案就不採用
+ * 認不出來回 undefined
+ */
+export function callerPane(store: Store, opts: { pane?: string; session?: string; cwd?: string }, panes: HerdrPane[]): HerdrPane | undefined {
+	if (opts.session) {
+		const s = panes.find((p) => p.agent && p.agent_session?.value === opts.session);
+		if (s) return s;
+	}
+	const given = opts.pane ? panes.find((p) => p.pane_id === opts.pane) : undefined;
+	if (!given) return undefined;
+	if (opts.cwd && resolveProject(store, opts.cwd).id !== resolveProject(store, given.foreground_cwd ?? given.cwd ?? "").id) return undefined;
+	return given;
+}
+
 export function pickMainPane(opts: { pane?: string; workspace?: string }, panes = listPanes() ?? []): HerdrPane {
 	const given = opts.pane ? panes.find((p) => p.pane_id === opts.pane) : undefined;
 	if (given?.agent) return given;
