@@ -1,5 +1,5 @@
 // 圈選提問:Alt+S(或浮動球旁的圈選鈕、長按浮動球)→ 畫面變暗 → 手畫一圈或拉框 →
-// 取出那塊的文字(圈到圖片、圖表、PDF 頁時一律加附截圖)→ 圈選處旁邊跳出小框問管家。
+// 取出那塊的文字,並附上截圖(分享這個分頁一次之後每次都截;沒分享時只截得到圖片、圖表、PDF 頁)→ 圈選處旁邊跳出小框問管家。
 // 依賴主頁面的全域:$, esc, post, toast, sel, selectProject, toggleBall, copyText, manualCopy, xterm, focusTerm, pref
 (() => {
 	const KEY_DEFAULT = "Alt+S";
@@ -63,10 +63,76 @@
 	window.snapKeyDefault = KEY_DEFAULT;
 	$("ballSnap")?.addEventListener("click", () => start());
 
+	// ---------- 截圖(螢幕分享這個分頁) ----------
+	// 網頁不能直接讀畫面:第一次圈選請使用者分享「這個分頁」一次,之後分享一直開著,
+	// 每次圈選從裡面抓一張(重新整理、關分頁、按「停止分享」後下次再問)。按取消就只送文字,這次開著網頁期間不再問。
+	const CAP = { stream: null, video: null, asked: false };
+	const capLive = () => CAP.stream?.getVideoTracks()[0]?.readyState === "live";
+	function capStop() { CAP.stream?.getTracks().forEach((t) => t.stop()); CAP.stream = null; CAP.video = null; }
+	async function capEnsure() {
+		if (capLive()) return true;
+		// 分享已經停了(按了「停止分享」):下次圈選再問一次
+		if (CAP.stream) { capStop(); CAP.asked = false; }
+		if (CAP.asked || !navigator.mediaDevices?.getDisplayMedia || inApp()) return false;
+		CAP.asked = true;
+		try {
+			const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser", frameRate: 5 }, audio: false, preferCurrentTab: true, selfBrowserSurface: "include", surfaceSwitching: "exclude", monitorTypeSurfaces: "exclude" });
+			const track = stream.getVideoTracks()[0];
+			if (track?.getSettings?.().displaySurface && track.getSettings().displaySurface !== "browser") {
+				stream.getTracks().forEach((t) => t.stop());
+				toast("要選「這個分頁」才能截圖;這次先只送文字");
+				return false;
+			}
+			const v = document.createElement("video");
+			Object.assign(v, { muted: true, playsInline: true, srcObject: stream });
+			await v.play();
+			track.addEventListener("ended", () => { if (CAP.stream === stream) { CAP.stream = null; CAP.video = null; CAP.asked = false; } });
+			CAP.stream = stream; CAP.video = v;
+			// 授權視窗關掉、「正在分享」提示列出現後,等畫面穩定再抓
+			await new Promise((r) => setTimeout(r, 400));
+			return true;
+		} catch { return false; } // 使用者按取消,或瀏覽器不支援
+	}
+	/** 抓目前這一格畫面;分享的不是這個分頁(長寬比對不上)就不用 */
+	function capGrab() {
+		const v = CAP.video;
+		if (!capLive() || !v?.videoWidth) return null;
+		if (Math.abs(v.videoWidth / v.videoHeight - innerWidth / innerHeight) > 0.03) return null;
+		const c = document.createElement("canvas");
+		c.width = v.videoWidth; c.height = v.videoHeight;
+		c.getContext("2d").drawImage(v, 0, 0);
+		return { canvas: c, kx: c.width / innerWidth, ky: c.height / innerHeight };
+	}
+	/** 從抓到的畫面裁出圈的範圍(最長邊 1600) */
+	function cropFrame(f, rect) {
+		const sx = rect.left * f.kx, sy = rect.top * f.ky, sw = (rect.right - rect.left) * f.kx, sh = (rect.bottom - rect.top) * f.ky;
+		if (sw < 4 || sh < 4) return null;
+		const k = Math.min(1, 1600 / Math.max(sw, sh));
+		const c = document.createElement("canvas");
+		c.width = Math.max(1, Math.round(sw * k)); c.height = Math.max(1, Math.round(sh * k));
+		c.getContext("2d").drawImage(f.canvas, sx, sy, sw, sh, 0, 0, c.width, c.height);
+		const t = document.createElement("canvas"), tk = Math.min(1, 160 / Math.max(c.width, c.height));
+		t.width = Math.max(1, Math.round(c.width * tk)); t.height = Math.max(1, Math.round(c.height * tk));
+		t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
+		return { mimeType: "image/png", data: c.toDataURL("image/png").split(",")[1], thumb: t.toDataURL("image/jpeg", 0.7) };
+	}
+	window.addEventListener("pagehide", capStop);
+
 	// ---------- 圈選圖層 ----------
-	function start() {
-		if (S.layer) return;
+	async function start() {
+		if (S.layer || S.starting) return;
+		const hadPop = !!(S.pop || S.mark);
 		closePop();
+		// 先抓畫面再變暗(截到的才是乾淨的畫面);第一次要等使用者按允許
+		S.frame = null;
+		S.starting = true;
+		try {
+			if (!capLive()) await capEnsure();
+			// 舊的小框剛收掉:等分享的畫面跟上,免得截進舊的框
+			else if (capLive() && hadPop) await new Promise((r) => setTimeout(r, 300));
+		} finally { S.starting = false; }
+		if (S.layer) return;
+		S.frame = capGrab();
 		const L = document.createElement("div");
 		L.id = "snapLayer";
 		L.innerHTML = `<canvas></canvas><div class="snap-hint">${isTouch() ? "用手指圈出想問的地方" : "圈出或拉框選出想問的地方 · Esc 取消"}</div>`;
@@ -92,11 +158,12 @@
 		L.addEventListener("pointercancel", () => { S.down = false; cancelLayer(); });
 		L.addEventListener("contextmenu", (e) => { e.preventDefault(); cancelLayer(); });
 	}
-	function cancelLayer() { S.layer?.remove(); S.layer = null; S.pts = []; }
+	function cancelLayer() { S.layer?.remove(); S.layer = null; S.pts = []; S.frame = null; }
 
 	async function finish() {
 		const xs = S.pts.map((p) => p[0]), ys = S.pts.map((p) => p[1]);
 		let rect = { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+		const frame = S.frame;
 		cancelLayer();
 		// 點一下(沒有拉開):取點到的那一段
 		if (rect.right - rect.left < 12 && rect.bottom - rect.top < 12) rect = blockAt(rect.left, rect.top);
@@ -105,6 +172,10 @@
 		showMark(rect);
 		let res;
 		try { res = await extract(rect); } catch (e) { res = { error: String(e?.message || e) }; }
+		// 有抓到畫面:一律附上圈到那一塊的截圖(取代只裁圖片的版本)
+		const shot = frame && !res?.error ? cropFrame(frame, rect) : null;
+		if (shot && res) res.images = [shot];
+		else if (shot && !res) res = { snap: { kind: "page", label: pageLabel(), text: "" }, text: "", images: [shot] };
 		if (res?.error || (!res?.text && !res?.images?.length)) {
 			hideMark();
 			toast(res?.error || "這一塊沒有文字,也截不到圖片");
