@@ -1,7 +1,7 @@
 // 從工作目錄判斷屬於哪個專案:git 根目錄 > 已登記的資料夾 > 雜務。
 import { execFileSync } from "node:child_process";
 import { pathInside } from "./platform.ts";
-import { basename } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { isPrivatePath, MISC_ROOTS } from "./config.ts";
 import type { Project, Store } from "./store.ts";
 
@@ -47,9 +47,30 @@ function worktreeOwner(store: Store, cwd: string): Project | undefined {
 	return b ? store.project(b.projectId) : undefined;
 }
 
+/**
+ * 在 git 的 linked worktree 裡(Claude Code 的 .claude/worktrees/、手動 git worktree add)→ 主資料夾裡對應的位置;不是就回 undefined。
+ * 不然 worktree 會被當成新的 git 專案自動登記,agent 在裡面做的事也記不到原本的專案。結果快取一分鐘(窗格輪詢會一直問)。
+ */
+const linkedCache = new Map<string, { at: number; main?: string }>();
+export function linkedWorktreeMain(cwd: string): string | undefined {
+	const hit = linkedCache.get(cwd);
+	if (hit && Date.now() - hit.at < 60_000) return hit.main;
+	let main: string | undefined;
+	try {
+		const [common, top] = execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).trim().split("\n");
+		if (common && top && basename(common) === ".git" && dirname(common) !== top) main = join(dirname(common), relative(top, cwd));
+	} catch {
+		/* 不是 git 或資料夾不在 */
+	}
+	linkedCache.set(cwd, { at: Date.now(), main });
+	return main;
+}
+
 export function resolveProject(store: Store, cwd: string): Project {
 	const wt = worktreeOwner(store, cwd);
 	if (wt) return active(store, wt);
+	const linked = cwd ? linkedWorktreeMain(cwd) : undefined;
+	if (linked) return resolveProject(store, linked);
 	if (!cwd || MISC_ROOTS.includes(cwd.replace(/\/$/, ""))) return ensureSpecial(store, MISC_ROOT);
 
 	// 已登記的資料夾(含它的子資料夾),取最長的那個
@@ -79,6 +100,8 @@ export function resolveProject(store: Store, cwd: string): Project {
 export function ownerOf(store: Store, cwd: string): Project | undefined {
 	const wt = worktreeOwner(store, cwd);
 	if (wt) return wt.kind === "project" && wt.status === "active" ? wt : undefined;
+	const linked = cwd ? linkedWorktreeMain(cwd) : undefined;
+	if (linked) return ownerOf(store, linked);
 	return store
 		.projects()
 		.filter((p) => p.kind === "project" && p.status === "active" && pathInside(cwd, p.root))

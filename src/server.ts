@@ -35,7 +35,8 @@ import { dispatchCard, focusProject } from "./dispatch.ts";
 import { askCard, cancelQuestion, FollowUpError, retryQuestion } from "./followup.ts";
 import { BranchError, callerPane, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
 import { herdrCli, listPanes, listWorkspaces } from "./herdr.ts";
-import { boundSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
+import { boundSpace, ensureSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
+import { chatPlan, findWorktree, ignoreWorktrees, listWorktrees, mergePreview, mergeWorktree, removeWorktreeItem, untrackGitlinks, worktreeCounts, WorktreesError } from "./worktrees.ts";
 import { createProject } from "./create.ts";
 import { ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
 import type { Steward } from "./steward.ts";
@@ -232,9 +233,64 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		return null;
 	};
 
+	/** /api/code/<專案>/worktrees… (sub 是 worktrees 後面那段,可能是空字串) */
+	const worktreeRoute = async (p: Project, sub: string, req: IncomingMessage, res: ServerResponse) => {
+		const deps = () => ({ panes: listPanes() ?? [] });
+		const b = req.method === "POST" ? await body(req).catch(() => ({})) : {};
+		if (req.method === "GET" && sub === "") return send(res, 200, await listWorktrees(store, p, deps()));
+		if (req.method === "POST" && sub === "ignore") return send(res, 200, await ignoreWorktrees(store, p, deps()));
+		if (req.method === "POST" && sub === "untrack") return send(res, 200, await untrackGitlinks(store, p, deps()));
+		const m = sub.match(/^([0-9a-f]{10})\/(merge|remove|chat)$/);
+		if (!m) return send(res, 404, { error: "not found" });
+		const [, id, op] = m;
+		if (op === "merge" && req.method === "GET") return send(res, 200, await mergePreview(store, p, id, deps()));
+		if (op === "merge" && req.method === "POST") return send(res, 200, await mergeWorktree(store, p, id, deps()));
+		if (op === "remove" && req.method === "POST") {
+			const c = (b as { confirm?: Record<string, boolean> }).confirm ?? {};
+			return send(res, 200, await removeWorktreeItem(store, p, id, { dirty: !!c.dirty, locked: !!c.locked, alive: !!c.alive }, deps()));
+		}
+		if (op === "chat" && req.method === "POST") {
+			const { item } = await findWorktree(store, p, id, deps());
+			if (item.source === "main") return send(res, 400, { error: "這是主資料夾,直接用終端機頁就好" });
+			if (!item.exists) return send(res, 400, { error: "這個 worktree 的資料夾已經不在了,沒辦法在裡面開 agent" });
+			const plan = chatPlan(item, String((b as { agent?: string }).agent ?? "") || "claude");
+			if (plan.kind === "focus") {
+				const r = herdrCli(["agent", "focus", plan.paneId!]);
+				if (r?.error) return send(res, 400, { error: `跳不過去:${String(r.error.message ?? "herdr 拒絕切換")}` });
+				return send(res, 200, { kind: "focus", paneId: plan.paneId });
+			}
+			const { space } = ensureSpace(store, p);
+			const label = `分支:${item.branch ?? basename(item.path)}`.slice(0, 48);
+			const created = herdrCli(["tab", "create", "--workspace", space.workspace_id, "--cwd", plan.cwd, "--label", label]);
+			const pane = created?.result?.root_pane as { pane_id?: string; tab_id?: string } | undefined;
+			if (!pane?.pane_id) return send(res, 500, { error: `開 tab 失敗:${JSON.stringify(created?.error ?? created).slice(0, 200)}` });
+			const started = herdrCli(["agent", "start", `wt-${Date.now().toString(36)}`, "--kind", plan.agent, "--pane", pane.pane_id, "--timeout", "60000", ...(plan.args?.length ? ["--", ...plan.args] : [])], 70_000);
+			// 停在確認畫面(例如要不要用專案的 MCP 伺服器、要不要信任這個資料夾):tab 留著,請使用者去確認
+			const waitingUser = started?.error?.code === "agent_not_ready" && /blocked/i.test(String(started.error.message ?? ""));
+			if (started?.error && !waitingUser) {
+				herdrCli(["tab", "close", pane.tab_id!]);
+				return send(res, 500, { error: `啟動 ${plan.agent} 失敗:${String(started.error.message ?? "").slice(0, 300)}` });
+			}
+			herdrCli(["agent", "focus", pane.pane_id]);
+			return send(res, 200, { kind: plan.kind, paneId: pane.pane_id, agent: plan.agent, label, note: waitingUser ? `${plan.agent} 啟動時停在確認畫面,請到「${label}」那個 tab 確認` : undefined });
+		}
+		return send(res, 404, { error: "not found" });
+	};
+
 	const codeRoute = async (p: Project, sub: string, req: IncomingMessage, res: ServerResponse, url: URL) => {
 		const q = (k: string) => url.searchParams.get(k) ?? "";
 		try {
+			// ---------- 分支(worktree)總覽 ----------
+			if (sub === "worktrees" || sub.startsWith("worktrees/")) return await worktreeRoute(p, sub.slice(10), req, res);
+			// 看/改 worktree 裡的檔案:?wt=<id> 讓這次請求的專案資料夾換成 worktree 裡對應的位置(id 由伺服器對照 git worktree list,不收路徑)
+			const wt = q("wt");
+			if (wt) {
+				const { item } = await findWorktree(store, p, wt, { panes: listPanes() ?? [] });
+				if (!item.exists) return send(res, 404, { error: "這個 worktree 的資料夾已經不在了" });
+				if (sub.startsWith("office/") || sub.startsWith("nb/")) return send(res, 400, { error: "worktree 裡的檔案先不支援 Office 編輯與 Notebook 執行,請到主資料夾或讓 agent 處理" });
+				if (sub === "session") return send(res, 200, {}); // 版面記錄只存主資料夾的
+				p = { ...p, root: existsSync(item.cwd) ? item.cwd : item.path };
+			}
 			// ---------- LaTeX 編譯 ----------
 			const off = (id: "latex" | "notebook" | "office", name: string) => send(res, 403, { error: `「${name}」外掛沒有開啟(設定 → 外掛)` });
 			if (sub === "latex" && !pluginEnabled("latex")) return off("latex", "LaTeX 編譯");
@@ -347,6 +403,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		} catch (e) {
 			const err = e as CodeError & { disk?: unknown; exists?: boolean };
 			if (err instanceof CodeError) return send(res, err.status, { error: err.message, ...(err.disk ? { disk: err.disk } : {}), ...(err.exists ? { exists: true } : {}) });
+			if (e instanceof WorktreesError) return send(res, e.status, { error: e.message, ...(e.code ? { code: e.code } : {}), ...(e.detail ? { detail: e.detail } : {}) });
 			if ((e as NodeJS.ErrnoException).code === "ENOENT") return send(res, 404, { error: "檔案不存在" });
 			throw e;
 		}
@@ -409,8 +466,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					res.end(JSON.stringify({ error: auth.reason }));
 					return;
 				}
-				const p = store.project(mc[1]);
+				// 「專案@worktree」= 這次請求看那個 worktree 的檔案(網頁版用;和 ?wt= 一樣)
+				const [pid, wtId] = decodeURIComponent(mc[1]).split("@");
+				const p = store.project(pid);
 				if (!p || p.kind !== "project") return send(res, 404, { error: "找不到專案" });
+				if (wtId && !url.searchParams.has("wt")) url.searchParams.set("wt", wtId);
 				return await codeRoute(p, mc[2], req, res, url);
 			}
 			// ---------- 設定頁:讀寫設定(要登入,和終端機同一套身分檢查) ----------
@@ -626,6 +686,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					clients.delete(res);
 				});
 				return;
+			}
+
+			// 專案欄徽章:每個專案有幾個相關的 worktree(git 讀起來不便宜,快取 20 秒)
+			if (req.method === "GET" && path === "/api/worktree-counts") {
+				const ps = store.projects().filter((x) => x.kind === "project" && x.status === "active" && existsSync(x.root));
+				return send(res, 200, { counts: await worktreeCounts(store, ps, { panes: listPanes() ?? [] }) });
 			}
 
 			// ---------- 給 agent 用 ----------

@@ -305,6 +305,24 @@ body.code #fontDown, body.code #fontUp, body.code #fontSize { display: none; }
 .cv-projname .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-projname .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
 .projrow .unsaved { color: var(--warn); margin-right: 4px; }
+/* 分支(worktree)總覽 */
+.projrow .wtb { font-size: 11px; color: var(--accent); background: var(--chip); border-radius: 9px; padding: 0 6px; margin-left: 6px; font-weight: 500; }
+.cv-projname:has(.wtpill) { flex-wrap: wrap; }
+.cv-projname .wtpill { order: 3; flex: 1 1 100%; display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 500; font-size: 12px; color: #fff; background: var(--warn); border-radius: 10px; padding: 2px 4px 2px 8px; }
+.cv-projname .wtpill .b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-projname .wtpill button { flex: none; padding: 1px 6px; font-size: 11px; }
+.wt-row { padding: 6px 14px 8px; border-top: 1px solid var(--line); font-size: 12px; }
+.wt-row.cur { background: var(--chip); }
+.wt-row .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wt-row .l1 b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-row .l2 { color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+.wt-row .src { font-size: 10px; border-radius: 6px; padding: 0 5px; background: var(--chip); color: var(--muted); flex: none; }
+.wt-row .src-claude { color: #b4541a; } .wt-row .src-steward { color: var(--accent); } .wt-row .src-manual { color: var(--ok); }
+.wt-row button:disabled { opacity: .4; cursor: default; }
+.wt-row .acts, .wt-warn .acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.wt-warn { margin: 6px 14px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--ink); font-size: 12px; }
+.wt-list { margin: 2px 0 8px; padding-left: 18px; font-size: 12px; max-height: 160px; overflow: auto; }
+.wt-diff { max-height: 320px; overflow: auto; font-size: 11px; background: var(--chip); padding: 8px; border-radius: 6px; white-space: pre; }
 .cv-pane { flex: 1; min-height: 0; overflow: auto; font-size: 13px; }
 .cv-pane[hidden] { display: none; }
 .cv-tools { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
@@ -963,9 +981,20 @@ async function load() {
 		$("status").innerHTML = `<span class="dot ${w.lastError ? "off" : ""}"></span>${w.lastError ? esc(w.lastError) : `監看 ${w.panes?.length ?? 0} 個 agent 窗格`}`;
 	} catch { $("status").innerHTML = `<span class="dot off"></span>連不上管家`; }
 	if (firstLoad) { firstLoad = false; await syncCurrent(); }
+	window.refreshWtCounts(false);
 	if (!sel || !state.projects.find((p) => p.id === sel)) sel = (state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity)[0] || state.projects[0])?.id;
 	render();
 }
+// 專案欄的 ⑂ 徽章:各專案有幾個另外開的 worktree(伺服器快取 20 秒;最多 15 秒問一次)
+let wtCounts = {}, wtCountsAt = 0;
+window.refreshWtCounts = (force = true) => {
+	if (!force && Date.now() - wtCountsAt < 15_000) return;
+	wtCountsAt = Date.now();
+	fetch("/api/worktree-counts").then((r) => (r.ok ? r.json() : null)).then((d) => {
+		if (!d?.counts || JSON.stringify(d.counts) === JSON.stringify(wtCounts)) return;
+		wtCounts = d.counts; renderNav();
+	}).catch(() => {});
+};
 const byActivity = (a, b) => (b.lastActivityAt || b.createdAt).localeCompare(a.lastActivityAt || a.createdAt);
 
 let editing = null; // 改名/拆分面板開著的專案:背景更新時不重畫簡報區,避免洗掉輸入
@@ -974,7 +1003,7 @@ function closeTool() { editing = null; $("tool").innerHTML = ""; }
 
 function renderNav() {
 	const open = (p) => state.cards.filter((c) => c.projectId === p.id && (c.column === "proposed" || c.column === "blocked")).length;
-	const item = (p) => `<div class="projrow ${p.id === sel ? "sel" : ""}"><button class="proj" data-id="${p.id}">${open(p) ? `<span class="badge">${open(p)}</span>` : ""}${window.codeMode?.hasUnsaved?.(p.id) ? '<span class="unsaved" title="程式碼頁面有還沒存的修改">●</span>' : ""}${p.private ? "🔒 " : ""}${esc(p.name)}<small>${p.lastActivityAt ? ago(p.lastActivityAt) : "尚無紀錄"}</small></button>${p.kind === "project" ? `<button class="pmore" data-pmenu="${p.id}" title="更多動作" aria-label="${esc(p.name)} 的更多動作">⋯</button>` : ""}</div>`;
+	const item = (p) => `<div class="projrow ${p.id === sel ? "sel" : ""}"><button class="proj" data-id="${p.id}">${open(p) ? `<span class="badge">${open(p)}</span>` : ""}${window.codeMode?.hasUnsaved?.(p.id) ? '<span class="unsaved" title="程式碼頁面有還沒存的修改">●</span>' : ""}${p.private ? "🔒 " : ""}${esc(p.name)}${wtCounts[p.id] ? `<span class="wtb" title="有 ${wtCounts[p.id]} 個另外開的分支 worktree(程式碼 → git 面板看)">⑂${wtCounts[p.id]}</span>` : ""}<small>${p.lastActivityAt ? ago(p.lastActivityAt) : "尚無紀錄"}</small></button>${p.kind === "project" ? `<button class="pmore" data-pmenu="${p.id}" title="更多動作" aria-label="${esc(p.name)} 的更多動作">⋯</button>` : ""}</div>`;
 	const active = state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity);
 	const special = state.projects.filter((p) => p.kind !== "project");
 	const pending = state.projects.filter((p) => p.status === "pending");
