@@ -760,11 +760,14 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				// 浮動球加進來的檔案:網頁有給內容(編輯器裡還沒存的版本)就用它,否則讀磁碟
 				const fileReqs: { path: string; content?: string }[] = (Array.isArray(b.files) ? b.files : []).slice(0, 10).filter((f: { path?: unknown }) => typeof f?.path === "string" && f.path);
 				// 圖片:只跟著這一題(最多 4 張);對話紀錄只存網頁做好的縮圖
-				const images: { data: string; mimeType: string }[] = (Array.isArray(b.images) ? b.images : []).slice(0, 4)
+				let images: { data: string; mimeType: string }[] = (Array.isArray(b.images) ? b.images : []).slice(0, 4)
 					.filter((i: { data?: unknown; mimeType?: unknown }) => typeof i?.data === "string" && /^image\/(png|jpeg|gif|webp)$/.test(String(i.mimeType)) && i.data.length < 8_000_000)
 					.map((i: { data: string; mimeType: string }) => ({ data: i.data, mimeType: i.mimeType }));
 				const thumbs: string[] = (Array.isArray(b.thumbs) ? b.thumbs : []).slice(0, 4).filter((t: unknown) => typeof t === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(t) && t.length < 60_000);
 				if (!message && !quote && !fileReqs.length && !images.length) return send(res, 400, { error: "請輸入問題" });
+				// 圈選一律附截圖;有讀到字、但沒有看得懂圖片的模型時,只用文字回答(不因為附圖整題失敗)
+				const imageRef = images.length ? imageRoute(p.private) : undefined;
+				if (images.length && !imageRef && snap?.text) images = [];
 				// 紀錄裡顯示成一則引用(出處 + 圈到的文字)
 				const shown = snap ? { path: snap.path ?? snap.label, from: snap.from, to: snap.to, text: (snap.text || "(圈到的是圖片)").slice(0, 4000) } : quote;
 				// 先記下問題(回答還沒回來時重新整理也看得到);「改用雲端重問」不重複記問題
@@ -781,7 +784,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				if (images.length) {
 					// 有圖片:用看得懂圖片的模型回答這一題(隱私專案只能用隱私模型)
-					const ref = imageRoute(p.private);
+					const ref = imageRef;
 					if (!ref) {
 						const bot = appendChat(p.id, { role: "bot", text: p.private ? "這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。" : "目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。", error: true });
 						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });

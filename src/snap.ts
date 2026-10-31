@@ -75,7 +75,12 @@ export function snapPrompt(s: SnapInfo, hasImage: boolean): string {
 	const where = s.from ? `${s.label} 第 ${s.from}${s.to && s.to !== s.from ? `–${s.to}` : ""} 行` : s.label;
 	const parts = [`\n\n【圈選】使用者在「${where}」圈了一塊畫面在問。回答要短、直接針對圈到的內容。`];
 	if (s.text) parts.push(`圈到的內容:\n\`\`\`\n${s.text}\n\`\`\``);
-	else if (hasImage) parts.push("圈到的是圖片(附在這題),沒有文字。");
+	if (s.text && hasImage) {
+		// 終端機、程式碼的字是原文;其他畫面的字是辨識出來的,可能有錯,以截圖為準
+		parts.push(s.kind === "terminal" || s.kind === "code"
+			? "圈到那一塊的截圖附在這題:上面的文字是原文(以文字為準),截圖用來看排版、顏色、標記。"
+			: "圈到那一塊的截圖附在這題:上面的文字可能不完整(文字辨識的錯字、漏掉的公式或圖表),以截圖為準。");
+	} else if (hasImage) parts.push("圈到的是圖片(附在這題),沒有文字。");
 	if (s.context) parts.push(`周圍的內容(參考用,不是使用者圈的):\n\`\`\`\n${s.context}\n\`\`\``);
 	return parts.join("\n");
 }

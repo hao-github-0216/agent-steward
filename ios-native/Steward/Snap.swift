@@ -1,5 +1,5 @@
 // 圈選提問(原生畫面):按圈選鈕 → 畫面凍結 → 手指拉框圈一塊 → 用 Vision 讀出框裡的字 → 小框直接問管家。
-// 跟網頁版一樣「文字優先」:讀得到字就送文字(整個畫面的字當周圍內容),讀不到才送截圖。
+// 一律把圈到的截圖送給管家;讀到的字一起送(整個畫面的字當周圍內容),終端機、程式碼換成原文。
 // 終端機、程式碼頁是管家網頁,它自己的圈選鈕可以用(能分辨是哪個 agent 窗格、交給那個 agent)。
 import SwiftUI
 import UIKit
@@ -249,11 +249,11 @@ struct SnapSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
                     DisclosureGroup(isExpanded: $showText) {
-                        Text(hasText ? snap.text : "沒有讀到文字,會把圈到的圖片送給管家看。")
+                        Text(hasText ? snap.text : "沒有讀到文字,管家只看圈到的圖片。")
                             .font(.footnote).foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     } label: {
-                        Label(hasText ? "讀到的文字(\(snap.text.count) 字)" : "沒有讀到文字", systemImage: "text.viewfinder")
+                        Label(hasText ? "讀到的文字(\(snap.text.count) 字,和圖片一起送)" : "沒有讀到文字", systemImage: "text.viewfinder")
                     }
                 } footer: {
                     Text(snap.label)

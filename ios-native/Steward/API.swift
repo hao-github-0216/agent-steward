@@ -136,7 +136,7 @@ struct API {
         return try await call(request("api/chat", method: "POST", body: body), slow: true)
     }
 
-    /// 圈選提問:讀得到字送文字(整個畫面的字當周圍內容),讀不到才送截圖
+    /// 圈選提問:一律附上圈到的截圖,讀到的字一起送(整個畫面的字當周圍內容)
     func askSnap(project: String, message: String, snap: SnapResult) async throws -> ChatReply {
         let text = snap.text.trimmingCharacters(in: .whitespacesAndNewlines)
         var info: [String: Any] = ["kind": snap.kind, "label": snap.label, "text": text, "context": String(snap.context.prefix(12_000))]
@@ -144,7 +144,7 @@ struct API {
         if let f = snap.from { info["from"] = f }
         if let t = snap.to { info["to"] = t }
         var body: [String: Any] = ["project": project, "message": message, "snap": info]
-        if text.isEmpty, let a = await MainActor.run(body: { Attachment.image(snap.image) }), case .image(let data, let mime, let thumb) = a.kind {
+        if let a = await MainActor.run(body: { Attachment.image(snap.image) }), case .image(let data, let mime, let thumb) = a.kind {
             body["images"] = [["data": data, "mimeType": mime]]
             body["thumbs"] = [thumb]
         }

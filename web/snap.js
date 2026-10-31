@@ -1,5 +1,5 @@
 // 圈選提問:Alt+S(或浮動球旁的圈選鈕、長按浮動球)→ 畫面變暗 → 手畫一圈或拉框 →
-// 取出那塊的文字(沒有文字才截圖)→ 圈選處旁邊跳出小框問管家。
+// 取出那塊的文字(圈到圖片、圖表、PDF 頁時一律加附截圖)→ 圈選處旁邊跳出小框問管家。
 // 依賴主頁面的全域:$, esc, post, toast, sel, selectProject, toggleBall, copyText, manualCopy, xterm, focusTerm, pref
 (() => {
 	const KEY_DEFAULT = "Alt+S";
@@ -197,13 +197,9 @@
 			firstNode ||= n;
 		}
 		const text = joinPieces(pieces);
-		// 圖片、圖表:PDF 頁面的畫布有文字層,有文字就不算
+		// 圖片、圖表、PDF 頁面(畫布):圈到就一律截圖附上,文字一起送(網頁截不到純文字的地方,只截得到這些)
 		const media = [...root.querySelectorAll("img,canvas,video")].filter((m) => !m.closest(SKIP) && hits(m.getBoundingClientRect()));
-		const area = (rect.right - rect.left) * (rect.bottom - rect.top);
-		const cover = (list) => list.reduce((a, m) => { const r = m.getBoundingClientRect(); return a + Math.max(0, Math.min(r.right, rect.right) - Math.max(r.left, rect.left)) * Math.max(0, Math.min(r.bottom, rect.bottom) - Math.max(r.top, rect.top)); }, 0) / area;
-		const pictures = media.filter((m) => !(m.tagName === "CANVAS" && m.closest(".pdfpage")));
-		const needImage = !text.trim() ? media.length > 0 : cover(pictures) > 0.4;
-		const images = needImage ? [cropImage(media, rect)].filter(Boolean) : [];
+		const images = media.length ? [cropImage(media, rect)].filter(Boolean) : [];
 		// 出處:PDF 標頁碼
 		let label = info.label;
 		const page = (firstNode?.parentElement ?? document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2))?.closest?.(".pdfpage");
