@@ -1,6 +1,7 @@
 // 管家的宿主端狀態:專案登記、每個專案的進度狀態、工作卡、對話記錄讀取進度。
 // 存成一個 JSON 檔,寫入走「寫暫存檔再 rename」確保不會寫一半。
 // (管家自己的對話記憶在 pi durable 的 SQLite 裡,這裡只放要被快速讀取、給看板與簡報用的結構化狀態。)
+import type { CardAuthor, UserEdit } from "./authorship.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -74,6 +75,10 @@ export interface Card {
 	refreshing?: boolean;
 	/** 追問對話(完成/卡住後接著問做這張卡的 agent) */
 	thread?: CardTurn[];
+	/** 誰寫的:user=使用者自己建的;steward=管家擬的(沒有這欄的舊卡視為管家擬的) */
+	authoredBy?: CardAuthor;
+	/** 使用者改了管家擬的哪些字(改前 → 改後) */
+	userEdits?: UserEdit[];
 	createdAt: string;
 	updatedAt: string;
 }

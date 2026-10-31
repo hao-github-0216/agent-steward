@@ -1,4 +1,5 @@
 // HTTP API + 看板網頁 + SSE 即時更新。只綁本機與 tailnet IP。
+import { diffEdits, mergeEdits, textOf } from "./authorship.ts";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathInside, serviceHint } from "./platform.ts";
 import { connect as netConnect } from "node:net";
@@ -847,9 +848,14 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					doneCriteria: String(f.doneCriteria ?? entry.draft.doneCriteria).trim(),
 				};
 				if (!draft.title || !draft.instructions) return send(res, 400, { error: "標題和工作說明不能空白" });
+				// 第一次有人改欄位時,把管家擬的原稿留下來
+				const original = entry.draft.original ?? textOf(entry.draft);
+				const changed = diffEdits(original, draft).length > 0;
+				if (changed) draft.original = original;
 				if (b.action === "save") return send(res, 200, { bot: updateChat(p.id, entry.id, { draft }) });
 				if (b.action !== "propose" && b.action !== "dispatch") return send(res, 400, { error: "bad action" });
-				const card = store.addCard({ projectId: p.id, title: draft.title, agent: draft.agent, instructions: draft.instructions, doneCriteria: draft.doneCriteria || "完成上述要求並說明改了什麼" });
+				const edits = diffEdits(original, draft);
+				const card = store.addCard({ projectId: p.id, title: draft.title, agent: draft.agent, instructions: draft.instructions, doneCriteria: draft.doneCriteria || "完成上述要求並說明改了什麼", authoredBy: "steward", ...(edits.length ? { userEdits: edits } : {}) });
 				if (b.action === "dispatch") {
 					// 跟看板上「提案 → 已核准」一樣:派工並追蹤
 					store.updateCard(card.id, { column: "approved", note: "派工中…" });
@@ -975,7 +981,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (!p || p.kind !== "project") return send(res, 404, { error: "找不到專案" });
 				const title = String(b.title ?? "").trim();
 				if (!title) return send(res, 400, { error: "請填標題" });
-				return send(res, 200, store.addCard({ projectId: p.id, title, agent: String(b.agent ?? "pi"), instructions: String(b.instructions ?? ""), doneCriteria: String(b.doneCriteria ?? "完成上述要求並說明改了什麼") }));
+				return send(res, 200, store.addCard({ projectId: p.id, title, agent: String(b.agent ?? "pi"), instructions: String(b.instructions ?? ""), doneCriteria: String(b.doneCriteria ?? "完成上述要求並說明改了什麼"), authoredBy: "user" }));
 			}
 			// 資訊卡「在終端機看這個窗格」:用 terminalId 找(窗格搬過 space 也找得到)
 			m = path.match(/^\/api\/cards\/([^/]+)\/focus$/);
@@ -1042,7 +1048,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				const b = await body(req);
 				const patch: Record<string, string> = {};
 				for (const k of ["title", "agent", "instructions", "doneCriteria", "note"]) if (typeof b[k] === "string") patch[k] = b[k];
-				return send(res, 200, store.updateCard(card.id, patch));
+				// 管家擬的卡被改了:記下改前 → 改後(使用者自己建的卡不用記)
+				const edits = card.authoredBy === "user" ? [] : diffEdits(textOf(card), textOf({ ...card, ...patch }));
+				return send(res, 200, store.updateCard(card.id, edits.length ? { ...patch, userEdits: mergeEdits(card.userEdits, edits) } : patch));
 			}
 			// 網頁端診斷記錄(複製流程等),寫到 logs/client.log,上限 2MB
 			if (req.method === "POST" && path === "/api/clientlog") {
