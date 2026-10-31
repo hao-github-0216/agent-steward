@@ -22,7 +22,7 @@ import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./pl
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
-import { compatInfo, fillEmptyRouting, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
+import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, inProject, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
@@ -697,7 +697,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const inside = w ? panes.filter((x) => x.workspace_id === w.workspace_id) : [];
 					spaceInfo[p.id] = { label: w?.label, nameDiffers: !!w && (w.label ?? "").trim() !== p.name.trim(), strays: w ? strayPanes(store, p, panes).length : 0, panes: inside.length, working: inside.filter((x) => x.agent && (x.agent_status === "working" || x.agent_status === "blocked")).length };
 				}
-				return send(res, 200, { projects: store.projects(), cards: store.cards(), spaceInfo, watcher: watcher.status() });
+				return send(res, 200, { projects: store.projects(), cards: store.cards(), spaceInfo, watcher: watcher.status(), setup: { missing: missingCoreRoutes() } });
 			}
 			// ---------- 建立專案 / space ----------
 			if (req.method === "GET" && path === "/api/fs") {
@@ -786,7 +786,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					// 有圖片:用看得懂圖片的模型回答這一題(隱私專案只能用隱私模型)
 					const ref = imageRef;
 					if (!ref) {
-						const bot = appendChat(p.id, { role: "bot", text: p.private ? "這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。" : "目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。", error: true });
+						const bot = appendChat(p.id, { role: "bot", text: p.private ? "這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。" : chatUsesCli() ? "聊天室現在用的是電腦上的 agent CLI(例如 Claude Code、Codex),管家沒辦法把圖片交給它看,所以這題沒辦法看圖。要看圖的話,到設定 → AI 接口登入一個看得懂圖片的模型(ChatGPT 或 Claude 訂閱、GitHub Copilot,或 OpenAI、Gemini、OpenRouter 的 API 金鑰),再到路由把它設成聊天室或提案檢查的模型。" : "目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。", error: true });
 						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 					}
 					try {

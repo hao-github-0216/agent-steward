@@ -32,7 +32,9 @@ header h1 { font-size: 16px; margin: 0; }
 .loginbox input { font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .loginbox button { font: inherit; padding: 10px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
 .loginerr { color: var(--bad); font-size: 13px; min-height: 1em; }
-.pwbanner { position: fixed; left: 16px; bottom: 16px; z-index: 58; max-width: min(380px, calc(100vw - 100px)); background: var(--warn); color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+#banners { position: fixed; left: 16px; bottom: 16px; z-index: 58; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 100px)); }
+#banners:empty { display: none; }
+.pwbanner { background: var(--warn); color: #fff; font-size: 13px; padding: 8px 12px; border-radius: 10px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
 /* ---------- 設定 ---------- */
 .modal.setmodal .box { width: min(860px, 100%); height: min(680px, calc(var(--appH, 100dvh) - 40px)); }
 .modal.setmodal .mbody { flex-direction: row; gap: 0; padding: 0; flex: 1; min-height: 0; }
@@ -269,7 +271,7 @@ body.term nav.open, body.code nav.open { transform: none; }
 @media (pointer: coarse) {
 	body.term .tkeys { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; align-items: center; background: #282828; border-top: 1px solid rgba(255,255,255,.08); }
 	body.term #term { height: calc(100% - 48px); }
-	body.term .pwbanner { bottom: 60px; } /* 「還沒設定管理密碼」提示不要蓋住按鍵列 */
+	body.term #banners { bottom: 60px; } /* 左下角的提示不要蓋住按鍵列 */
 }
 .tkeys button { flex: 0 0 auto; min-width: 42px; height: 34px; padding: 0 11px; border: 0; border-radius: 8px; background: #504945; color: #fbf1c7; font: 500 15px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; box-shadow: 0 1px 0 rgba(0,0,0,.45); touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .tkeys button.down { background: #7c6f64; }
@@ -956,6 +958,7 @@ let firstLoad = true;
 async function load() {
 	try {
 		state = await fetch("/api/board").then((r) => r.json());
+		syncSetupBanner(state.setup);
 		const w = state.watcher || {};
 		$("status").innerHTML = `<span class="dot ${w.lastError ? "off" : ""}"></span>${w.lastError ? esc(w.lastError) : `監看 ${w.panes?.length ?? 0} 個 agent 窗格`}`;
 	} catch { $("status").innerHTML = `<span class="dot off"></span>連不上管家`; }
@@ -2138,6 +2141,7 @@ async function saveSettings(close = true, quiet = false) {
 	const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: setState.s }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
 	if (r.error) { toast(r.error); return false; }
 	setState.s = r.settings;
+	load(); // 接上模型後,看板的「還沒接上模型」提示跟著消失
 	if (r.restartNeeded) toast("已儲存。埠號或位址要重新啟動管家才會生效");
 	else if (!quiet) toast("設定已儲存");
 	if (close) closeSettings();
@@ -2146,14 +2150,33 @@ async function saveSettings(close = true, quiet = false) {
 $("gearBtn").onclick = () => openSettings();
 async function syncPwBanner() {
 	const a = await fetch("/api/auth/status").then((x) => x.json()).catch(() => null);
-	document.querySelector(".pwbanner")?.remove();
+	document.querySelector(".pwbanner:not(.setupbanner)")?.remove();
 	if (a?.authed && !a.hasPassword) {
 		const b = document.createElement("div");
 		b.className = "pwbanner";
 		b.textContent = "還沒設定管理密碼:除了這台電腦(和你的 Tailscale 裝置),其他地方都沒辦法登入。點這裡設定 →";
 		b.onclick = () => openSettings("access");
-		document.body.appendChild(b);
+		bannerBox().appendChild(b);
 	}
+}
+/** 左下角的提示列(密碼、模型還沒接上):疊在一起不重疊 */
+function bannerBox() {
+	let box = $("banners");
+	if (!box) { box = document.createElement("div"); box.id = "banners"; document.body.appendChild(box); }
+	return box;
+}
+/** 自動記錄進度、提案檢查還沒接上模型(只裝了 agent CLI 的人會這樣):提醒去登入一個接口 */
+function syncSetupBanner(setup) {
+	const missing = setup?.missing || [];
+	let b = document.querySelector(".setupbanner");
+	if (!missing.length || inApp()) { b?.remove(); return; }
+	if (!b) {
+		b = document.createElement("div");
+		b.className = "pwbanner setupbanner";
+		b.onclick = () => openSettings("ai");
+		bannerBox().prepend(b);
+	}
+	b.textContent = `「${missing.join("」「")}」還沒接上模型,所以不會自動記錄進度、也不會開工作卡。電腦上的 agent CLI(Claude Code、Codex…)只能用在聊天。點這裡登入一個接口:ChatGPT/Claude/Copilot 訂閱、OpenAI/Gemini/OpenRouter 等 API 金鑰,或本地模型(Ollama、LM Studio)都可以 →`;
 }
 syncPwBanner();
 // 第一次使用:自動打開設定精靈(只有能改設定的人才會看到)

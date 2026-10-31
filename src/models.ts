@@ -264,6 +264,23 @@ export function supportsImages(ref: { provider: string; modelId: string }): bool
 	const m = (models as unknown as { getModel(p: string, id: string): { input?: string[] } | undefined }).getModel(ref.provider, ref.modelId);
 	return !!m?.input?.includes("image");
 }
+/**
+ * 自動記錄進度(整理 agent 回報)、提案檢查還沒接上模型:這兩項要呼叫管家的工具,不能用 agent CLI。
+ * 只裝了 Claude Code / Codex 這類 CLI 的人會停在這裡,看板要提醒(回傳缺的工作名稱)
+ */
+export function missingCoreRoutes(): string[] {
+	const s = settings();
+	return (["digest", "judge"] as const).filter((role) => {
+		const ref = parseRef(s.routing[role].primary);
+		const c = ref && s.providers.find((x) => x.id === ref.provider);
+		return !c || c.type === "agent-cli";
+	}).map((role) => ROLE_LABEL[role]);
+}
+/** 聊天室現在用的是不是電腦上的 agent CLI(看不懂圖片) */
+export function chatUsesCli(): boolean {
+	const ref = parseRef(settings().routing.chat.primary);
+	return !!ref && settings().providers.some((c) => c.id === ref.provider && c.type === "agent-cli");
+}
 /** 有圖片的問題用哪個模型:聊天主要 → 聊天備用 → 提案檢查主要 → 提案檢查備用;隱私專案只能用隱私模型 */
 export function imageRoute(privateProject: boolean): { provider: string; modelId: string } | undefined {
 	const r = settings().routing;

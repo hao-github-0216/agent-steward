@@ -159,6 +159,12 @@ struct Board: Codable {
     var projects: [Project]
     var cards: [Card]?
     var spaceInfo: [String: SpaceInfo]?
+    /// 還沒接上模型的核心工作(整理 agent 回報、提案檢查);只裝了 agent CLI 的人會有
+    var setup: BoardSetup?
+}
+
+struct BoardSetup: Codable {
+    var missing: [String]?
 }
 
 struct ChatQuote: Codable, Hashable {

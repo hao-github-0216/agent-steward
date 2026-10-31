@@ -318,6 +318,9 @@ final class AppModel {
         }
     }
 
+    /// 還沒接上模型的核心工作:看板上方提醒(不會自動記錄進度、不會開工作卡)
+    var missingRoutes: [String] = []
+
     func refresh() async {
         guard let api else { return }
         loading = true
@@ -327,6 +330,7 @@ final class AppModel {
             allProjects = b.projects
             cards = b.cards ?? []
             spaces = b.spaceInfo ?? [:]
+            missingRoutes = b.setup?.missing ?? []
             lastError = nil
             // 目前專案被停止追蹤或收起來了:換到最近活動的專案
             if phase == .ready, let p = current, p.status != "active", let next = projects.first?.id { switchProject(next) }

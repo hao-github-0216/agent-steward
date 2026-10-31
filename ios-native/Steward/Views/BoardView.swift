@@ -17,6 +17,22 @@ struct BoardView: View {
     var body: some View {
         GeometryReader { geo in
             List {
+                if !model.missingRoutes.isEmpty {
+                    Section {
+                        Button { model.present(.settings) } label: {
+                            Label {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("「\(model.missingRoutes.joined(separator: "」「"))」還沒接上模型").font(.subheadline.bold())
+                                    Text("所以不會自動記錄進度、也不會開工作卡。電腦上的 agent CLI(Claude Code、Codex…)只能用在聊天。到設定 → AI 接口登入一個:ChatGPT/Claude/Copilot 訂閱、OpenAI/Gemini/OpenRouter 等 API 金鑰,或本地模型都可以。")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            }
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                }
                 if !model.boardCollapsed {
                     Section {
                         columns(width: geo.size.width)
