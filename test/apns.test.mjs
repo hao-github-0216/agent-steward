@@ -5,9 +5,9 @@ import { generateKeyPairSync, verify } from "node:crypto";
 import { jwt, messageFromText } from "../src/apns.ts";
 
 test("messageFromText:第一行當標題、去掉看板網址、帶專案連結", () => {
-	const m = messageFromText("⚠️ 工作卡卡住(WA2)\n修 Q2\n等使用者確認\n\nhttps://mac.ts.net:8793/", "p1");
-	assert.equal(m.title, "⚠️ 工作卡卡住(WA2)");
-	assert.equal(m.body, "修 Q2\n等使用者確認");
+	const m = messageFromText("⚠️ 工作卡卡住(demo-project)\n範例任務\n等使用者確認\n\nhttps://mac.ts.net:8793/", "p1");
+	assert.equal(m.title, "⚠️ 工作卡卡住(demo-project)");
+	assert.equal(m.body, "範例任務\n等使用者確認");
 	assert.equal(m.link, "agentsteward://project/p1");
 	assert.equal(m.thread, "p1");
 	const p = messageFromText("🗂 提案(X)\n標題\n\n到看板核准:https://a.b/");
