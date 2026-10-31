@@ -138,7 +138,8 @@ if ($env:STEWARD_NO_SERVICE) { $NoService = $true }
 		# ---------- 4. herdr(專案管家用的版本) ----------
 		$HerdrDir = Join-Path $Bin "herdr"
 		if (-not $SkipHerdr) {
-			$hj = Get-Content (Join-Path $App "herdr.json") -Raw | ConvertFrom-Json
+			# 一定要指定 UTF-8:Windows PowerShell 5.1 預設用系統編碼(繁中是 Big5)讀,中文說明會變亂碼、JSON 解析失敗
+			$hj = Get-Content (Join-Path $App "herdr.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 			$tagFile = Join-Path $Bin "herdr.tag"
 			$have = if (Test-Path $tagFile) { (Get-Content $tagFile -Raw).Trim() } else { "" }
 			if ($have -ne $hj.tag) {
@@ -245,7 +246,7 @@ while ($true) {
 
 		# ---------- 10. 確認啟動 ----------
 		$port = 8791
-		try { $s = Get-Content (Join-Path $Root "settings.json") -Raw | ConvertFrom-Json; if ($s.server.port) { $port = $s.server.port } } catch {}
+		try { $s = Get-Content (Join-Path $Root "settings.json") -Raw -Encoding UTF8 | ConvertFrom-Json; if ($s.server.port) { $port = $s.server.port } } catch {}
 		$url = "http://127.0.0.1:$port/"
 		$ok = $false
 		for ($i = 0; $i -lt 40; $i++) {
