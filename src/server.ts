@@ -36,6 +36,7 @@ import { askCard, cancelQuestion, FollowUpError, retryQuestion } from "./followu
 import { BranchError, callerPane, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
 import { herdrCli, listPanes, listWorkspaces } from "./herdr.ts";
 import { boundSpace, ensureSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
+import { worktreeTree } from "./worktree-tree.ts";
 import { chatPlan, findWorktree, ignoreWorktrees, listWorktrees, mergePreview, mergeWorktree, removeWorktreeItem, untrackGitlinks, worktreeCounts, worktreeView, WorktreesError } from "./worktrees.ts";
 import { createProject } from "./create.ts";
 import { ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
@@ -238,6 +239,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		const deps = () => ({ panes: listPanes() ?? [] });
 		const b = req.method === "POST" ? await body(req).catch(() => ({})) : {};
 		if (req.method === "GET" && sub === "") return send(res, 200, await listWorktrees(store, p, deps()));
+		if (req.method === "GET" && sub === "tree") return send(res, 200, await worktreeTree(store, p, deps()));
 		if (req.method === "POST" && sub === "ignore") return send(res, 200, await ignoreWorktrees(store, p, deps()));
 		if (req.method === "POST" && sub === "untrack") return send(res, 200, await untrackGitlinks(store, p, deps()));
 		const m = sub.match(/^([0-9a-f]{10})\/(merge|remove|chat)$/);

@@ -84,7 +84,7 @@ export interface WorktreeDeps {
 
 // ---------- git ----------
 
-function run(cwd: string, args: string[], timeout = 20_000): Promise<{ code: number; out: string; err: string }> {
+export function run(cwd: string, args: string[], timeout = 20_000): Promise<{ code: number; out: string; err: string }> {
 	return new Promise((res) => {
 		execFile("git", ["-C", cwd, ...args], { timeout, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" } }, (e, out, err) => {
 			res({ code: e ? ((e as { code?: number }).code ?? 1) : 0, out: String(out), err: String(err) });
@@ -97,7 +97,7 @@ async function ok(cwd: string, args: string[], timeout?: number): Promise<string
 	return r.out;
 }
 
-const real = (p: string) => {
+export const real = (p: string) => {
 	try {
 		return realpathSync(p);
 	} catch {
