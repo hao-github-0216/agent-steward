@@ -196,9 +196,10 @@ struct WorktreeGraphView<Actions: View>: View {
         return max(x - 60, 0)
     }
 
-    /// 枝由上到下的順序:已合併的(線短)靠近主線,還沒合併的放下面,各自照分岔點新到舊,線比較不會交叉
+    /// 枝由上到下的順序:已合併的(線短)靠近主線,還沒合併的放下面,線比較不會交叉
     private func lanes(_ g: WorktreeTree.Graph) -> [WorktreeTree.Branch] {
-        let merged = g.branches.filter { $0.mergedAt != nil }.sorted { $0.forkAt > $1.forkAt }
+        // 越晚合併的越靠近主線:合回去的直線才不會穿過下面那條的標籤
+        let merged = g.branches.filter { $0.mergedAt != nil }.sorted { ($0.mergedAt ?? 0, $0.forkAt) > ($1.mergedAt ?? 0, $1.forkAt) }
         let open = g.branches.filter { $0.mergedAt == nil }.sorted { $0.forkAt > $1.forkAt }
         return merged + open
     }

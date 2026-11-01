@@ -334,6 +334,9 @@ struct WorktreeSection: View {
         } else if w.isMissing {
             Text("資料夾已經不在了")
         } else {
+            if w.locked != nil {
+                Section("🔒 鎖住:開它的 session 還在用這個 worktree,只擋移除;看檔案、對話、合併都可以") {}
+            }
             Button { Task { await ctl.chat(w, model, project) } } label: { Label("跟它對話", systemImage: "bubble.left.and.bubble.right") }
             Button { ctl.browse(w, model) } label: { Label("看/改檔案", systemImage: "folder") }
             Button { ctl.merging = w } label: { Label("合併回主線…", systemImage: "arrow.triangle.merge") }
@@ -433,7 +436,7 @@ struct WorktreeRow: View {
                     } else {
                         Text("開它的 agent:不明")
                     }
-                    if w.locked != nil { Image(systemName: "lock.fill").accessibilityLabel("已鎖定") }
+                    if w.locked != nil { Text("· 🔒 鎖住") }
                 }
                 .font(.caption).foregroundStyle(.tertiary)
             }
