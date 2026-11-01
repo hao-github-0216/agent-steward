@@ -9,7 +9,7 @@ import { pathInside } from "./platform.ts";
 import { HOME } from "./config.ts";
 
 export interface TreeFolder {
-	path: string; // 相對 repo 根目錄,例如 "WA1"
+	path: string; // 相對 repo 根目錄,例如 "hw1"
 	projectId?: string; // 已登記的專案
 	name: string;
 	current: boolean; // 正在看的專案
@@ -52,6 +52,7 @@ export interface WorktreeTree {
 	items: (WorktreeItem & { folder: string })[]; // 和 /worktrees 的 items 一樣,多一個 folder;第一個是主資料夾
 	leftovers: LeftoverBranch[];
 	graph: { nodes: GraphNode[]; branches: GraphBranch[]; truncated: boolean };
+	warnings: { unignored: { id: string; path: string; pattern: string }[]; gitlinks: string[] }; // 和 GET worktrees 一樣
 }
 
 const MAX_CHAIN = 5000;
@@ -149,7 +150,7 @@ export async function worktreeTree(store: Store, p: Project, deps: WorktreeDeps 
 	]) : { nodes: [], branches: [], truncated: false };
 	for (const l of leftovers) l.ahead = graph.branches.find((g) => g.key === `branch:${l.branch}`)?.ahead ?? 0;
 
-	return { repo: true, repoRoot, repoName: repoRoot.split(/[\\/]/).pop() ?? repoRoot, target, currentFolder, folders, items, leftovers, graph };
+	return { repo: true, warnings: list.warnings, repoRoot, repoName: repoRoot.split(/[\\/]/).pop() ?? repoRoot, target, currentFolder, folders, items, leftovers, graph };
 }
 
 /**

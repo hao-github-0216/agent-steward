@@ -119,3 +119,4 @@
 - `graph.branches[].key`:worktree 用它的 `id`(和 items 對得上,節點可以直接用 chat/files/merge/remove);留下的分支是 `branch:<名稱>`,只顯示、沒有操作。
 - 資料夾樹:repo →(每個 folder)→ 歸在那裡的 items 與 leftovers;`current` 的資料夾預設展開,其他收合並顯示數量(items + 未合併的 leftovers)。
 - 分岔圖:主線畫成一條線、nodes 依序排開,`gapBefore > 0` 畫「⋯ N 個 commit」;每條 branch 從 `forkAt` 長出一條枝,標 `branch`、`ahead`、開它的 agent;有 `mergedAt` 的畫一條線合回那個點並標「✔ 已合併」。
+- 分岔圖一打開建議捲到「最早一條還沒合併的分支的分岔點」(沒有就最新的 commit),手機上才看得到要處理的分支。

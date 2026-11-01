@@ -319,6 +319,47 @@ body.code #fontDown, body.code #fontUp, body.code #fontSize { display: none; }
 .wt-row .src { font-size: 10px; border-radius: 6px; padding: 0 5px; background: var(--chip); color: var(--muted); flex: none; }
 .wt-row .src-claude { color: #b4541a; } .wt-row .src-steward { color: var(--accent); } .wt-row .src-manual { color: var(--ok); }
 .git-sub { padding: 6px 14px; font-size: 12px; border-bottom: 1px solid var(--line); }
+/* 分支樹狀圖 */
+.wt-tree { padding: 4px 0 6px; }
+.wt-repo { display: flex; align-items: center; gap: 8px; padding: 6px 14px 4px; font-weight: 600; font-size: 13px; }
+.wt-repo .hint { font-weight: 400; font-size: 11px; color: var(--muted); }
+.wt-repo button { margin-left: auto; }
+.wt-folder { margin-left: 14px; border-left: 1px solid var(--line); }
+.wt-fh { display: flex; align-items: center; gap: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; user-select: none; }
+.wt-fh:hover { background: var(--chip); }
+.wt-fh .tw { width: 10px; color: var(--muted); }
+.wt-fh .hint { font-size: 11px; color: var(--accent); }
+.wt-folder.cur > .wt-fh { font-weight: 600; }
+.wt-kids { margin-left: 16px; border-left: 1px dashed var(--line); }
+.wt-kids .wt-row { border-top: 0; padding: 4px 10px 8px; }
+.wt-row.left { opacity: .75; }
+.wt-none { padding: 2px 10px 6px; font-size: 12px; }
+.cv-pv-wtmap { overflow: auto; }
+.wt-maphead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.wt-maphead .sp { flex: 1; }
+.wt-maphead .seg { display: inline-flex; gap: 0; }
+.wt-maphead .seg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.wt-mapbody { padding: 8px 4px 24px; max-width: 100%; }
+.wt-mapbody .wt-tree { max-width: 720px; }
+.wt-graphwrap { overflow-x: auto; padding: 8px 12px; -webkit-overflow-scrolling: touch; }
+.wt-graph { display: block; font-family: inherit; }
+.wt-graph .gl-main { stroke: var(--ink); stroke-width: 3; }
+.wt-graph .gl-node { fill: var(--panel); stroke: var(--ink); stroke-width: 2.5; }
+.wt-graph .gl-c, .wt-graph .gl-s, .wt-graph .gl-gap, .wt-graph .gl-b { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+.wt-graph .gl-c { font-size: 11px; fill: var(--muted); font-family: ui-monospace, monospace; }
+.wt-graph .gl-s { font-size: 11px; fill: var(--muted); }
+.wt-graph .gl-gap { font-size: 11px; fill: var(--muted); }
+.wt-graph .gl-label { font-size: 12px; font-weight: 600; fill: var(--ink); }
+.wt-graph .gl-br { cursor: pointer; }
+.wt-graph .gl-path { fill: none; stroke: currentColor; stroke-width: 2.5; }
+.wt-graph .gl-path.merged { stroke-dasharray: 6 4; opacity: .7; }
+.wt-graph .gl-tip { fill: currentColor; }
+.wt-graph .gl-b { font-size: 12px; font-weight: 600; fill: currentColor; }
+.wt-graph .gl-hit { fill: transparent; }
+.wt-graph .gl-br:hover .gl-hit, .wt-graph .gl-br.on .gl-hit { fill: currentColor; fill-opacity: .08; }
+.wt-graph .gl-br.on .gl-path { stroke-width: 4; }
+.wt-detail { margin: 6px 16px; max-width: 560px; border: 1px solid var(--line); border-radius: 8px; padding: 2px 0; }
+.wt-detail.hint { border: 0; padding: 8px 0; }
 .wt-row button:disabled { opacity: .4; cursor: default; }
 .wt-row .acts, .wt-warn .acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .wt-warn { margin: 6px 14px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--ink); font-size: 12px; }

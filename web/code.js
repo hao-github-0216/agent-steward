@@ -894,6 +894,14 @@
 			const ver = src?.model && !src.model.isDisposed() ? src.model.getAlternativeVersionId() : null;
 			if (fresh || (ver !== null && ver !== t.srcVer && !t.dirty)) renderNb(t);
 			bar(g, `<span>${t.readonly ? "Notebook(檔案太大,唯讀)" : "Notebook · 點程式碼編輯,Shift+Enter 執行"}</span><span class="sp"></span><button class="small" data-bar="nbreload">重新載入</button><button class="small" data-bar="nbraw">${mobile() ? "原始 JSON" : "編輯原始 JSON"}</button>`);
+		} else if (t.kind === "wtmap") {
+			surface(g, "previewEl");
+			const fresh = !t.pv || t.pv.parentNode !== g.previewEl;
+			pvNode(g, t);
+			if (fresh) wireWtMap(t);
+			showPv(g, t);
+			renderWtMap(t);
+			bar(g, `<span>分支圖:${esc(cm.wts?.repoName || "")} 的 worktree 與 agent 留下的分支</span>`);
 		} else if (t.kind === "md") {
 			surface(g, "previewEl");
 			pvNode(g, t).classList.add("md");
@@ -1993,22 +2001,148 @@
 			<div class="l2">${who}</div><div class="l2">${bits}</div>
 			<div class="acts"><button class="small" data-wa="chat" ${x.exists ? "" : "disabled"}>跟它對話</button><button class="small" data-wa="files" ${x.exists && !viewing ? "" : "disabled"}>看/改檔案</button><button class="small" data-wa="merge" ${x.branch && x.ahead ? "" : "disabled"} title="${x.ahead ? "" : "沒有比主線多的 commit"}">合併回主線</button><button class="small" data-wa="remove">移除</button></div></div>`;
 	}
+	function leftRow(l) {
+		const who = l.session ? `${esc(agentName(l.session.agent))} 開的` : "開它的 session 不明";
+		return `<div class="wt-row left" title="${esc(l.branch)}"><div class="l1"><span class="src src-${l.source}">${WT_SRC[l.source]}</span><b>${esc(l.branch)}</b></div>
+			<div class="l2">worktree 已移除 · ${l.merged ? "✔ 已合併" : `還沒合併 · ↑${l.ahead}`} · ${who}${l.lastModified ? ` · ${ago(l.lastModified)}` : ""}</div></div>`;
+	}
+	/** 資料夾樹:repo → 作業資料夾 → worktree(可操作)/ 留下的分支(只顯示);目前的資料夾預設展開 */
+	function folderTree(t) {
+		const groups = [...t.folders.map((f) => ({ ...f })), { path: "", name: "其他(不屬於任何作業資料夾)", current: false, other: true }];
+		const rows = groups.map((f) => {
+			const items = t.items.filter((x) => x.source !== "main" && x.folder === f.path);
+			const lefts = t.leftovers.filter((x) => x.folder === f.path);
+			if (f.other && !items.length && !lefts.length) return "";
+			const n = items.length + lefts.filter((x) => !x.merged).length;
+			const stored = gitFold(`wtf:${t.repoRoot}:${f.path}`);
+			const folded = stored ?? !f.current;
+			const kids = folded ? "" : `<div class="wt-kids">${items.map(wtRow).join("")}${lefts.map(leftRow).join("")}${items.length || lefts.length ? "" : '<div class="hint wt-none">沒有分支</div>'}</div>`;
+			return `<div class="wt-folder${f.current ? " cur" : ""}"><div class="wt-fh" data-wtfold="${esc(f.path)}"><span class="tw">${folded ? "▸" : "▾"}</span>${f.other ? "" : "📂 "}${esc(f.name)}${f.current ? '<span class="hint">目前</span>' : ""}${n ? `<span class="wtb">⑂${n}</span>` : ""}</div>${kids}</div>`;
+		}).join("");
+		const main = t.items.find((x) => x.source === "main");
+		return `<div class="wt-tree"><div class="wt-repo">🗂 ${esc(t.repoName)}<span class="hint">主線 ${esc(t.target || "(detached)")}</span>${cm.wt && main ? '<button class="small" data-wa="home">回主資料夾</button>' : ""}</div>${rows}</div>`;
+	}
+	function wtWarn(t) {
+		if (t.warnings.gitlinks.length) return `<div class="wt-warn">⚠ 這些 worktree 已經被誤 commit 成子專案,之後的 commit 會一直卡住:${t.warnings.gitlinks.map(esc).join("、")}<div class="acts"><button class="small" data-wfix="untrack">從版本控制移除</button></div></div>`;
+		if (t.warnings.unignored.length) return `<div class="wt-warn">⚠ ${t.warnings.unignored.length} 個 worktree 放在 repo 裡、沒被 .gitignore 排除,一次「全部加入」就會被誤 commit。<div class="acts"><button class="small" data-wfix="ignore">加入 .gitignore</button></div></div>`;
+		return "";
+	}
 	function wtSection() {
 		const w = cm.wts;
 		if (!w || w.error || !w.repo) return w?.error ? `<div class="hint" style="padding:6px 14px">分支總覽讀不到:${esc(w.error)}</div>` : "";
-		const rest = w.items.filter((x) => x.source !== "main");
-		const mine = rest.filter((x) => x.relevant || x.id === cm.wt?.id), other = rest.filter((x) => !x.relevant && x.id !== cm.wt?.id);
-		const warn = [];
-		if (w.warnings.gitlinks.length) warn.push(`<div class="wt-warn">⚠ 這些 worktree 已經被誤 commit 成子專案,之後的 commit 會一直卡住:${w.warnings.gitlinks.map(esc).join("、")}<div class="acts"><button class="small" data-wfix="untrack">從版本控制移除</button></div></div>`);
-		else if (w.warnings.unignored.length) warn.push(`<div class="wt-warn">⚠ ${w.warnings.unignored.length} 個 worktree 放在 repo 裡、沒被 .gitignore 排除,一次「全部加入」就會被誤 commit。<div class="acts"><button class="small" data-wfix="ignore">加入 .gitignore</button></div></div>`);
-		const main = w.items.find((x) => x.source === "main");
-		const body = `${warn.join("")}${cm.wt && main ? wtRow(main) : ""}${mine.length ? mine.map(wtRow).join("") : '<div class="hint" style="padding:4px 14px 8px">這個專案沒有另外開的 worktree</div>'}
-			${other.length ? sec("wtother", "同一個 repo 的其他 worktree", other.length, "", other.map(wtRow).join("")) : ""}`;
-		return sec("wt", "分支(worktree)", mine.length, '<button data-wa="reload" title="重新整理">⟳</button>', body);
+		const total = w.items.filter((x) => x.source !== "main").length + w.leftovers.filter((x) => !x.merged).length;
+		return sec("wt", "分支(worktree)", total, '<button data-wa="map" title="在編輯區開「分支圖」:資料夾樹和分岔圖">開大圖</button><button data-wa="reload" title="重新整理">⟳</button>', wtWarn(w) + folderTree(w));
+	}
+
+	// ---------- 分支圖分頁(編輯區):資料夾樹 / 分岔圖 ----------
+	const SRC_COLOR = { claude: "#d9773a", steward: "var(--accent)", manual: "var(--ok)" };
+	function openWtMap() {
+		ensureLayout();
+		const existing = findTab("wtmap");
+		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
+		const g = cm.activeGroup || allGroups()[0];
+		const t = { key: "wtmap", group: g, kind: "wtmap", label: "分支圖", title: "分支圖:資料夾樹 / 分岔圖", mode: "graph", sel: null };
+		g.tabs.push(t);
+		setActiveGroup(g);
+		activate(g, t);
+	}
+	/** 分岔圖(SVG):主線一條線,關鍵 commit 依序排開;每條分支一列,從分岔點長出來,有合併就畫回主線 */
+	function graphSvg(t, sel) {
+		const g = t.graph;
+		if (!g.nodes.length) return '<div class="hint" style="padding:12px">沒有分支可以畫</div>';
+		const X0 = 130, DX = 190, MAINY = 50, ROW = 58, LX = 16;
+		const xs = [];
+		let x = X0;
+		g.nodes.forEach((n, i) => { if (i > 0) x += n.gapBefore ? DX + 40 : DX; xs.push(x); });
+		const brs = [...g.branches].sort((a, b) => a.forkAt - b.forkAt || (a.branch || "").localeCompare(b.branch || ""));
+		const W = Math.max(x + 360, 600), H = MAINY + (brs.length + 1) * ROW;
+		const info = (b) => b.key.startsWith("branch:") ? t.leftovers.find((l) => `branch:${l.branch}` === b.key) : t.items.find((i) => i.id === b.key);
+		// 一打開要捲到哪:最早一條還沒合併的分支的分岔點(沒有就最新的 commit)
+		const open = brs.filter((b) => b.mergedAt === undefined).map((b) => xs[b.forkAt]);
+		const focusX = Math.max(0, (open.length ? Math.min(...open) : xs[xs.length - 1]) - 60);
+		let svg = `<svg class="wt-graph" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" data-focus-x="${focusX}">`;
+		// 先畫分支(在下層),再畫主線、commit 點和文字(文字有描邊,線從後面穿過也看得清楚)
+		let brSvg = "";
+		// 主線與省略段
+		let mainSvg = `<line x1="${LX}" y1="${MAINY}" x2="${xs[xs.length - 1] + 30}" y2="${MAINY}" class="gl-main"/>`;
+		g.nodes.forEach((n, i) => {
+			if (n.gapBefore) {
+				const gx = i ? (xs[i - 1] + xs[i]) / 2 : (LX + X0) / 2;
+				mainSvg += `<text x="${gx}" y="${MAINY - 8}" class="gl-gap" text-anchor="middle">⋯ ${n.gapBefore} 個 commit</text>`;
+			}
+			mainSvg += `<g><title>${esc(n.short)} ${esc(n.subject)}\n${esc(n.date)}</title><circle cx="${xs[i]}" cy="${MAINY}" r="6" class="gl-node"/>
+				<text x="${xs[i]}" y="${MAINY + 22}" class="gl-c" text-anchor="middle">${esc(n.short)}</text>
+				<text x="${xs[i]}" y="${MAINY + 36}" class="gl-s" text-anchor="middle">${esc(n.subject.length > 22 ? n.subject.slice(0, 21) + "…" : n.subject)}</text></g>`;
+		});
+		mainSvg += `<text x="${LX}" y="${MAINY - 26}" class="gl-label">${esc(t.target || "")}</text>`;
+		brs.forEach((b, i) => {
+			const y = MAINY + (i + 1) * ROW + 16;
+			const it = info(b);
+			const src = it?.source || "manual";
+			const col = SRC_COLOR[src] || "var(--muted)";
+			const fx = xs[b.forkAt];
+			const merged = b.mergedAt !== undefined;
+			const ex = merged ? xs[b.mergedAt] - 26 : Math.max(fx + 120, xs[xs.length - 1] + 70);
+			const on = sel === b.key ? " on" : "";
+			const who = it?.session ? agentName(it.session.agent) + (it.session.alive ? `·${it.session.pane?.paneId || ""}` : "") : "";
+			const tag = it && !("id" in it) ? (merged ? "✔ 已合併 · worktree 已移除" : "worktree 已移除") : merged ? "✔ 已合併" : "";
+			brSvg += `<g class="gl-br${on}" data-gkey="${esc(b.key)}" style="color:${col}">
+				<path d="M${fx} ${MAINY} C ${fx} ${y}, ${fx} ${y}, ${fx + 24} ${y} L ${ex} ${y}${merged ? ` C ${ex + 26} ${y}, ${ex + 26} ${y}, ${ex + 26} ${MAINY}` : ""}" class="gl-path${merged ? " merged" : ""}"/>
+				${merged ? "" : `<circle cx="${ex}" cy="${y}" r="6" class="gl-tip"/>`}
+				<text x="${fx + 30}" y="${y - 8}" class="gl-b">${esc(b.branch || "(detached)")}</text>
+				<text x="${fx + 30}" y="${y + 16}" class="gl-s">↑${b.ahead} commit${who ? ` · ${esc(who)}` : ""}${tag ? ` · ${tag}` : ""}</text>
+				<rect x="${fx}" y="${y - 24}" width="${Math.max(ex - fx + 30, 220)}" height="48" class="gl-hit"/></g>`;
+		});
+		svg += brSvg + mainSvg;
+		return svg + "</svg>";
+	}
+	function renderWtMap(tab) {
+		const pv = tab?.pv;
+		if (!pv) return;
+		const t = cm.wts;
+		if (!t || t.error || !t.repo) { pv.innerHTML = `<div class="hint" style="padding:16px">${esc(t?.error || "這個專案不是 git repo")}</div>`; return; }
+		const head = `<div class="wt-maphead"><b>🗂 ${esc(t.repoName)}</b><span class="hint">主線 ${esc(t.target || "(detached)")}</span><span class="sp"></span>
+			<div class="seg"><button class="small${tab.mode === "tree" ? " on" : ""}" data-mapmode="tree">資料夾樹</button><button class="small${tab.mode === "graph" ? " on" : ""}" data-mapmode="graph">分岔圖</button></div><button class="small" data-wa="reload">⟳</button></div>`;
+		let body;
+		if (tab.mode === "tree") body = wtWarn(t) + folderTree(t);
+		else {
+			const b = tab.sel ? t.graph.branches.find((x) => x.key === tab.sel) : null;
+			const it = b ? (b.key.startsWith("branch:") ? t.leftovers.find((l) => `branch:${l.branch}` === b.key) : t.items.find((i) => i.id === b.key)) : null;
+			const detail = it ? `<div class="wt-detail">${"id" in it ? wtRow(it) : leftRow(it)}</div>` : '<div class="hint wt-detail">點一條分支看詳細資料和操作(跟它對話、看/改檔案、合併、移除)</div>';
+			body = `${wtWarn(t)}<div class="wt-graphwrap">${graphSvg(t, tab.sel)}</div>${detail}${t.graph.truncated ? '<div class="hint" style="padding:4px 16px">主線太長,只畫最近 5000 個 commit</div>' : ""}`;
+		}
+		const sx = pv.querySelector(".wt-graphwrap")?.scrollLeft;
+		pv.innerHTML = head + `<div class="wt-mapbody">${body}</div>`;
+		const wrap = pv.querySelector(".wt-graphwrap");
+		// 第一次打開捲到最右邊(最新的 commit 和還沒合併的分支);之後保留使用者捲到的位置
+		if (wrap) wrap.scrollLeft = sx ?? Number(wrap.querySelector("svg")?.dataset.focusX || 0);
+	}
+	const wtMapTab = () => findTab("wtmap");
+	function toggleWtFold(path) {
+		const t = cm.wts;
+		const k = `wtf:${t.repoRoot}:${path}`;
+		const cur = gitFold(k) ?? !t.folders.find((f) => f.path === path)?.current;
+		setGitFold(k, !cur);
+	}
+	function wireWtMap(tab) {
+		tab.pv.addEventListener("click", (e) => {
+			const mode = e.target.closest("[data-mapmode]")?.dataset.mapmode;
+			if (mode) { tab.mode = mode; return renderWtMap(tab); }
+			const wa = e.target.closest("[data-wa]")?.dataset.wa;
+			if (wa) return wtAct(wa, e.target.closest("[data-wtid]")?.dataset.wtid);
+			const wfix = e.target.closest("[data-wfix]")?.dataset.wfix;
+			if (wfix) return wtFix(wfix);
+			const wf = e.target.closest("[data-wtfold]");
+			if (wf) { toggleWtFold(wf.dataset.wtfold); renderWtMap(tab); if (cm.view === "git") renderGit(); return; }
+			const gk = e.target.closest("[data-gkey]")?.dataset.gkey;
+			if (gk) { tab.sel = tab.sel === gk ? null : gk; renderWtMap(tab); }
+		});
 	}
 	const wtById = (id) => cm.wts?.items?.find((x) => x.id === id);
 	async function loadWts() {
-		cm.wts = await wtApi("").catch((e) => ({ error: e.message }));
+		cm.wts = await wtApi("tree").catch((e) => ({ error: e.message }));
+		const mt = wtMapTab();
+		if (mt?.pv) renderWtMap(mt);
 	}
 	async function wtChat(x) {
 		try {
@@ -2064,6 +2198,7 @@
 	async function wtAct(act, id) {
 		const x = id ? wtById(id) : null;
 		if (act === "reload") { await loadWts(); return renderGit(); }
+		if (act === "map") { if (!cm.wts) await loadWts(); return openWtMap(); }
 		if (act === "home") return switchView(cm.pid, null);
 		if (!x) return;
 		if (act === "chat") return wtChat(x);
@@ -2144,6 +2279,8 @@
 		if (wa) return wtAct(wa, e.target.closest("[data-wtid]")?.dataset.wtid);
 		const wfix = e.target.closest("[data-wfix]")?.dataset.wfix;
 		if (wfix) return wtFix(wfix);
+		const wf = e.target.closest("[data-wtfold]");
+		if (wf && cm.wts?.repo) { toggleWtFold(wf.dataset.wtfold); renderGit(); const mt = wtMapTab(); if (mt?.pv) renderWtMap(mt); return; }
 		if (fold) { setGitFold(fold, !gitFold(fold)); return renderGit(); }
 		if (gb === "new") { const n = await askName("建立新分支", "", "分支名稱"); if (n) gitDo("checkout", { branch: n, create: true }, `已建立並切換到 ${n}`); return; }
 		if (gb === "fetch") return gitDo("fetch", {}, "已抓取");
