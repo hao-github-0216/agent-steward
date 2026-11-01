@@ -26,14 +26,14 @@ enum WorktreeDemo {
     static let list: WorktreeList? = {
         let now = ISO8601DateFormatter().string(from: .now)
         let json = """
-        {"repo":true,"repoRoot":"/demo/course","prefix":"hw1","target":"main","items":[
-         {"id":"0000000000","path":"/demo/course","cwd":"/demo/course/hw1","exists":true,"source":"main","branch":"main","ahead":0,"behind":0,"dirty":0,"changed":0,"relevant":true,"lastModified":"\(now)"},
-         {"id":"a1b2c3d4e5","path":"/demo/course/.claude/worktrees/hw1-extra","cwd":"/demo/course/.claude/worktrees/hw1-extra/hw1","exists":true,"source":"claude","branch":"worktree-hw1-extra","locked":"claude session hw1-extra","ahead":1,"behind":0,"dirty":5,"changed":2,"relevant":true,"lastModified":"\(now)","nested":true,"ignored":false,
+        {"repo":true,"repoRoot":"/demo/demo-repo","prefix":"packages/app","target":"main","items":[
+         {"id":"0000000000","path":"/demo/demo-repo","cwd":"/demo/demo-repo/packages/app","exists":true,"source":"main","branch":"main","ahead":0,"behind":0,"dirty":0,"changed":0,"relevant":true,"lastModified":"\(now)"},
+         {"id":"a1b2c3d4e5","path":"/demo/demo-repo/.claude/worktrees/login-fix","cwd":"/demo/demo-repo/.claude/worktrees/login-fix/packages/app","exists":true,"source":"claude","branch":"worktree-login-fix","locked":"claude session login-fix","ahead":1,"behind":0,"dirty":5,"changed":2,"relevant":true,"lastModified":"\(now)","nested":true,"ignored":false,
           "session":{"agent":"claude","via":"claude-transcript","pane":{"paneId":"w3:p2","tabId":"w3:t2","workspaceId":"w3","agentStatus":"idle"},"alive":true}},
-         {"id":"b2f18a42c0","path":"/demo/.agent-steward/worktrees/course-fix","cwd":"/demo/.agent-steward/worktrees/course-fix/hw1","exists":true,"source":"steward","branch":"steward/fix","ahead":2,"behind":1,"dirty":0,"changed":3,"relevant":true,"lastModified":"2026-10-30T10:00:00.000Z",
+         {"id":"b2f18a42c0","path":"/demo/.agent-steward/worktrees/demo-repo-fix","cwd":"/demo/.agent-steward/worktrees/demo-repo-fix/packages/app","exists":true,"source":"steward","branch":"steward/branch-b2f18a42","ahead":2,"behind":1,"dirty":0,"changed":3,"relevant":true,"lastModified":"2026-10-30T10:00:00.000Z",
           "session":{"agent":"codex","via":"steward-branch","alive":false},"stewardBranchId":"b2f18a42"},
-         {"id":"c3d4e5f6a7","path":"/demo/course-hw2","exists":true,"source":"manual","branch":"hw2-try","ahead":0,"behind":4,"dirty":0,"changed":0,"relevant":false,"lastModified":"2026-10-20T10:00:00.000Z"}
-        ],"warnings":{"unignored":[{"id":"a1b2c3d4e5","path":"/demo/course/.claude/worktrees/hw1-extra","pattern":".claude/worktrees/"}],"gitlinks":[".claude/worktrees/hw1-extra"]}}
+         {"id":"c3d4e5f6a7","path":"/demo/demo-repo-try","exists":true,"source":"manual","branch":"try-layout","ahead":0,"behind":4,"dirty":0,"changed":0,"relevant":false,"lastModified":"2026-10-20T10:00:00.000Z"}
+        ],"warnings":{"unignored":[{"id":"a1b2c3d4e5","path":"/demo/demo-repo/.claude/worktrees/login-fix","pattern":".claude/worktrees/"}],"gitlinks":[".claude/worktrees/login-fix"]}}
         """
         return try? JSONDecoder().decode(WorktreeList.self, from: Data(json.utf8))
     }()
@@ -58,15 +58,25 @@ final class WorktreeController {
     var removing: Worktree?
     /// 管家回 409:這一項(alive / locked / dirty)要使用者同意;confirm 是已經同意的
     var removeAsk: RemoveAsk?
+    /// 管家回 409 dirty:列出沒 commit 的檔案,問要捨棄還是存進分支
+    var dirtyAsk: DirtyAsk?
     var fixing: Fix?
     var note: String?
 
     struct RemoveAsk: Identifiable {
         var worktree: Worktree
-        var confirm: Set<String>
+        var confirm: WorktreeRemoveConfirm
+        /// alive / locked
         var item: String
         var message: String
         var id: String { "\(worktree.id):\(item)" }
+    }
+    struct DirtyAsk: Identifiable {
+        var worktree: Worktree
+        var confirm: WorktreeRemoveConfirm
+        var message: String
+        var detail: DirtyDetail
+        var id: String { worktree.id }
     }
     enum Fix: String, Identifiable { case ignore, untrack; var id: String { rawValue } }
 
@@ -133,7 +143,7 @@ final class WorktreeController {
         model.codeSection = "files"
     }
 
-    func remove(_ w: Worktree, confirm: Set<String>, _ model: AppModel, _ project: Project) async {
+    func remove(_ w: Worktree, confirm: WorktreeRemoveConfirm, _ model: AppModel, _ project: Project) async {
         if fake(w) { info = "示意資料:管家更新後才能移除"; return }
         guard let api = model.api else { return }
         busy = w.id
@@ -144,7 +154,10 @@ final class WorktreeController {
             error = nil
             if model.codeWorktree?.id == w.id { model.codeWorktree = nil }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } catch let e as WorktreeError where e.status == 409 && ["alive", "locked", "dirty"].contains(e.code ?? "") && !confirm.contains(e.code ?? "") {
+        } catch let e as WorktreeError where e.status == 409 && e.code == "dirty" && confirm.dirty == nil {
+            dirtyAsk = DirtyAsk(worktree: w, confirm: confirm, message: e.message, detail: e.dirty ?? DirtyDetail())
+            return
+        } catch let e as WorktreeError where e.status == 409 && (e.code == "alive" && !confirm.alive || e.code == "locked" && !confirm.locked) {
             removeAsk = RemoveAsk(worktree: w, confirm: confirm, item: e.code ?? "", message: e.message)
             return
         } catch {
@@ -258,7 +271,8 @@ struct WorktreeSection: View {
         .listRowBackground(Color.yellow.opacity(0.15))
     }
 
-    /// 資料夾樹:repo(主資料夾)→ 作業資料夾 → 歸在那裡的 worktree 與留下的分支;歸不到的放「其他」
+    /// 資料夾樹:repo(主資料夾)→ 登記成專案的子資料夾 → 歸在那裡的 worktree 與留下的分支;
+    /// 沒歸到子資料夾的直接掛在 repo 底下(整個 repo 就是一個專案時全部都在這裡)
     @ViewBuilder
     private func folderTree(_ t: WorktreeTree) -> some View {
         if let main = t.items?.first(where: { $0.source == "main" }) ?? ctl.list?.items?.first(where: { $0.source == "main" }) {
@@ -267,8 +281,10 @@ struct WorktreeSection: View {
         ForEach(t.folders ?? []) { f in
             folder(t, path: f.path, name: f.name ?? f.path, current: f.current == true)
         }
-        if !t.items(in: "").isEmpty || !t.leftovers(in: "").isEmpty {
-            folder(t, path: "", name: "其他", current: false)
+        ForEach(t.items(in: "")) { row($0, t.target) }
+        ForEach(t.leftovers(in: "")) { WorktreeLeftoverRow(leftover: $0, target: t.target) }
+        if (t.folders ?? []).isEmpty && t.items(in: "").isEmpty && t.leftovers(in: "").isEmpty {
+            Text("沒有另外開的分支").font(.subheadline).foregroundStyle(.secondary)
         }
     }
 
@@ -288,7 +304,7 @@ struct WorktreeSection: View {
             if items.isEmpty && leftovers.isEmpty { Text("沒有分支").font(.subheadline).foregroundStyle(.secondary) }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: path.isEmpty ? "tray" : "folder").foregroundStyle(.secondary)
+                Image(systemName: "folder").foregroundStyle(.secondary)
                 Text(name).lineLimit(1)
                 if current { Text("目前專案").font(.caption2.bold()).foregroundStyle(Theme.accent) }
                 Spacer(minLength: 4)
@@ -360,19 +376,30 @@ struct WorktreeDialogs: ViewModifier {
                 WorktreeMergeSheet(project: project, worktree: w, target: target, demo: ctl.fake(w)) { commit, removeAfter in
                     ctl.info = "已把 \(w.branch ?? "") 合併進 \(target)" + (commit.map { "(\($0))" } ?? "")
                     model.code.gitChanged += 1
-                    Task { if removeAfter { await ctl.remove(w, confirm: [], model, project) } else { await ctl.load(model, project) } }
+                    Task { if removeAfter { await ctl.remove(w, confirm: WorktreeRemoveConfirm(), model, project) } else { await ctl.load(model, project) } }
                 }
             }
             .confirmationDialog(ctl.removing.map { "移除 \($0.branch ?? "這個 worktree") 的資料夾?" } ?? "", isPresented: Binding(get: { ctl.removing != nil }, set: { if !$0 { ctl.removing = nil } }), titleVisibility: .visible, presenting: ctl.removing) { w in
-                Button("移除資料夾", role: .destructive) { Task { await ctl.remove(w, confirm: [], model, project) } }
+                Button("移除資料夾", role: .destructive) { Task { await ctl.remove(w, confirm: WorktreeRemoveConfirm(), model, project) } }
             } message: { w in
                 Text("只刪資料夾,分支 \(w.branch ?? "") 會保留,之後還能再開回來。" + ((w.dirty ?? 0) > 0 ? "\n⚠️ 裡面有 \(w.dirty ?? 0) 個沒 commit 的改動。" : ""))
             }
             .alert("還要移除嗎?", isPresented: Binding(get: { ctl.removeAsk != nil }, set: { if !$0 { ctl.removeAsk = nil } }), presenting: ctl.removeAsk) { ask in
-                Button("仍然移除", role: .destructive) { Task { await ctl.remove(ask.worktree, confirm: ask.confirm.union([ask.item]), model, project) } }
+                Button("仍然移除", role: .destructive) {
+                    var c = ask.confirm
+                    if ask.item == "alive" { c.alive = true } else { c.locked = true }
+                    Task { await ctl.remove(ask.worktree, confirm: c, model, project) }
+                }
                 Button("取消", role: .cancel) {}
             } message: { ask in
                 Text(ask.message)
+            }
+            .sheet(item: $ctl.dirtyAsk) { ask in
+                WorktreeDirtySheet(ask: ask) { choice in
+                    var c = ask.confirm
+                    c.dirty = choice
+                    Task { await ctl.remove(ask.worktree, confirm: c, model, project) }
+                }
             }
             .confirmationDialog(ctl.fixing == .ignore ? "把 worktree 資料夾加入 .gitignore?" : "把 worktree 從版本控制移除?", isPresented: Binding(get: { ctl.fixing != nil }, set: { if !$0 { ctl.fixing = nil } }), titleVisibility: .visible, presenting: ctl.fixing) { fix in
                 Button(fix == .ignore ? "加入 .gitignore" : "從版本控制移除") { Task { await ctl.apply(fix, model, project) } }
@@ -546,9 +573,9 @@ struct WorktreeMergeSheet: View {
 
     private func load() async {
         if demo {
-            preview = WorktreeMergePreview(target: target, branch: worktree.branch, commits: [.init(hash: "34f3aef", subject: "示意:加上第二題的推導")],
-                                           files: [.init(status: "M", path: "hw1/main.tex")], stat: " 1 file changed, 12 insertions(+)",
-                                           diff: "diff --git a/hw1/main.tex b/hw1/main.tex\n@@ -1,3 +1,4 @@\n \\section{Q2}\n-舊的推導\n+新的推導\n+補上一步\n", blocker: nil, uncommitted: worktree.dirty)
+            preview = WorktreeMergePreview(target: target, branch: worktree.branch, commits: [.init(hash: "34f3aef", subject: "示意:修正登入流程")],
+                                           files: [.init(status: "M", path: "packages/app/login.ts")], stat: " 1 file changed, 12 insertions(+)",
+                                           diff: "diff --git a/packages/app/login.ts b/packages/app/login.ts\n@@ -1,3 +1,4 @@\n function login() {\n-  return check(user)\n+  return check(user, token)\n+  // 新增 token 檢查\n", blocker: nil, uncommitted: worktree.dirty)
             return
         }
         guard let api = model.api else { return }
@@ -631,5 +658,70 @@ struct WorktreeBadge: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("\(n) 個 worktree")
         }
+    }
+}
+
+// MARK: - 移除時還有沒 commit 的改動
+
+/// 列出沒 commit 的檔案,選「捨棄這些改動」或「存進分支再移除」;預設(醒目)的按鈕照管家的建議(已合併的分支建議捨棄)
+struct WorktreeDirtySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let ask: WorktreeController.DirtyAsk
+    let onChoose: (_ choice: String) -> Void
+
+    var body: some View {
+        let d = ask.detail
+        let files = d.files ?? []
+        let suggestDiscard = d.suggest == "discard"
+        NavigationStack {
+            List {
+                Section {
+                    Text(ask.message).font(.subheadline)
+                }
+                Section {
+                    ForEach(files, id: \.self) { f in
+                        Text(f).font(.caption.monospaced()).lineLimit(2).truncationMode(.middle)
+                    }
+                    if let total = d.total, total > files.count {
+                        Text("…共 \(total) 個").font(.caption).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("沒 commit 的檔案(\(d.total ?? files.count))")
+                } footer: {
+                    Text(suggestDiscard
+                         ? "這個分支已經合併過了:捨棄比較好,存進分支會讓它看起來又沒合併。"
+                         : "「存進分支」會把這些改動 commit 到 \(ask.worktree.branch ?? "分支") 再移除資料夾,之後還找得回來。")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("還有沒 commit 的改動")
+            .navigationBarTitleDisplayMode(.inline)
+            // 兩個選擇固定在底部,半高時也看得到;建議的那個醒目
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    choice("捨棄這些改動", value: "discard", primary: suggestDiscard, tint: .red)
+                    if d.canCommit != false {
+                        choice("存進分支再移除", value: "commit", primary: !suggestDiscard, tint: .accentColor)
+                    }
+                }
+                .padding(.horizontal).padding(.vertical, 10)
+                .background(.bar)
+            }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private func choice(_ title: String, value: String, primary: Bool, tint: Color) -> some View {
+        let button = Button {
+            dismiss()
+            onChoose(value)
+        } label: {
+            Text(primary ? "\(title)(建議)" : title).fontWeight(primary ? .semibold : .regular).frame(maxWidth: .infinity)
+        }
+        .controlSize(.large)
+        .tint(tint)
+        if primary { button.buttonStyle(.borderedProminent) } else { button.buttonStyle(.bordered) }
     }
 }

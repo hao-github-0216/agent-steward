@@ -1,4 +1,4 @@
-// 分支樹狀圖(原生):資料夾樹(repo → 作業資料夾 → worktree / 留下的分支)和分岔圖(主線 + 從分岔點長出的枝)
+// 分支樹狀圖(原生):資料夾樹(repo → 子專案資料夾 → worktree / 留下的分支)和分岔圖(主線 + 從分岔點長出的枝)
 // 資料:GET worktrees/tree(docs/worktrees-api.md 最後一節)
 import SwiftUI
 
@@ -8,29 +8,29 @@ enum WorktreeTreeDemo {
     static let tree: WorktreeTree? = {
         let now = ISO8601DateFormatter().string(from: .now)
         let json = """
-        {"repo":true,"repoRoot":"/demo/course","repoName":"course","target":"main","currentFolder":"hw1",
-         "folders":[{"path":"hw1","projectId":"demo","name":"hw1","current":true},{"path":"hw3","name":"hw3","current":false}],
+        {"repo":true,"repoRoot":"/demo/demo-repo","repoName":"demo-repo","target":"main","currentFolder":"packages/app",
+         "folders":[{"path":"packages/app","projectId":"demo","name":"app","current":true}],
          "items":[
-          {"id":"0000000000","path":"/demo/course","source":"main","branch":"main","exists":true,"folder":""},
-          {"id":"a1b2c3d4e5","path":"/demo/course/.claude/worktrees/hw1-extra","cwd":"/demo/course/.claude/worktrees/hw1-extra/hw1","exists":true,"source":"claude","branch":"worktree-hw1-extra","ahead":1,"behind":0,"dirty":2,"relevant":true,"lastModified":"\(now)","folder":"hw1",
+          {"id":"0000000000","path":"/demo/demo-repo","source":"main","branch":"main","exists":true,"folder":""},
+          {"id":"a1b2c3d4e5","path":"/demo/demo-repo/.claude/worktrees/login-fix","cwd":"/demo/demo-repo/.claude/worktrees/login-fix/packages/app","exists":true,"source":"claude","branch":"worktree-login-fix","ahead":1,"behind":0,"dirty":2,"relevant":true,"lastModified":"\(now)","folder":"packages/app",
            "session":{"agent":"claude","pane":{"paneId":"w3:p2"},"alive":true}},
-          {"id":"b2f18a42c0","path":"/demo/.agent-steward/worktrees/course-fix","exists":true,"source":"steward","branch":"steward/branch-b2f18a42","ahead":2,"behind":0,"dirty":0,"relevant":true,"lastModified":"2026-10-30T10:00:00.000Z","folder":"hw1",
+          {"id":"b2f18a42c0","path":"/demo/.agent-steward/worktrees/demo-repo-fix","exists":true,"source":"steward","branch":"steward/branch-b2f18a42","ahead":2,"behind":0,"dirty":0,"relevant":true,"lastModified":"2026-10-30T10:00:00.000Z","folder":"",
            "session":{"agent":"codex","alive":false}},
-          {"id":"c3d4e5f6a7","path":"/demo/course-try","exists":true,"source":"manual","branch":"try-layout","ahead":0,"behind":4,"dirty":0,"lastModified":"2026-10-20T10:00:00.000Z","folder":""}
+          {"id":"c3d4e5f6a7","path":"/demo/demo-repo-try","exists":true,"source":"manual","branch":"try-layout","ahead":0,"behind":4,"dirty":0,"lastModified":"2026-10-20T10:00:00.000Z","folder":""}
          ],
          "leftovers":[
-          {"branch":"worktree-hw1-old","source":"claude","folder":"hw1","ahead":2,"merged":true,"session":{"agent":"claude"},"lastModified":"2026-10-28T10:00:00.000Z"},
-          {"branch":"worktree-hw3-try","source":"claude","folder":"hw3","ahead":12,"merged":false,"session":{"agent":"pi"},"lastModified":"2026-10-25T10:00:00.000Z"}
+          {"branch":"worktree-settings-page","source":"claude","folder":"packages/app","ahead":2,"merged":true,"session":{"agent":"claude"},"lastModified":"2026-10-28T10:00:00.000Z","savedOnRemove":{"commits":1,"files":["packages/app/notes.md"]}},
+          {"branch":"worktree-old-api","source":"claude","folder":"","ahead":12,"merged":false,"session":{"agent":"pi"},"lastModified":"2026-10-25T10:00:00.000Z"}
          ],
          "graph":{"nodes":[
-           {"hash":"1","short":"4c1e2aa","subject":"hw3 開始","gapBefore":3},
-           {"hash":"2","short":"9ba55f9","subject":"hw1 第一題","gapBefore":0},
-           {"hash":"3","short":"d07b3e1","subject":"Merge worktree-hw1-old","gapBefore":5},
-           {"hash":"4","short":"e882fd8","subject":"hw1 第二題","gapBefore":2}],
+           {"hash":"1","short":"4c1e2aa","subject":"專案初始化","gapBefore":3},
+           {"hash":"2","short":"9ba55f9","subject":"修正登入流程","gapBefore":0},
+           {"hash":"3","short":"d07b3e1","subject":"Merge worktree-settings-page","gapBefore":5},
+           {"hash":"4","short":"e882fd8","subject":"新增設定頁","gapBefore":2}],
           "branches":[
-           {"key":"branch:worktree-hw3-try","branch":"worktree-hw3-try","forkAt":0,"ahead":12},
-           {"key":"branch:worktree-hw1-old","branch":"worktree-hw1-old","forkAt":1,"mergedAt":2,"ahead":2},
-           {"key":"a1b2c3d4e5","branch":"worktree-hw1-extra","forkAt":2,"ahead":1},
+           {"key":"branch:worktree-old-api","branch":"worktree-old-api","forkAt":0,"ahead":12},
+           {"key":"branch:worktree-settings-page","branch":"worktree-settings-page","forkAt":1,"mergedAt":2,"ahead":2,"savedOnRemove":{"commits":1,"files":["packages/app/notes.md"]}},
+           {"key":"a1b2c3d4e5","branch":"worktree-login-fix","forkAt":2,"ahead":1},
            {"key":"b2f18a42c0","branch":"steward/branch-b2f18a42","forkAt":3,"ahead":2}],
           "truncated":false}}
         """
@@ -61,6 +61,9 @@ struct WorktreeLeftoverRow: View {
                     .background(Color(.tertiarySystemFill), in: Capsule())
                     .foregroundStyle(.secondary)
             }
+            if l.merged == true, let n = l.savedOnRemove?.files?.count, n > 0 {
+                Text("移除時另存了 \(n) 個沒 commit 的檔案").font(.caption).foregroundStyle(.secondary)
+            }
             HStack(spacing: 10) {
                 if let a = l.ahead, a > 0, l.merged != true { Text("領先 \(target ?? "主線") \(a)") }
                 if let agent = l.session?.agent { Text(agent) }
@@ -74,7 +77,7 @@ struct WorktreeLeftoverRow: View {
 }
 
 extension WorktreeTree {
-    /// 某個資料夾裡的 worktree(主資料夾不算;folder 對不到任何資料夾的歸到「其他」= "")
+    /// 某個子專案資料夾裡的 worktree(主資料夾不算);"" = 直接掛在 repo 底下(folder 對不到任何資料夾的也算)
     func items(in folder: String) -> [Worktree] {
         let known = Set((folders ?? []).map(\.path))
         return others.filter { w in
@@ -208,7 +211,7 @@ struct WorktreeGraphView<Actions: View>: View {
 
     /// 估標籤寬度(只用來算畫布要多寬)
     private func labelWidth(_ b: WorktreeTree.Branch) -> CGFloat {
-        let text = (b.branch ?? b.key) + " +\(b.ahead ?? 0) " + (tree.agent(for: b.key) ?? "") + (b.mergedAt != nil ? " ✔ 已合併" : "")
+        let text = (b.branch ?? b.key) + " +\(b.ahead ?? 0) " + (tree.agent(for: b.key) ?? "") + (b.mergedAt != nil ? " ✔ 已合併(另存 N 個檔)" : "")
         return CGFloat(text.count) * 7.5 + 24
     }
 
@@ -303,7 +306,10 @@ struct WorktreeGraphView<Actions: View>: View {
             Text(b.branch ?? b.key).font(.caption.bold()).foregroundStyle(color)
             if let a = b.ahead, a > 0 { Text("+\(a)").font(.caption2.monospaced()).foregroundStyle(.secondary) }
             if let agent = tree.agent(for: b.key) { Text(agent).font(.caption2).foregroundStyle(.secondary) }
-            if b.mergedAt != nil { Text("✔ 已合併").font(.caption2.bold()).foregroundStyle(.green) }
+            if b.mergedAt != nil {
+                let saved = b.savedOnRemove?.files?.count ?? 0
+                Text(saved > 0 ? "✔ 已合併(另存 \(saved) 個檔)" : "✔ 已合併").font(.caption2.bold()).foregroundStyle(.green)
+            }
             if b.key.hasPrefix("branch:") && b.mergedAt == nil { Text("worktree 已移除").font(.caption2).foregroundStyle(.tertiary) }
         }
         .fixedSize()

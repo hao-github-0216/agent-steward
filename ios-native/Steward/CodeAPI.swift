@@ -30,7 +30,7 @@ struct GitStatus: Decodable {
     var unstaged: [GitFile]?
     var untracked: [GitFile]?
     var conflicted: [GitFile]?
-    /// 專案是 repo 裡的子資料夾時才有:資料夾相對 repo 根目錄(例如 hw1)、repo 名稱、暫存區裡其他資料夾的檔案(repo 根目錄路徑)
+    /// 專案是 repo 裡的子資料夾時才有:資料夾相對 repo 根目錄(例如 packages/app)、repo 名稱、暫存區裡其他資料夾的檔案(repo 根目錄路徑)
     var prefix: String?
     var repoName: String?
     var outsideStaged: [String]?

@@ -48,7 +48,7 @@ struct Worktree: Decodable, Hashable, Identifiable {
     var ignored: Bool?
     var session: Session?
     var stewardBranchId: String?
-    /// 樹狀圖用:歸在 repo 裡哪個作業資料夾("" = 其他;主資料夾一律 "")
+    /// 樹狀圖用:歸在 repo 裡哪個登記成專案的子資料夾("" = 直接掛在 repo 底下;主資料夾一律 "")
     var folder: String?
 
     struct Session: Decodable, Hashable {
@@ -87,13 +87,14 @@ struct Worktree: Decodable, Hashable, Identifiable {
     }
 }
 
-/// 樹狀圖:資料夾樹(repo → 作業資料夾 → worktree / 留下的分支)+ 分岔圖
+/// 樹狀圖:資料夾樹(repo → 子專案資料夾 → worktree / 留下的分支)+ 分岔圖
 struct WorktreeTree: Decodable {
     var repo: Bool
     var repoRoot: String?
     var repoName: String?
     var target: String?
     var currentFolder: String?
+    /// repo 裡登記成專案的子資料夾;整個 repo 就是一個專案時是空的
     var folders: [Folder]?
     var items: [Worktree]?
     var leftovers: [Leftover]?
@@ -116,7 +117,13 @@ struct WorktreeTree: Decodable {
         var merged: Bool?
         var session: Worktree.Session?
         var lastModified: String?
+        var savedOnRemove: SavedOnRemove?
         var id: String { "branch:\(branch)" }
+    }
+    /// 移除 worktree 時「存進分支」產生的 commit;判斷合併時不算它們
+    struct SavedOnRemove: Decodable, Hashable {
+        var commits: Int?
+        var files: [String]?
     }
     struct Graph: Decodable {
         var nodes: [Node]
@@ -138,6 +145,7 @@ struct WorktreeTree: Decodable {
         var forkAt: Int
         var mergedAt: Int?
         var ahead: Int?
+        var savedOnRemove: SavedOnRemove?
         var id: String { key }
     }
 
@@ -187,7 +195,34 @@ struct WorktreeError: LocalizedError {
     var status: Int
     var message: String
     var code: String?
+    /// 移除時 409 dirty 才有:沒 commit 的檔案、建議捨棄還是存進分支
+    var dirty: DirtyDetail?
     var errorDescription: String? { message }
+}
+
+struct DirtyDetail: Decodable, Hashable {
+    var files: [String]?
+    var total: Int?
+    var merged: Bool?
+    /// discard | commit
+    var suggest: String?
+    var canCommit: Bool?
+}
+
+/// 移除前使用者同意過的項目
+struct WorktreeRemoveConfirm: Hashable {
+    var alive = false
+    var locked = false
+    /// 沒 commit 的改動:"discard" 捨棄 / "commit" 存進分支
+    var dirty: String?
+
+    var body: [String: Any] {
+        var b: [String: Any] = [:]
+        if alive { b["alive"] = true }
+        if locked { b["locked"] = true }
+        if let dirty { b["dirty"] = dirty }
+        return b
+    }
 }
 
 extension API {
@@ -208,7 +243,12 @@ extension API {
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if status == 401 || status == 403 { throw APIError.needLogin(json?["error"] as? String ?? "請先登入") }
         guard (200..<300).contains(status) else {
-            throw WorktreeError(status: status, message: json?["error"] as? String ?? "管家回應錯誤(\(status))", code: json?["code"] as? String)
+            let code = json?["code"] as? String
+            var dirty: DirtyDetail?
+            if code == "dirty", let d = json?["detail"], let raw = try? JSONSerialization.data(withJSONObject: d) {
+                dirty = try? JSONDecoder().decode(DirtyDetail.self, from: raw)
+            }
+            throw WorktreeError(status: status, message: json?["error"] as? String ?? "管家回應錯誤(\(status))", code: code, dirty: dirty)
         }
         do {
             return try JSONDecoder().decode(T.self, from: data)
@@ -247,11 +287,10 @@ extension API {
         return r.commit
     }
 
-    /// confirm:使用者已經同意的項目(alive / locked / dirty);還有沒同意的會丟 409 WorktreeError(code = 那一項)
-    func worktreeRemove(project: String, id: String, confirm: Set<String>) async throws {
+    /// confirm:使用者已經同意的項目;還有沒同意的會丟 409 WorktreeError(code = alive / locked / dirty)
+    func worktreeRemove(project: String, id: String, confirm: WorktreeRemoveConfirm) async throws {
         struct R: Decodable { var removed: Bool? }
-        let c = Dictionary(uniqueKeysWithValues: confirm.map { ($0, true) })
-        let _: R = try await wtCall(request(worktreePath(project, "\(id)/remove"), method: "POST", body: ["confirm": c]))
+        let _: R = try await wtCall(request(worktreePath(project, "\(id)/remove"), method: "POST", body: ["confirm": confirm.body]))
     }
 
     /// 把 repo 裡的 worktree 資料夾加進 .gitignore;回傳加了哪些樣式、寫進哪個檔案
