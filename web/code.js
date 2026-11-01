@@ -2112,7 +2112,8 @@
 		const sync = g.upstream ? `↓${g.behind} ↑${g.ahead}` : "尚未連到遠端";
 		let branches = [];
 		try { branches = (await gitPost("branches")).out.filter((b) => !b.name.startsWith("origin/") && !b.name.startsWith("remotes/")); } catch {}
-		root.innerHTML = `${wtHtml}
+		const subNote = g.prefix ? `<div class="hint git-sub" title="git 是以 ${esc(g.repoName)} 整個資料夾為單位">這個專案是 repo「${esc(g.repoName)}」裡的 ${esc(g.prefix)} 資料夾:下面只列 ${esc(g.prefix)} 的變更與歷史,「全部暫存」也只加 ${esc(g.prefix)};分支、拉取、推送是整個 repo 共用的。${g.outsideStaged?.length ? `<br><b>⚠ 暫存區還有 ${g.outsideStaged.length} 個其他資料夾的檔案</b>(提交時會問你要不要一起提交)` : ""}</div>` : "";
+		root.innerHTML = `${wtHtml}${subNote}
 			<div class="git-branch"><select id="cvBranch" title="切換分支">${branches.map((b) => `<option ${b.current ? "selected" : ""}>${esc(b.name)}</option>`).join("") || `<option>${esc(g.branch)}</option>`}</select>
 				<button class="small" data-gb="new" title="建立新分支">＋分支</button></div>
 			<div class="git-branch"><span class="hint">${esc(sync)}</span><span style="flex:1"></span>
@@ -2157,12 +2158,26 @@
 		if (gb === "commit") {
 			const msg = $("cvMsg").value.trim();
 			if (!msg) return toast("先寫提交訊息,或按「產生提交訊息」");
+			const done = async () => { cm.msgDraft = ""; cm.history = cm.history ? (await gitPost("log")).out : null; toast("已提交"); };
 			try {
 				if (!g.staged.length) await gitPost("stage", { all: true });
 				await gitPost("commit", { message: msg });
-				cm.msgDraft = ""; cm.history = cm.history ? (await gitPost("log")).out : null;
-				toast("已提交");
-			} catch (err) { fail(err); }
+				await done();
+			} catch (err) {
+				if (err.status === 409 && err.data?.outside) {
+					// 同一個 repo 的其他資料夾也有檔案在暫存區:問要只提交這個資料夾,還是一起提交
+					const choice = await new Promise((resolve) => {
+						const d = dialog({ title: "暫存區有其他資料夾的檔案", html: `<p>${esc(err.message)}</p><p class="hint">「只提交這個資料夾」會先把它們取消暫存(檔案內容不變),留給那個資料夾之後自己提交。</p>`, buttons: [
+							{ label: "一起提交", onClick: () => resolve("include") },
+							{ label: "只提交這個資料夾", primary: true, onClick: () => resolve("unstage") },
+						] });
+						d.querySelector("[data-x]").addEventListener("click", () => resolve(null));
+					});
+					if (choice) {
+						try { await gitPost("commit", { message: msg, outside: choice }); await done(); } catch (e2) { fail(e2); }
+					}
+				} else fail(err);
+			}
 			cm.dirs = {}; await refreshGit(); renderFiles();
 			return;
 		}

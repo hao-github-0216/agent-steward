@@ -401,8 +401,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 			return send(res, 404, { error: "not found" });
 		} catch (e) {
-			const err = e as CodeError & { disk?: unknown; exists?: boolean };
-			if (err instanceof CodeError) return send(res, err.status, { error: err.message, ...(err.disk ? { disk: err.disk } : {}), ...(err.exists ? { exists: true } : {}) });
+			const err = e as CodeError & { disk?: unknown; exists?: boolean; outside?: string[] };
+			if (err instanceof CodeError) return send(res, err.status, { error: err.message, ...(err.disk ? { disk: err.disk } : {}), ...(err.exists ? { exists: true } : {}), ...(err.outside ? { outside: err.outside } : {}) });
 			if (e instanceof WorktreesError) return send(res, e.status, { error: e.message, ...(e.code ? { code: e.code } : {}), ...(e.detail ? { detail: e.detail } : {}) });
 			if ((e as NodeJS.ErrnoException).code === "ENOENT") return send(res, 404, { error: "檔案不存在" });
 			throw e;

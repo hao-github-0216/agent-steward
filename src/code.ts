@@ -66,10 +66,36 @@ export async function isRepo(p: Project): Promise<boolean> {
 	return (await git(p, ["rev-parse", "--is-inside-work-tree"])).stdout.trim() === "true";
 }
 
-/** git status:分支、上游、領先/落後、各組檔案 */
+/**
+ * 專案資料夾在 repo 裡的位置(例如 course/hw1 這種「一個 repo 底下好幾份作業」的情況是 "hw1/";專案就是 repo 根目錄時是 "")。
+ * git 面板只管這個資料夾:狀態、暫存、捨棄、diff、歷史都限定在這裡,路徑一律相對於專案資料夾。
+ */
+const prefixCache = new Map<string, { at: number; prefix: string; top: string }>();
+export async function repoPrefix(p: Project): Promise<{ prefix: string; top: string }> {
+	const hit = prefixCache.get(p.root);
+	if (hit && Date.now() - hit.at < 60_000) return hit;
+	const r = await git(p, ["rev-parse", "--show-prefix", "--show-toplevel"]);
+	const [prefix = "", top = ""] = r.code === 0 ? r.stdout.split("\n") : [];
+	const v = { at: Date.now(), prefix, top };
+	prefixCache.set(p.root, v);
+	return v;
+}
+/** repo 根目錄的相對路徑 → 專案資料夾的相對路徑;不在專案資料夾裡回 undefined */
+const fromRoot = (prefix: string, path: string) => (!prefix ? path : path.startsWith(prefix) ? path.slice(prefix.length) : undefined);
+
+/** 暫存區裡不在這個專案資料夾的檔案(repo 根目錄的相對路徑):commit 會把它們一起帶進去 */
+export async function stagedOutside(p: Project): Promise<string[]> {
+	const { prefix } = await repoPrefix(p);
+	if (!prefix) return [];
+	const r = await git(p, ["diff", "--cached", "--name-only", "-z", "--ignore-submodules=none"]);
+	return r.stdout.split("\0").filter((x) => x && !x.startsWith(prefix));
+}
+
+/** git status:分支、上游、領先/落後、各組檔案(只列這個專案資料夾裡的) */
 export async function status(p: Project) {
 	if (!(await isRepo(p))) return { repo: false as const };
-	const out = (await gitOk(p, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"])).split("\0");
+	const { prefix, top } = await repoPrefix(p);
+	const out = (await gitOk(p, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--", "."])).split("\0");
 	let branch = "", upstream = "", ahead = 0, behind = 0;
 	const staged: { path: string; code: string; from?: string }[] = [];
 	const unstaged: { path: string; code: string }[] = [];
@@ -86,14 +112,23 @@ export async function status(p: Project) {
 		} else if (line.startsWith("1 ") || line.startsWith("2 ")) {
 			const parts = line.split(" ");
 			const xy = parts[1];
-			const path = line.startsWith("1 ") ? parts.slice(8).join(" ") : parts.slice(9).join(" ");
-			const from = line.startsWith("2 ") ? out[++i] : undefined; // rename 的原檔名在下一段
+			const path = fromRoot(prefix, line.startsWith("1 ") ? parts.slice(8).join(" ") : parts.slice(9).join(" "));
+			const fromRaw = line.startsWith("2 ") ? out[++i] : undefined; // rename 的原檔名在下一段
+			if (path === undefined) continue;
+			const from = fromRaw === undefined ? undefined : (fromRoot(prefix, fromRaw) ?? `/${fromRaw}`);
 			if (xy[0] !== ".") staged.push({ path, code: xy[0], from });
 			if (xy[1] !== ".") unstaged.push({ path, code: xy[1] });
-		} else if (line.startsWith("u ")) conflicted.push({ path: line.split(" ").slice(10).join(" ") });
-		else if (line.startsWith("? ")) untracked.push({ path: line.slice(2) });
+		} else if (line.startsWith("u ")) {
+			const path = fromRoot(prefix, line.split(" ").slice(10).join(" "));
+			if (path !== undefined) conflicted.push({ path });
+		} else if (line.startsWith("? ")) {
+			const path = fromRoot(prefix, line.slice(2));
+			if (path !== undefined) untracked.push({ path });
+		}
 	}
-	return { repo: true as const, branch, upstream, ahead, behind, staged, unstaged, untracked, conflicted };
+	// 子資料夾專案:告訴網頁這個 repo 還有別的資料夾(分支、拉取/推送是整個 repo 共用的),以及暫存區裡有沒有別的資料夾的檔案
+	const sub = prefix ? { prefix: prefix.replace(/\/$/, ""), repoName: basename(top), outsideStaged: await stagedOutside(p) } : {};
+	return { repo: true as const, branch, upstream, ahead, behind, staged, unstaged, untracked, conflicted, ...sub };
 }
 
 /** 差異檢視用:回傳左右兩邊的完整內容(Monaco diff 自己算差異) */
@@ -107,11 +142,12 @@ export async function diffSides(p: Project, rel: string, which: "staged" | "unst
 		const abs = inProject(p, rel);
 		return existsSync(abs) ? readFileSync(abs, "utf8") : "";
 	};
-	if (which === "staged") return { original: await show(`HEAD:${rel}`), modified: await show(`:${rel}`) };
-	if (which === "unstaged") return { original: await show(`:${rel}`), modified: work() };
+	// HEAD:./x 是相對於目前資料夾(專案資料夾);不加 ./ 會被當成 repo 根目錄的路徑
+	if (which === "staged") return { original: await show(`HEAD:./${rel}`), modified: await show(`:./${rel}`) };
+	if (which === "unstaged") return { original: await show(`:./${rel}`), modified: work() };
 	if (which === "commit" && commit) {
 		if (!/^[0-9a-f]{4,40}$/i.test(commit)) throw new CodeError(400, "commit 格式不對");
-		return { original: await show(`${commit}^:${rel}`), modified: await show(`${commit}:${rel}`) };
+		return { original: await show(`${commit}^:./${rel}`), modified: await show(`${commit}:./${rel}`) };
 	}
 	return { original: "", modified: work() };
 }
@@ -127,9 +163,10 @@ const safePaths = (p: Project, paths: unknown): string[] => {
 export async function gitAction(p: Project, action: string, b: Record<string, unknown>): Promise<unknown> {
 	switch (action) {
 		case "stage":
-			return gitOk(p, b.all ? ["add", "-A"] : ["add", "--", ...safePaths(p, b.paths)]);
+			// 「全部」= 這個專案資料夾裡的全部(不是整個 repo)
+			return gitOk(p, b.all ? ["add", "-A", "--", "."] : ["add", "--", ...safePaths(p, b.paths)]);
 		case "unstage":
-			return gitOk(p, b.all ? ["reset", "-q"] : ["reset", "-q", "--", ...safePaths(p, b.paths)]);
+			return gitOk(p, b.all ? ["reset", "-q", "--", "."] : ["reset", "-q", "--", ...safePaths(p, b.paths)]);
 		case "discard": {
 			// 追蹤中的檔案:還原成上次提交/暫存的內容;新檔案:移到垃圾桶(救得回來)
 			const st = await status(p);
@@ -144,6 +181,15 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		case "commit": {
 			const msg = String(b.message ?? "").trim();
 			if (!msg) throw new CodeError(400, "提交訊息不能是空的");
+			// 暫存區有別的資料夾的檔案:先問(outside = "unstage" 先把它們取消暫存;"include" 一起提交)
+			const outside = await stagedOutside(p);
+			if (outside.length && b.outside === "unstage") {
+				const { top } = await repoPrefix(p);
+				await gitOk({ ...p, root: top }, ["reset", "-q", "--", ...outside]);
+			} else if (outside.length && b.outside !== "include") {
+				throw Object.assign(new CodeError(409, `暫存區裡有 ${outside.length} 個不在這個專案資料夾的檔案(同一個 repo 的其他資料夾),commit 會把它們一起帶進去:${outside.slice(0, 8).join("、")}${outside.length > 8 ? "…" : ""}`), { outside });
+			}
+			if (!(await git(p, ["diff", "--cached", "--quiet"])).code) throw new CodeError(400, "沒有已暫存的變更可以提交");
 			return gitOk(p, ["commit", "-m", msg]);
 		}
 		case "branches": {
@@ -168,7 +214,8 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		case "fetch":
 			return gitOk(p, ["fetch", "--prune"], 120_000);
 		case "log": {
-			const out = await gitOk(p, ["log", "-n", "50", "--date=iso-strict", "--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1e"]);
+			// 只列改到這個專案資料夾的 commit
+			const out = await gitOk(p, ["log", "-n", "50", "--date=iso-strict", "--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1e", "--", "."]);
 			return out.split("\x1e").map((x) => x.trim()).filter(Boolean).map((x) => {
 				const [hash, short, author, date, subject] = x.split("\x1f");
 				return { hash, short, author, date, subject };
@@ -177,7 +224,8 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		case "show": {
 			const c = String(b.commit ?? "");
 			if (!/^[0-9a-f]{4,40}$/i.test(c)) throw new CodeError(400, "commit 格式不對");
-			const out = await gitOk(p, ["show", "--name-status", "--format=%H%x1f%an%x1f%ad%x1f%B%x1e", "--date=iso-strict", c]);
+			// --relative:只列這個專案資料夾裡的檔案,路徑相對於專案資料夾
+			const out = await gitOk(p, ["show", "--relative", "--name-status", "--format=%H%x1f%an%x1f%ad%x1f%B%x1e", "--date=iso-strict", c]);
 			const [head, files] = out.split("\x1e");
 			const [hash, author, date, body] = head.split("\x1f");
 			return { hash, author, date, body: body?.trim(), files: (files ?? "").trim().split("\n").filter(Boolean).map((l) => { const [code, ...rest] = l.split("\t"); return { code, path: rest[rest.length - 1] }; }) };
@@ -185,7 +233,7 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		case "diffText": {
 			// 產生提交訊息用:已暫存的變更(沒有暫存就用全部變更),截斷避免太長
 			let d = await gitOk(p, ["diff", "--cached", "--stat", "--patch", "--no-color"]);
-			if (!d.trim()) d = await gitOk(p, ["diff", "--stat", "--patch", "--no-color"]);
+			if (!d.trim()) d = await gitOk(p, ["diff", "--stat", "--patch", "--no-color", "--", "."]);
 			return d.slice(0, 40_000);
 		}
 		default:
