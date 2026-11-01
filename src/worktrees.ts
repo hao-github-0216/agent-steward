@@ -7,8 +7,9 @@
 //    再用窗格的 agent_session 對回窗格
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { DATA_DIR, HOME } from "./config.ts";
 import type { HerdrPane } from "./herdr.ts";
 import { pathInside } from "./platform.ts";
@@ -136,38 +137,49 @@ interface ClaudeWtState {
 	file: string;
 	mtime: number;
 }
-const stateCache = new Map<string, { key: string; states: ClaudeWtState[] }>();
+const stateCache = new Map<string, { offset: number; rest: string; dec: StringDecoder; states: ClaudeWtState[] }>();
 
-/** 讀一個紀錄檔裡所有 worktree-state(檔案沒變就用快取) */
+/** 一個紀錄檔裡所有 worktree-state:只讀上次之後新增的部分(背景 session 會一直往後寫,整份重讀太貴) */
 function statesOfFile(file: string): ClaudeWtState[] {
-	let st;
+	let size: number, mtime: number;
 	try {
-		st = statSync(file);
+		const st = statSync(file);
+		size = st.size;
+		mtime = st.mtimeMs;
 	} catch {
 		return [];
 	}
-	const key = `${st.size}:${st.mtimeMs}`;
-	const hit = stateCache.get(file);
-	if (hit?.key === key) return hit.states;
-	const states: ClaudeWtState[] = [];
-	let text = "";
-	try {
-		text = readFileSync(file, "utf8");
-	} catch {
-		/* 讀不到就當沒有 */
-	}
-	for (const line of text.split("\n")) {
-		if (!line.includes('"worktree-state"')) continue;
+	let c = stateCache.get(file);
+	if (!c || size < c.offset) c = { offset: 0, rest: "", dec: new StringDecoder("utf8"), states: [] }; // 新檔或被截短:從頭讀
+	if (size > c.offset) {
+		const fd = openSync(file, "r");
 		try {
-			const d = JSON.parse(line);
-			const w = d?.worktreeSession;
-			if (d?.type === "worktree-state" && w?.worktreePath) states.push({ sessionId: w.sessionId ?? d.sessionId ?? basename(file, ".jsonl"), worktreePath: w.worktreePath, originalCwd: w.originalCwd, file, mtime: st.mtimeMs });
-		} catch {
-			/* 壞掉的行跳過 */
+			for (let pos = c.offset; pos < size; ) {
+				const buf = Buffer.alloc(Math.min(4 * 1024 * 1024, size - pos));
+				const n = readSync(fd, buf, 0, buf.length, pos);
+				if (n <= 0) break;
+				pos += n;
+				c.offset = pos;
+				const lines = (c.rest + c.dec.write(buf.subarray(0, n))).split("\n"); // decoder 會把切在兩段之間的中文字留到下一段
+				c.rest = lines.pop() ?? ""; // 最後一行可能還沒寫完
+				for (const line of lines) {
+					if (!line.includes('"worktree-state"')) continue;
+					try {
+						const d = JSON.parse(line);
+						const w = d?.worktreeSession;
+						if (d?.type === "worktree-state" && w?.worktreePath) c.states.push({ sessionId: w.sessionId ?? d.sessionId ?? basename(file, ".jsonl"), worktreePath: w.worktreePath, originalCwd: w.originalCwd, file, mtime });
+					} catch {
+						/* 壞掉的行跳過 */
+					}
+				}
+			}
+		} finally {
+			closeSync(fd);
 		}
 	}
-	stateCache.set(file, { key, states });
-	return states;
+	for (const x of c.states) x.mtime = mtime;
+	stateCache.set(file, c);
+	return c.states;
 }
 
 /**
@@ -369,9 +381,28 @@ export async function worktreeCounts(store: Store, projects: Project[], deps: Wo
 	);
 	return out;
 }
-export const clearWorktreeCounts = () => countCache.clear();
+export const clearWorktreeCounts = () => {
+	countCache.clear();
+	viewCache.clear();
+};
 
 // ---------- 操作 ----------
+
+/** 程式碼頁「看 worktree 的檔案」用的輕量對照:只跑 git worktree list(每個檔案請求都會呼叫,不能跑完整列表) */
+const viewCache = new Map<string, { at: number; v: { path: string; cwd: string; exists: boolean } }>();
+export async function worktreeView(p: Project, id: string): Promise<{ path: string; cwd: string; exists: boolean }> {
+	const key = `${p.id}@${id}`;
+	const hit = viewCache.get(key);
+	if (hit && Date.now() - hit.at < 10_000) return hit.v;
+	const info = await repoOf(p.root);
+	if (!info) throw new WorktreesError(400, "這個專案不是 git repo");
+	const w = parsePorcelain(await ok(info.repoRoot, ["worktree", "list", "--porcelain"])).find((x) => !x.bare && worktreeId(x.path) === id);
+	if (!w) throw new WorktreesError(404, "找不到這個 worktree(可能已經移除),請重新整理");
+	const cwd = info.prefix ? join(w.path, info.prefix) : w.path;
+	const v = { path: w.path, cwd, exists: existsSync(w.path) && !w.prunable };
+	viewCache.set(key, { at: Date.now(), v });
+	return v;
+}
 
 export async function findWorktree(store: Store, p: Project, id: string, deps: WorktreeDeps = {}): Promise<{ list: WorktreeList; item: WorktreeItem }> {
 	const list = await listWorktrees(store, p, deps);

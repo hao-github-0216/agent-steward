@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -255,4 +255,16 @@ test("worktree 已經移除、只剩誤 commit 的子專案:拿掉時照樣把 .
 	const r = await W.untrackGitlinks(store, A, {});
 	assert.deepEqual(r.ignoreAdded, [".claude/worktrees/"]);
 	assert.match(git(root, "status", "--porcelain"), /^A  \.gitignore$/m);
+});
+
+test("紀錄檔只讀新增的部分:後來才進 worktree、中文路徑都對得到", () => {
+	const projects = tmp("wt-claude-projects-");
+	const wt = join(tmp("wt-中文-"), "樹");
+	const dir = join(projects, W.claudeSlug(wt));
+	mkdirSync(dir, { recursive: true });
+	const f = join(dir, "s1.jsonl");
+	writeFileSync(f, JSON.stringify({ type: "user", message: { content: "前面的對話".repeat(1000) } }) + "\n");
+	assert.equal(W.claudeSessionOfWorktree(wt, projects), undefined);
+	appendFileSync(f, JSON.stringify({ type: "worktree-state", sessionId: "s1", worktreeSession: { worktreePath: wt, sessionId: "s1" } }) + "\n");
+	assert.equal(W.claudeSessionOfWorktree(wt, projects)?.sessionId, "s1");
 });

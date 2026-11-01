@@ -36,7 +36,7 @@ import { askCard, cancelQuestion, FollowUpError, retryQuestion } from "./followu
 import { BranchError, callerPane, closeBranch, draftHandoff, mainAlive, openBranch, pickMainPane, queueHandoff } from "./branch.ts";
 import { herdrCli, listPanes, listWorkspaces } from "./herdr.ts";
 import { boundSpace, ensureSpace, movePane, projectOfSpace, runTidy, strayPanes, tidyPlan } from "./spaces.ts";
-import { chatPlan, findWorktree, ignoreWorktrees, listWorktrees, mergePreview, mergeWorktree, removeWorktreeItem, untrackGitlinks, worktreeCounts, WorktreesError } from "./worktrees.ts";
+import { chatPlan, findWorktree, ignoreWorktrees, listWorktrees, mergePreview, mergeWorktree, removeWorktreeItem, untrackGitlinks, worktreeCounts, worktreeView, WorktreesError } from "./worktrees.ts";
 import { createProject } from "./create.ts";
 import { ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
 import type { Steward } from "./steward.ts";
@@ -285,7 +285,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			// 看/改 worktree 裡的檔案:?wt=<id> 讓這次請求的專案資料夾換成 worktree 裡對應的位置(id 由伺服器對照 git worktree list,不收路徑)
 			const wt = q("wt");
 			if (wt) {
-				const { item } = await findWorktree(store, p, wt, { panes: listPanes() ?? [] });
+				const item = await worktreeView(p, wt);
 				if (!item.exists) return send(res, 404, { error: "這個 worktree 的資料夾已經不在了" });
 				if (sub.startsWith("office/") || sub.startsWith("nb/")) return send(res, 400, { error: "worktree 裡的檔案先不支援 Office 編輯與 Notebook 執行,請到主資料夾或讓 agent 處理" });
 				if (sub === "session") return send(res, 200, {}); // 版面記錄只存主資料夾的
