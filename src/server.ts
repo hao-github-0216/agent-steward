@@ -24,7 +24,7 @@ import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKer
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
-import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, type ChatQuote } from "./chat-log.ts";
+import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, inProject, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
@@ -868,7 +868,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				try {
 					// 聊天室用路由「聊天室」的主要模型(純問答,不能開卡);使用者按「改用備用模型」才用備用
-					const answer = await steward.send(p, `【提問】(使用者)${message}${snippet}${CHAT_FORMAT}`, { role: "chat", fallback: useFallback, timeoutMs: 180_000 });
+					// 前面附圖的問答管家的對話沒看過:補給它(圈選問了第三題,接著用文字問才接得上)
+					const unseen = unseenImageTurns(p.id, mine?.id);
+					const answer = await steward.send(p, `${unseen.text}【提問】(使用者)${message}${snippet}${CHAT_FORMAT}`, { role: "chat", fallback: useFallback, timeoutMs: 180_000 });
+					markShared(p.id, unseen.ids);
 					const bot = appendChat(p.id, { role: "bot", text: answer, ...(useFallback ? { alt: modelLabel(routeFor("chat", { fallback: true })) } : {}) });
 					void makeSuggestions(p).catch(() => undefined); // 回答完換一組建議問題(背景)
 					return send(res, 200, { answer, me: mine, bot, ...extra });

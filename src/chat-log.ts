@@ -32,6 +32,7 @@ export interface ChatEntry {
 	cloud?: boolean; // (舊)使用者按「改用雲端回答這一題」得到的回答
 	alt?: string; // 使用者按「改用備用模型」得到的回答:用的是哪個模型
 	retryable?: boolean; // 本地模型失敗,可以改用雲端重問
+	shared?: boolean; // 看圖單獨回答的問答,已經補給管家的持續對話
 }
 
 const safe = (pid: string) => pid.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -92,6 +93,29 @@ export function clearChat(pid: string): void {
 /** 最近幾則問答(產生建議問題用) */
 export function recentChat(pid: string, n = 6): ChatEntry[] {
 	return readAll(pid).filter((e) => !e.error).slice(-n);
+}
+
+/**
+ * 管家的持續對話沒看過的問答:附圖的問題(圈選、貼圖)是另外找看得懂圖的模型單獨回答,
+ * 不會進管家的對話。下一次一般提問時把這幾題(問題、圈到的內容、回答)補給管家,它才接得上;
+ * 補過的在回答上記 shared,之後不再重複。只看最近 30 則、最多 max 組。exceptId:正在問的這一則
+ */
+export function unseenImageTurns(pid: string, exceptId?: string, max = 4): { text: string; ids: string[] } {
+	const items = readAll(pid).filter((e) => e.id !== exceptId).slice(-30);
+	const turns: string[] = [], ids: string[] = [];
+	for (let i = items.length - 1; i >= 0 && turns.length < max; i--) {
+		const me = items[i], bot = items[i + 1];
+		if (me.role !== "me" || !me.images?.length || bot?.role !== "bot" || bot.error || bot.shared) continue;
+		const where = `${me.quote?.path ?? ""}${me.quote?.from ? ` 第 ${me.quote.from}${me.quote.to && me.quote.to !== me.quote.from ? `–${me.quote.to}` : ""} 行` : ""}`;
+		const q = me.quote?.text ? `\n${me.via === "圈選" ? "圈到的內容" : "引用"}(${where}):\n${me.quote.text.slice(0, 3000)}` : "";
+		turns.unshift(`使用者${me.via === "圈選" ? "(圈選畫面,附截圖)" : "(附圖片)"}:${me.text}${q}\n管家:${bot.text.slice(0, 3000)}`);
+		ids.push(bot.id);
+	}
+	return { text: turns.length ? `【補充:你之前沒看到的問答】使用者在你看不到的地方(附圖片、圈選畫面)問過以下問題,由看得懂圖片的模型回答。接下來的問題可能接著這些:\n${turns.join("\n---\n")}\n\n` : "", ids };
+}
+/** 補給管家之後記下來,不再重複補 */
+export function markShared(pid: string, ids: string[]): void {
+	for (const id of ids) updateChat(pid, id, { shared: true });
 }
 
 // ---------- 建議問題:每個專案一組三個 ----------
