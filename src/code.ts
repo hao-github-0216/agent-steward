@@ -67,7 +67,7 @@ export async function isRepo(p: Project): Promise<boolean> {
 }
 
 /**
- * 專案資料夾在 repo 裡的位置(例如 course/hw1 這種「一個 repo 底下好幾份作業」的情況是 "hw1/";專案就是 repo 根目錄時是 "")。
+ * 專案資料夾在 repo 裡的位置(例如一個 repo 底下有好幾個專案資料夾 course/hw1、course/hw2 時是 "hw1/";專案就是 repo 根目錄時是 "")。
  * git 面板只管這個資料夾:狀態、暫存、捨棄、diff、歷史都限定在這裡,路徑一律相對於專案資料夾。
  */
 const prefixCache = new Map<string, { at: number; prefix: string; top: string }>();

@@ -1,5 +1,7 @@
 // 分支總覽的樹狀圖資料:一次給「資料夾樹」和「分岔圖」要的東西。
-//  - 資料夾樹:repo → 作業資料夾(已登記的專案)→ worktree / agent 留下的分支。歸屬依序看:從哪個資料夾開的 → 主要改哪個資料夾 → 放「其他」(folder = "")
+//  - 資料夾樹:repo → 子專案資料夾(repo 裡另外登記成專案的資料夾)→ worktree / agent 留下的分支。
+//    歸屬依序看:從哪個子專案開的 → 主要改哪個子專案 → 都不是就直接掛在 repo 底下(folder = "")。
+//    沒登記的資料夾(src、test 之類)不分組;整個 repo 就是一個專案時,全部直接掛在 repo 底下
 //  - 分岔圖:主線(目前分支的 first-parent 鏈)只取分岔點、合併點、最新的 commit;每條分支記它從哪個點分出去、有沒有合回、合在哪裡
 //  - agent 留下的分支 = worktree 已經移除、但分支還在的 worktree-* / steward/branch-*;一般手動分支不畫
 import { join, relative, sep } from "node:path";
@@ -51,7 +53,7 @@ export interface WorktreeTree {
 	repoName: string;
 	target: string | null;
 	currentFolder: string; // 正在看的專案在 repo 裡的位置("" = repo 根目錄)
-	folders: TreeFolder[];
+	folders: TreeFolder[]; // repo 裡登記成專案的子資料夾
 	items: (WorktreeItem & { folder: string })[]; // 和 /worktrees 的 items 一樣,多一個 folder;第一個是主資料夾
 	leftovers: LeftoverBranch[];
 	graph: { nodes: GraphNode[]; branches: GraphBranch[]; truncated: boolean };
@@ -61,19 +63,16 @@ export interface WorktreeTree {
 const MAX_CHAIN = 5000;
 const rel = (root: string, path: string) => relative(real(root), real(path)).split(sep).join("/");
 
-/** path 落在哪個已知資料夾(取最深的);都不是就取第一層資料夾 */
+/** path 落在哪個子專案資料夾(取最深的);都不是回 "" */
 function folderOfPath(relPath: string, known: string[]): string {
-	const hit = known.filter((f) => relPath === f || relPath.startsWith(`${f}/`)).sort((a, b) => b.length - a.length)[0];
-	if (hit !== undefined) return hit;
-	const top = relPath.split("/")[0];
-	return relPath.includes("/") ? top : "";
+	return known.filter((f) => relPath === f || relPath.startsWith(`${f}/`)).sort((a, b) => b.length - a.length)[0] ?? "";
 }
-/** 一組改動的檔案主要落在哪個資料夾(已知資料夾優先,否則用第一層資料夾;只改根目錄的檔案就是 "") */
+/** 一組改動的檔案主要落在哪個子專案資料夾(都不在子專案裡就是 "") */
 function majorityFolder(files: string[], known: string[]): string {
 	const count = new Map<string, number>();
 	for (const f of files) {
 		if (f.startsWith(".claude/")) continue; // 誤 commit 的 worktree 之類,不算
-		const k = known.filter((x) => f.startsWith(`${x}/`)).sort((a, b) => b.length - a.length)[0] ?? (f.includes("/") ? f.split("/")[0] : undefined);
+		const k = known.filter((x) => f.startsWith(`${x}/`)).sort((a, b) => b.length - a.length)[0];
 		if (k) count.set(k, (count.get(k) ?? 0) + 1);
 	}
 	return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
@@ -130,10 +129,9 @@ export async function worktreeTree(store: Store, p: Project, deps: WorktreeDeps 
 	// agent 留下的分支(worktree 不在了)
 	const withWt = new Set(items.map((x) => x.branch).filter(Boolean));
 	const refs = lines((await run(repoRoot, ["for-each-ref", "--format=%(refname:short)%09%(objectname)%09%(committerdate:iso-strict)", "refs/heads/worktree-*", "refs/heads/steward/branch-*"])).out);
-	const leftovers: LeftoverBranch[] = [];
-	for (const l of refs) {
+	const leftovers = (await Promise.all(refs.map(async (l): Promise<LeftoverBranch | undefined> => {
 		const [branch, head, date] = l.split("\t");
-		if (withWt.has(branch) || branch === target) continue;
+		if (withWt.has(branch) || branch === target) return undefined;
 		const source = branch.startsWith("steward/") ? "steward" : "claude";
 		let session: LeftoverBranch["session"];
 		let folder = "";
@@ -156,15 +154,11 @@ export async function worktreeTree(store: Store, p: Project, deps: WorktreeDeps 
 			// 合併了:target...head 是空的,改看分支自己的 commit 改了哪裡
 			if (!folder) folder = majorityFolder(merged ? lines((await run(repoRoot, ["diff-tree", "-r", "--name-only", "--no-commit-id", "--root", head])).out) : await changedFiles(target, head), known);
 		}
-		leftovers.push({ branch, head, source, folder, ahead: 0, merged, savedOnRemove, session, lastModified: date || undefined });
-	}
+		return { branch, head, source, folder, ahead: 0, merged, savedOnRemove, session, lastModified: date || undefined };
+	}))).filter((x): x is LeftoverBranch => !!x);
 
-	// 資料夾:已登記的,加上有東西歸進去但沒登記的
-	const used = new Set([...items.map((x) => x.folder), ...leftovers.map((x) => x.folder)].filter(Boolean));
-	const folders: TreeFolder[] = [
-		...regs.map((x) => ({ path: rel(repoRoot, x.root), projectId: x.id, name: x.name, current: x.id === p.id })),
-		...[...used].filter((f) => !known.includes(f)).map((f) => ({ path: f, name: f, current: f === currentFolder })),
-	].sort((a, b) => a.path.localeCompare(b.path));
+	// 第二層:repo 裡登記成專案的子資料夾(沒登記的資料夾不分組)
+	const folders: TreeFolder[] = regs.map((x) => ({ path: rel(repoRoot, x.root), projectId: x.id, name: x.name, current: x.id === p.id })).sort((a, b) => a.path.localeCompare(b.path));
 
 	const graph = target ? await branchGraph(repoRoot, target, [
 		...items.filter((x) => x.source !== "main" && x.head).map((x) => ({ key: x.id, branch: x.branch, head: x.head })),
@@ -200,7 +194,8 @@ async function branchGraph(repoRoot: string, target: string, branches: { key: st
 		return lo;
 	};
 	const raw: { key: string; branch: string | null; fork: number; merged?: number; ahead: number; savedOnRemove?: { commits: number; files: string[] } }[] = [];
-	for (const b0 of branches) {
+	// 各分支互不相關:同時算(每條要十幾次 git 呼叫,一條一條排隊在分支多的 repo 會慢到一秒以上)
+	const rawAll = await Promise.all(branches.map(async (b0) => {
 		const eff = await effectiveHead(repoRoot, b0.head);
 		const b = { ...b0, head: eff.head };
 		// 先看有沒有合回主線:主線上最早含有分支頂端的位置,而且那個 commit 不是分支頂端本身(是的話代表分支就在主線上,沒有自己的 commit)
@@ -212,8 +207,9 @@ async function branchGraph(repoRoot: string, target: string, branches: { key: st
 		const ahead = base ? Number((await run(repoRoot, ["rev-list", "--count", `${base}..${b.head}`])).out.trim()) || 0 : 0;
 		let fork = at >= 0 && merged === undefined ? at : base ? await firstContaining(base) : -1;
 		if (fork < 0) fork = 0; // 分岔點比畫得到的主線還舊:接在最舊的點
-		raw.push({ key: b.key, branch: b.branch, fork, merged, ahead, savedOnRemove: eff.saved });
-	}
+		return { key: b.key, branch: b.branch, fork, merged, ahead, savedOnRemove: eff.saved };
+	}));
+	raw.push(...rawAll);
 	// 只留關鍵點:分岔點、合併點、最新
 	const keep = [...new Set([...raw.flatMap((x) => [x.fork, ...(x.merged !== undefined ? [x.merged] : [])]), chain.length - 1])].filter((i) => i >= 0).sort((a, b) => a - b);
 	const index = new Map(keep.map((ci, i) => [ci, i]));

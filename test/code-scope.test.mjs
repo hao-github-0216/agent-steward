@@ -1,4 +1,4 @@
-// git 面板只管專案資料夾:一個 repo 底下好幾份作業(course/hw1、course/hw2)時,狀態、暫存、diff、歷史都不混在一起
+// git 面板只管專案資料夾:一個 repo 底下有好幾個專案資料夾(course/hw1、course/hw2)時,狀態、暫存、diff、歷史都不混在一起
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

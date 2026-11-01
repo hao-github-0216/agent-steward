@@ -93,9 +93,9 @@
   "repoName": "course",
   "target": "main",                 // 主線(主資料夾目前的分支)
   "currentFolder": "hw1",           // 正在看的專案在 repo 裡的位置;"" = repo 根目錄
-  "folders": [                      // 資料夾樹的第二層(照路徑排序)
+  "folders": [                      // 資料夾樹的第二層:repo 裡登記成專案的子資料夾(照路徑排序);整個 repo 就是一個專案時是空陣列
     { "path": "hw1", "projectId": "…", "name": "hw1", "current": true },
-    { "path": "hw3", "name": "hw3", "current": false }   // 沒登記但有分支歸進來的資料夾(沒有 projectId)
+    { "path": "hw2", "projectId": "…", "name": "hw2", "current": false }
   ],
   "items": [ /* 和 GET worktrees 的 items 完全一樣,每筆多一個 "folder" */ ],
   "leftovers": [                    // agent 留下、worktree 已移除的分支(worktree-* / steward/branch-*)
@@ -116,8 +116,9 @@
 ```
 
 - `savedOnRemove`(leftovers 與 graph.branches 都可能有):`{ commits, files }`,分支頂端是管家移除 worktree 時「存進分支」產生的 commit;判斷合併時不算它們,所以已合併的照樣是 `merged: true` / 有 `mergedAt`,畫面上標「✔ 已合併(移除時另存了 N 個檔案)」
-- `folder`:`""` 代表歸不到任何資料夾 → 樹上放在 repo 根節點下的「其他」。主資料夾(source=main)的 folder 一律是 `""`,樹上當作 repo 根節點本身,不另外畫。
+- `folder`:歸屬的子專案資料夾(`folders[].path` 之一);`""` = 不屬於任何子專案 → 樹上**直接掛在 repo 根節點底下**(不要另外做「其他」分組;沒登記的資料夾如 src、test 也不分組)。主資料夾(source=main)的 folder 一律是 `""`,樹上當作 repo 根節點本身,不另外畫。
+- 介面用詞請保持中性(適用任何專案):第二層叫「子專案資料夾」或直接顯示資料夾名稱,不要用只對某一類專案才成立的詞。
 - `graph.branches[].key`:worktree 用它的 `id`(和 items 對得上,節點可以直接用 chat/files/merge/remove);留下的分支是 `branch:<名稱>`,只顯示、沒有操作。
-- 資料夾樹:repo →(每個 folder)→ 歸在那裡的 items 與 leftovers;`current` 的資料夾預設展開,其他收合並顯示數量(items + 未合併的 leftovers)。
+- 資料夾樹:repo →(每個 folder)→ 歸在那裡的 items 與 leftovers,再加上 folder 為 `""` 的直接掛在 repo 底下;`current` 的資料夾預設展開,其他收合並顯示數量(items + 未合併的 leftovers)。
 - 分岔圖:主線畫成一條線、nodes 依序排開,`gapBefore > 0` 畫「⋯ N 個 commit」;每條 branch 從 `forkAt` 長出一條枝,標 `branch`、`ahead`、開它的 agent;有 `mergedAt` 的畫一條線合回那個點並標「✔ 已合併」。
 - 分岔圖一打開建議捲到「最早一條還沒合併的分支的分岔點」(沒有就最新的 commit),手機上才看得到要處理的分支。

@@ -53,11 +53,11 @@ test("資料夾樹與分岔圖:已合併 / 沒合併 / worktree 已移除 / 歸�
 	// 2. 從 hw2 開、還沒合併、worktree 還在
 	const o = claudeWt("open", join(root, "hw2"));
 	commitFile(o, "hw2/b.tex", "x\n", "o1");
-	// 3. 手動 worktree,只改 repo 根目錄的檔案 → 歸到「其他」
+	// 3. 手動 worktree,只改 repo 根目錄的檔案 → 不屬於任何子專案(直接掛在 repo 底下)
 	const man = join(tmp("man-"), "w");
 	git(root, "worktree", "add", "-q", "-b", "manual", man, "HEAD");
 	commitFile(man, "README.md", "r\n", "readme");
-	// 4. 手動開、改 hw3(沒登記的資料夾)→ 資料夾樹多一個 hw3
+	// 4. 手動開、改 hw3(沒登記成專案的資料夾)→ 不分組,也直接掛在 repo 底下
 	const man3 = join(tmp("man3-"), "w");
 	git(root, "worktree", "add", "-q", "-b", "manual3", man3, "HEAD");
 	commitFile(man3, "hw3/c.tex", "c\n", "hw3");
@@ -66,12 +66,12 @@ test("資料夾樹與分岔圖:已合併 / 沒合併 / worktree 已移除 / 歸�
 	const t = await worktreeTree(store, hw1, { panes: [], claudeProjectsDir: projects, stewardWorktreesDir: join(DATA, "worktrees") });
 	assert.equal(t.repo, true);
 	assert.equal(t.currentFolder, "hw1");
-	assert.deepEqual(t.folders.map((f) => [f.path, f.current, !!f.projectId]), [["hw1", true, true], ["hw2", false, true], ["hw3", false, false]]);
+	assert.deepEqual(t.folders.map((f) => [f.path, f.current, !!f.projectId]), [["hw1", true, true], ["hw2", false, true]]);
 	const by = (b) => t.items.find((x) => x.branch === b);
 	assert.equal(by("main").folder, "");
 	assert.equal(by("worktree-open").folder, "hw2"); // 從 hw2 開的
-	assert.equal(by("manual").folder, ""); // 只改了根目錄 → 其他
-	assert.equal(by("manual3").folder, "hw3"); // 主要改 hw3(沒登記也列出來)
+	assert.equal(by("manual").folder, ""); // 只改了根目錄
+	assert.equal(by("manual3").folder, ""); // hw3 沒登記成專案:不自己變成一組
 
 	assert.equal(t.leftovers.length, 1);
 	const left = t.leftovers[0];
@@ -125,4 +125,22 @@ test("合併後才「存進分支再移除」:分支只多了另存的 commit,�
 	assert.ok(g.mergedAt !== undefined);
 	assert.equal(g.ahead, 1);
 	assert.deepEqual(g.savedOnRemove.files, ["hw1/a.aux"]);
+});
+
+test("整個 repo 就是一個專案:沒有子專案分組,src / test 之類的資料夾不會變成一組", async () => {
+	const root = tmp("app-");
+	git(root, "init", "-q", "-b", "main");
+	git(root, "config", "user.email", "t@t");
+	git(root, "config", "user.name", "t");
+	commitFile(root, "src/a.ts", "1\n", "init");
+	const store = new Store(join(tmp("st-"), "state.json"));
+	const p = store.addProject({ root, name: "app", kind: "project", status: "active", private: false });
+	const w = join(tmp("w-"), "w");
+	git(root, "worktree", "add", "-q", "-b", "feature", w, "HEAD");
+	commitFile(w, "src/a.ts", "2\n", "change src");
+	commitFile(w, "test/a.test.ts", "t\n", "add test");
+	const t = await worktreeTree(store, p, { panes: [], claudeProjectsDir: tmp("cp-") });
+	assert.deepEqual(t.folders, []);
+	assert.equal(t.currentFolder, "");
+	assert.equal(t.items.find((x) => x.branch === "feature").folder, "");
 });

@@ -2006,21 +2006,22 @@
 		return `<div class="wt-row left" title="${esc(l.branch)}"><div class="l1"><span class="src src-${l.source}">${WT_SRC[l.source]}</span><b>${esc(l.branch)}</b></div>
 			<div class="l2">worktree 已移除 · ${l.merged ? `✔ 已合併${l.savedOnRemove ? `(移除時另存了 ${l.savedOnRemove.files.length} 個沒 commit 的檔案)` : ""}` : `還沒合併 · ↑${l.ahead}`} · ${who}${l.lastModified ? ` · ${ago(l.lastModified)}` : ""}</div></div>`;
 	}
-	/** 資料夾樹:repo → 作業資料夾 → worktree(可操作)/ 留下的分支(只顯示);目前的資料夾預設展開 */
+	/** 資料夾樹:repo → 子專案資料夾 → worktree(可操作)/ 留下的分支(只顯示)。目前的子專案預設展開;不屬於任何子專案的直接掛在 repo 底下 */
 	function folderTree(t) {
-		const groups = [...t.folders.map((f) => ({ ...f })), { path: "", name: "其他(不屬於任何作業資料夾)", current: false, other: true }];
-		const rows = groups.map((f) => {
+		const under = (path) => [...t.items.filter((x) => x.source !== "main" && x.folder === path).map(wtRow), ...t.leftovers.filter((x) => x.folder === path).map(leftRow)];
+		const rows = t.folders.map((f) => {
 			const items = t.items.filter((x) => x.source !== "main" && x.folder === f.path);
 			const lefts = t.leftovers.filter((x) => x.folder === f.path);
-			if (f.other && !items.length && !lefts.length) return "";
 			const n = items.length + lefts.filter((x) => !x.merged).length;
 			const stored = gitFold(`wtf:${t.repoRoot}:${f.path}`);
 			const folded = stored ?? !f.current;
-			const kids = folded ? "" : `<div class="wt-kids">${items.map(wtRow).join("")}${lefts.map(leftRow).join("")}${items.length || lefts.length ? "" : '<div class="hint wt-none">沒有分支</div>'}</div>`;
-			return `<div class="wt-folder${f.current ? " cur" : ""}"><div class="wt-fh" data-wtfold="${esc(f.path)}"><span class="tw">${folded ? "▸" : "▾"}</span>${f.other ? "" : "📂 "}${esc(f.name)}${f.current ? '<span class="hint">目前</span>' : ""}${n ? `<span class="wtb">⑂${n}</span>` : ""}</div>${kids}</div>`;
+			const kids = folded ? "" : `<div class="wt-kids">${under(f.path).join("") || '<div class="hint wt-none">沒有分支</div>'}</div>`;
+			return `<div class="wt-folder${f.current ? " cur" : ""}"><div class="wt-fh" data-wtfold="${esc(f.path)}"><span class="tw">${folded ? "▸" : "▾"}</span>📂 ${esc(f.name)}${f.current ? '<span class="hint">目前</span>' : ""}${n ? `<span class="wtb">⑂${n}</span>` : ""}</div>${kids}</div>`;
 		}).join("");
+		const direct = under("");
 		const main = t.items.find((x) => x.source === "main");
-		return `<div class="wt-tree"><div class="wt-repo">🗂 ${esc(t.repoName)}<span class="hint">主線 ${esc(t.target || "(detached)")}</span>${cm.wt && main ? '<button class="small" data-wa="home">回主資料夾</button>' : ""}</div>${rows}</div>`;
+		const empty = !rows && !direct.length ? '<div class="hint wt-none" style="margin-left:14px">沒有另外開的分支</div>' : "";
+		return `<div class="wt-tree"><div class="wt-repo">🗂 ${esc(t.repoName)}<span class="hint">主線 ${esc(t.target || "(detached)")}</span>${cm.wt && main ? '<button class="small" data-wa="home">回主資料夾</button>' : ""}</div>${rows}${direct.length ? `<div class="wt-kids wt-direct">${direct.join("")}</div>` : ""}${empty}</div>`;
 	}
 	function wtWarn(t) {
 		if (t.warnings.gitlinks.length) return `<div class="wt-warn">⚠ 這些 worktree 已經被誤 commit 成子專案,之後的 commit 會一直卡住:${t.warnings.gitlinks.map(esc).join("、")}<div class="acts"><button class="small" data-wfix="untrack">從版本控制移除</button></div></div>`;
@@ -2029,7 +2030,8 @@
 	}
 	function wtSection() {
 		const w = cm.wts;
-		if (!w || w.error || !w.repo) return w?.error ? `<div class="hint" style="padding:6px 14px">分支總覽讀不到:${esc(w.error)}</div>` : "";
+		if (!w) return '<div class="hint" style="padding:6px 14px">分支(worktree)讀取中…</div>';
+		if (w.error || !w.repo) return w.error ? `<div class="hint" style="padding:6px 14px">分支總覽讀不到:${esc(w.error)}</div>` : "";
 		const total = w.items.filter((x) => x.source !== "main").length + w.leftovers.filter((x) => !x.merged).length;
 		return sec("wt", "分支(worktree)", total, '<button data-wa="map" title="在編輯區開「分支圖」:資料夾樹和分岔圖">開大圖</button><button data-wa="reload" title="重新整理">⟳</button>', wtWarn(w) + folderTree(w));
 	}
@@ -2140,10 +2142,15 @@
 		});
 	}
 	const wtById = (id) => cm.wts?.items?.find((x) => x.id === id);
+	/** 讀分支樹狀資料;回來時已經換專案就丟掉,回傳有沒有更新 */
 	async function loadWts() {
-		cm.wts = await wtApi("tree").catch((e) => ({ error: e.message }));
+		const pid = cm.pid;
+		const t = await wtApi("tree").catch((e) => ({ error: e.message }));
+		if (cm.pid !== pid) return false;
+		cm.wts = t;
 		const mt = wtMapTab();
 		if (mt?.pv) renderWtMap(mt);
+		return true;
 	}
 	async function wtChat(x) {
 		try {
@@ -2234,11 +2241,18 @@
 	// ---------- Git ----------
 	async function refreshGit() {
 		if (!cm.pid) return;
-		[cm.git] = await Promise.all([api("git/status").catch((e) => ({ error: e.message })), loadWts()]);
-		const n = cm.git.repo ? cm.git.staged.length + cm.git.unstaged.length + cm.git.untracked.length + cm.git.conflicted.length : 0;
+		// git 狀態很快、分支樹狀資料比較慢:狀態先畫,樹狀資料回來再補上分支區塊;
+		// 回來時已經換到別的專案/worktree 就丟掉(不然舊專案的結果會蓋掉新的)
+		const key = cp();
+		const wts = loadWts();
+		const st = await api("git/status").catch((e) => ({ error: e.message }));
+		if (cp() !== key) return;
+		cm.git = st;
+		const n = st.repo ? st.staged.length + st.unstaged.length + st.untracked.length + st.conflicted.length : 0;
 		$("cvGitCount").hidden = !n;
 		$("cvGitCount").textContent = n;
 		if (cm.view === "git") renderGit();
+		if (await wts && cp() === key && cm.view === "git") renderGit();
 	}
 	function gitRow(path, code, which) {
 		const acts = which === "staged" ? '<button data-g="unstage" title="取消暫存">−</button>' : `<button data-g="discard" title="捨棄變更">↺</button><button data-g="stage" title="暫存">＋</button>`;
@@ -2261,7 +2275,9 @@
 		const anyStaged = g.staged.length > 0;
 		const sync = g.upstream ? `↓${g.behind} ↑${g.ahead}` : "尚未連到遠端";
 		let branches = [];
+		const key = cp();
 		try { branches = (await gitPost("branches")).out.filter((b) => !b.name.startsWith("origin/") && !b.name.startsWith("remotes/")); } catch {}
+		if (cp() !== key || cm.git !== g) return; // 等的時候換了專案或有更新的狀態:交給那一次畫
 		const subNote = g.prefix ? `<div class="hint git-sub" title="git 是以 ${esc(g.repoName)} 整個資料夾為單位">這個專案是 repo「${esc(g.repoName)}」裡的 ${esc(g.prefix)} 資料夾:下面只列 ${esc(g.prefix)} 的變更與歷史,「全部暫存」也只加 ${esc(g.prefix)};分支、拉取、推送是整個 repo 共用的。${g.outsideStaged?.length ? `<br><b>⚠ 暫存區還有 ${g.outsideStaged.length} 個其他資料夾的檔案</b>(提交時會問你要不要一起提交)` : ""}</div>` : "";
 		root.innerHTML = `${wtHtml}${subNote}
 			<div class="git-branch"><select id="cvBranch" title="切換分支">${branches.map((b) => `<option ${b.current ? "selected" : ""}>${esc(b.name)}</option>`).join("") || `<option>${esc(g.branch)}</option>`}</select>
@@ -2456,7 +2472,13 @@
 		renderFiles();
 		if (cm.view === "git") renderGit();
 	}
-	function refresh() { cm.dirs = {}; renderFiles(); refreshGit(); }
+	function refresh() {
+		cm.dirs = {};
+		renderFiles();
+		// 換專案時 cm.git 已清空:git 面板馬上改成「讀取中」,不要停在上一個專案的內容
+		if (cm.view === "git" && !cm.git) renderGit();
+		refreshGit();
+	}
 	// 專案名稱旁的「回主資料夾」(攔在專案清單之前)
 	$("cvProject").addEventListener("click", (e) => {
 		if (!e.target.closest("[data-wtexit]")) return;
