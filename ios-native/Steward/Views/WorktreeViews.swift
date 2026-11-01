@@ -47,6 +47,9 @@ final class WorktreeController {
     var list: WorktreeList?
     /// 管家還沒有這個 API,顯示的是示意資料
     var demo = false
+    /// 樹狀圖(資料夾樹 + 分岔圖);管家還沒有就 nil(退回平列表),Debug 版用示意資料(treeDemo)
+    var tree: WorktreeTree?
+    var treeDemo = false
     var info: String?
     var error: String?
     /// 正在處理的 worktree id,或 "ignore" / "untrack"
@@ -73,6 +76,25 @@ final class WorktreeController {
         list = r.list
         demo = r.demo
         error = r.error.map { "讀不到分支總覽:\($0)" }
+        guard r.list?.repo == true, !r.demo else { tree = r.demo ? WorktreeTreeDemo.tree : nil; treeDemo = r.demo; return }
+        do {
+            tree = try await api.worktreeTree(project: project.id)
+            treeDemo = false
+        } catch let e as WorktreeError where e.status == 404 {
+            #if DEBUG
+            tree = WorktreeTreeDemo.tree
+            treeDemo = true
+            #else
+            tree = nil
+            #endif
+        } catch {
+            tree = nil
+        }
+    }
+
+    /// 示意資料裡的 worktree(真的管家上沒有):動作只提示,不送出去
+    func fake(_ w: Worktree) -> Bool {
+        demo || (treeDemo && !(list?.items?.contains { $0.id == w.id } ?? false))
     }
 
     var patterns: String {
@@ -82,7 +104,7 @@ final class WorktreeController {
 
     /// 窗格開著就跳過去;關了就在同 space 開新 tab 接回對話;對不到就在 worktree 資料夾開新 agent。管家會在 herdr 切過去,app 跟著切到終端機
     func chat(_ w: Worktree, _ model: AppModel, _ project: Project) async {
-        if demo { info = "示意資料:管家更新後會跳到 \(w.session?.pane?.paneId ?? "新的 tab")"; return }
+        if fake(w) { info = "示意資料:管家更新後會跳到 \(w.session?.pane?.paneId ?? "新的 tab")"; return }
         guard let api = model.api else { return }
         busy = w.id
         defer { busy = nil }
@@ -106,13 +128,13 @@ final class WorktreeController {
 
     /// 程式碼頁切到 worktree 資料夾(nil = 回主資料夾)
     func browse(_ w: Worktree?, _ model: AppModel) {
+        if let w, fake(w) { info = "示意資料:管家更新前讀不到這個 worktree 的檔案"; return }
         model.codeWorktree = w.map { CodeWorktree(id: $0.id, branch: $0.branch, cwd: $0.cwd ?? $0.path) }
-        if demo, w != nil { info = "示意資料:管家更新前讀不到這個 worktree 的檔案" }
         model.codeSection = "files"
     }
 
     func remove(_ w: Worktree, confirm: Set<String>, _ model: AppModel, _ project: Project) async {
-        if demo { info = "示意資料:管家更新後才能移除"; return }
+        if fake(w) { info = "示意資料:管家更新後才能移除"; return }
         guard let api = model.api else { return }
         busy = w.id
         defer { busy = nil }
@@ -160,6 +182,10 @@ struct WorktreeSection: View {
     @Environment(AppModel.self) private var model
     let project: Project
     let ctl: WorktreeController
+    /// 資料夾樹 tree / 分岔圖 graph
+    @AppStorage("worktreeView") private var view = "tree"
+    /// 展開的資料夾;nil = 還沒動過(只展開目前專案的資料夾)
+    @State private var expanded: Set<String>?
 
     var body: some View {
         if let l = ctl.list, l.repo {
@@ -170,18 +196,33 @@ struct WorktreeSection: View {
             if !(l.warnings?.gitlinks ?? []).isEmpty { banner(.untrack) }
             Section {
                 if let error = ctl.error { Text(error).font(.footnote).foregroundStyle(.red) }
-                if let main = l.items?.first(where: { $0.source == "main" }) { row(main, l) }
-                if others.isEmpty { Text("只有主資料夾,沒有其他 worktree。").font(.subheadline).foregroundStyle(.secondary) }
-                ForEach(relevant) { row($0, l) }
-                if !unrelated.isEmpty {
-                    DisclosureGroup("同 repo 的其他 worktree(\(unrelated.count))") {
-                        ForEach(unrelated) { row($0, l) }
+                if let t = ctl.tree, t.repo {
+                    Picker("檢視", selection: $view) {
+                        Text("資料夾樹").tag("tree")
+                        Text("分岔圖").tag("graph")
+                    }
+                    .pickerStyle(.segmented)
+                    if view == "graph" {
+                        WorktreeGraphView(tree: t) { w in actions(w) }
+                            .listRowInsets(EdgeInsets())
+                    } else {
+                        folderTree(t)
+                    }
+                } else {
+                    if let main = l.items?.first(where: { $0.source == "main" }) { row(main, l.target) }
+                    if others.isEmpty { Text("只有主資料夾,沒有其他 worktree。").font(.subheadline).foregroundStyle(.secondary) }
+                    ForEach(relevant) { row($0, l.target) }
+                    if !unrelated.isEmpty {
+                        DisclosureGroup("同 repo 的其他 worktree(\(unrelated.count))") {
+                            ForEach(unrelated) { row($0, l.target) }
+                        }
                     }
                 }
             } header: {
                 HStack {
-                    Text("分支(\(relevant.count))")
-                    if ctl.demo { Text("示意資料").font(.caption2).foregroundStyle(.orange).textCase(nil) }
+                    Text("分支(\(ctl.tree?.others.count ?? relevant.count))")
+                    if let name = ctl.tree?.repoName { Text("· \(name)").textCase(nil) }
+                    if ctl.demo || ctl.treeDemo { Text("示意資料").font(.caption2).foregroundStyle(.orange).textCase(nil) }
                 }
             } footer: {
                 if let info = ctl.info { Text(info) } else if !others.isEmpty { Text("點一下看所有動作;左滑合併或移除,右滑跟它對話。") }
@@ -217,13 +258,59 @@ struct WorktreeSection: View {
         .listRowBackground(Color.yellow.opacity(0.15))
     }
 
-    private func row(_ w: Worktree, _ l: WorktreeList) -> some View {
+    /// 資料夾樹:repo(主資料夾)→ 作業資料夾 → 歸在那裡的 worktree 與留下的分支;歸不到的放「其他」
+    @ViewBuilder
+    private func folderTree(_ t: WorktreeTree) -> some View {
+        if let main = t.items?.first(where: { $0.source == "main" }) ?? ctl.list?.items?.first(where: { $0.source == "main" }) {
+            row(main, t.target)
+        }
+        ForEach(t.folders ?? []) { f in
+            folder(t, path: f.path, name: f.name ?? f.path, current: f.current == true)
+        }
+        if !t.items(in: "").isEmpty || !t.leftovers(in: "").isEmpty {
+            folder(t, path: "", name: "其他", current: false)
+        }
+    }
+
+    private func folder(_ t: WorktreeTree, path: String, name: String, current: Bool) -> some View {
+        let items = t.items(in: path)
+        let leftovers = t.leftovers(in: path)
+        let open = Binding(
+            get: { (expanded ?? defaultExpanded(t)).contains(path) },
+            set: { on in
+                var s = expanded ?? defaultExpanded(t)
+                if on { s.insert(path) } else { s.remove(path) }
+                expanded = s
+            })
+        return DisclosureGroup(isExpanded: open) {
+            ForEach(items) { row($0, t.target) }
+            ForEach(leftovers) { WorktreeLeftoverRow(leftover: $0, target: t.target) }
+            if items.isEmpty && leftovers.isEmpty { Text("沒有分支").font(.subheadline).foregroundStyle(.secondary) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: path.isEmpty ? "tray" : "folder").foregroundStyle(.secondary)
+                Text(name).lineLimit(1)
+                if current { Text("目前專案").font(.caption2.bold()).foregroundStyle(Theme.accent) }
+                Spacer(minLength: 4)
+                if !open.wrappedValue {
+                    let n = t.count(in: path)
+                    if n > 0 { Text("\(n)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                }
+            }
+        }
+    }
+
+    private func defaultExpanded(_ t: WorktreeTree) -> Set<String> {
+        Set((t.folders ?? []).filter { $0.current == true }.map(\.path) + [t.currentFolder].compactMap { $0 })
+    }
+
+    private func row(_ w: Worktree, _ target: String?) -> some View {
         let isMain = w.source == "main"
         let viewing = isMain ? model.codeWorktree == nil : model.codeWorktree?.id == w.id
         return Menu {
             actions(w)
         } label: {
-            WorktreeRow(worktree: w, target: l.target, viewing: viewing, busy: ctl.busy == w.id)
+            WorktreeRow(worktree: w, target: target, viewing: viewing, busy: ctl.busy == w.id)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -267,7 +354,7 @@ struct WorktreeDialogs: ViewModifier {
         content
             .sheet(item: $ctl.merging) { w in
                 let target = ctl.list?.target ?? "主線"
-                WorktreeMergeSheet(project: project, worktree: w, target: target, demo: ctl.demo) { commit, removeAfter in
+                WorktreeMergeSheet(project: project, worktree: w, target: target, demo: ctl.fake(w)) { commit, removeAfter in
                     ctl.info = "已把 \(w.branch ?? "") 合併進 \(target)" + (commit.map { "(\($0))" } ?? "")
                     model.code.gitChanged += 1
                     Task { if removeAfter { await ctl.remove(w, confirm: [], model, project) } else { await ctl.load(model, project) } }

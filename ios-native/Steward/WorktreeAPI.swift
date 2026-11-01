@@ -48,6 +48,8 @@ struct Worktree: Decodable, Hashable, Identifiable {
     var ignored: Bool?
     var session: Session?
     var stewardBranchId: String?
+    /// 樹狀圖用:歸在 repo 裡哪個作業資料夾("" = 其他;主資料夾一律 "")
+    var folder: String?
 
     struct Session: Decodable, Hashable {
         var agent: String?
@@ -83,6 +85,63 @@ struct Worktree: Decodable, Hashable, Identifiable {
         default: "hand.raised"
         }
     }
+}
+
+/// 樹狀圖:資料夾樹(repo → 作業資料夾 → worktree / 留下的分支)+ 分岔圖
+struct WorktreeTree: Decodable {
+    var repo: Bool
+    var repoRoot: String?
+    var repoName: String?
+    var target: String?
+    var currentFolder: String?
+    var folders: [Folder]?
+    var items: [Worktree]?
+    var leftovers: [Leftover]?
+    var graph: Graph?
+
+    struct Folder: Decodable, Hashable, Identifiable {
+        var path: String
+        var projectId: String?
+        var name: String?
+        var current: Bool?
+        var id: String { path }
+    }
+    /// agent 留下、worktree 已移除的分支:只顯示
+    struct Leftover: Decodable, Hashable, Identifiable {
+        var branch: String
+        var head: String?
+        var source: String?
+        var folder: String?
+        var ahead: Int?
+        var merged: Bool?
+        var session: Worktree.Session?
+        var lastModified: String?
+        var id: String { "branch:\(branch)" }
+    }
+    struct Graph: Decodable {
+        var nodes: [Node]
+        var branches: [Branch]
+        var truncated: Bool?
+    }
+    struct Node: Decodable, Hashable {
+        var hash: String
+        var short: String?
+        var subject: String?
+        var date: String?
+        /// 和前一個點之間省略的 commit 數
+        var gapBefore: Int?
+    }
+    struct Branch: Decodable, Hashable, Identifiable {
+        /// worktree 的 id(對得上 items),或 "branch:<名稱>"(留下的分支)
+        var key: String
+        var branch: String?
+        var forkAt: Int
+        var mergedAt: Int?
+        var ahead: Int?
+        var id: String { key }
+    }
+
+    var others: [Worktree] { (items ?? []).filter { $0.source != "main" } }
 }
 
 struct WorktreeMergePreview: Decodable {
@@ -160,6 +219,10 @@ extension API {
 
     func worktrees(project: String) async throws -> WorktreeList {
         try await wtCall(request(worktreePath(project)))
+    }
+
+    func worktreeTree(project: String) async throws -> WorktreeTree {
+        try await wtCall(request(worktreePath(project, "tree")))
     }
 
     /// 專案欄的徽章:{ 專案 ID: 主資料夾以外、算進這個專案的 worktree 數 }
