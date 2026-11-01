@@ -30,6 +30,17 @@ struct GitStatus: Decodable {
     var unstaged: [GitFile]?
     var untracked: [GitFile]?
     var conflicted: [GitFile]?
+    /// 專案是 repo 裡的子資料夾時才有:資料夾相對 repo 根目錄(例如 hw1)、repo 名稱、暫存區裡其他資料夾的檔案(repo 根目錄路徑)
+    var prefix: String?
+    var repoName: String?
+    var outsideStaged: [String]?
+}
+
+/// 提交時暫存區裡有其他資料夾的檔案(409):要使用者選只提交這個資料夾,還是一起提交
+struct CommitOutside: LocalizedError {
+    let message: String
+    let outside: [String]
+    var errorDescription: String? { message }
 }
 
 struct GitCommit: Decodable, Hashable, Identifiable {
@@ -99,6 +110,7 @@ extension API {
     private func codePath(_ project: String, _ op: String, _ q: [URLQueryItem] = []) -> String {
         var c = URLComponents()
         c.path = "api/code/\(project)/\(op)"
+        let q = q + (worktree.map { [URLQueryItem(name: "wt", value: $0)] } ?? [])
         if !q.isEmpty { c.queryItems = q }
         return c.string ?? ""
     }
@@ -226,6 +238,23 @@ extension API {
     func git(_ project: String, _ action: String, _ body: [String: Any] = [:]) async throws {
         struct R: Decodable { var ok: Bool? }
         let _: R = try await call(request(codePath(project, "git/\(action)"), method: "POST", body: body), slow: true)
+    }
+
+    /// 提交。outside:暫存區有其他資料夾的檔案時,"unstage" 先把它們取消暫存、"include" 一起提交;沒給又有的話丟 CommitOutside
+    func gitCommit(project: String, message: String, outside: String? = nil) async throws {
+        var body: [String: Any] = ["message": message]
+        if let outside { body["outside"] = outside }
+        let r = try request(codePath(project, "git/commit"), method: "POST", body: body)
+        let data: Data
+        let resp: URLResponse
+        do { (data, resp) = try await API.slowSession.data(for: r) } catch { throw APIError.network(error.localizedDescription) }
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if code == 409, let o = json?["outside"] as? [String], !o.isEmpty {
+            throw CommitOutside(message: json?["error"] as? String ?? "暫存區裡有其他資料夾的檔案", outside: o)
+        }
+        if code == 401 || code == 403 { throw APIError.needLogin(json?["error"] as? String ?? "請先登入") }
+        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? "提交失敗") }
     }
 
     private struct Out<T: Decodable>: Decodable { var out: T }

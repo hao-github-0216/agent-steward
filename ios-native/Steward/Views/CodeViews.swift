@@ -44,12 +44,15 @@ struct CodeDestination: View {
 
     var body: some View {
         if let p = model.current {
+            Group {
             switch route {
             case .folder(let dir): FolderView(project: p, dir: dir).navigationTitle((dir as NSString).lastPathComponent)
             case .editor: CompactEditor(project: p)
             case .history: HistoryView(project: p)
             case .commit(let hash): CommitView(project: p, hash: hash)
             }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) { WorktreeViewingBar() }
         } else {
             ContentUnavailableView("還沒有專案", systemImage: "tray")
         }
@@ -190,6 +193,8 @@ struct CodeHome: View {
             }
         }
         .background(Color(.systemGroupedBackground))
+        // 在看 worktree 的檔案:導覽列下面一直標著,一鍵回主資料夾
+        .safeAreaInset(edge: .top, spacing: 0) { WorktreeViewingBar() }
     }
 }
 

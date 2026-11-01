@@ -78,8 +78,16 @@ final class AppModel {
 
     private(set) var currentProjectId: String? = UserDefaults.standard.string(forKey: "currentProject") {
         // 換專案:程式碼頁換成那個專案在這台裝置上的版面
-        didSet { if currentProjectId != oldValue { code.use(project: currentProjectId); readerFullScreen = nil } }
+        didSet { if currentProjectId != oldValue { codeWorktree = nil; code.use(project: codeKey); readerFullScreen = nil } }
     }
+    /// 程式碼頁正在看的 worktree(nil = 主資料夾);換專案就回主資料夾
+    var codeWorktree: CodeWorktree? {
+        didSet { if codeWorktree != oldValue { code.use(project: codeKey); codePath = []; readerFullScreen = nil } }
+    }
+    /// 程式碼頁版面和草稿用的鑰匙:worktree 有自己的分頁和草稿,不會跟主資料夾的混在一起存錯地方
+    private var codeKey: String? { currentProjectId.map { id in codeWorktree.map { "\(id)@wt:\($0.id)" } ?? id } }
+    /// 專案欄徽章:專案 ID → 主資料夾以外的 worktree 數
+    var worktreeCounts: [String: Int] = [:]
     /// 看檔案時點一下畫面的全螢幕(記是哪一個分頁或檔案):導覽列、分頁列、浮動球、管家側欄都收起來;換模式、換專案就結束
     var readerFullScreen: String?
     var isReaderFullScreen: Bool { readerFullScreen != nil }
@@ -159,7 +167,7 @@ final class AppModel {
     private var eventsTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
 
-    var api: API? { server.map(API.init(base:)) }
+    var api: API? { server.map { API(base: $0, worktree: codeWorktree?.id) } }
 
     init() {
         phase = server == nil ? .setup : .checking
@@ -331,6 +339,8 @@ final class AppModel {
             cards = b.cards ?? []
             spaces = b.spaceInfo ?? [:]
             missingRoutes = b.setup?.missing ?? []
+            // 管家還沒更新到有分支總覽的版本就沒有(不算錯誤)
+            if let c = try? await api.worktreeCounts() { worktreeCounts = c }
             lastError = nil
             // 目前專案被停止追蹤或收起來了:換到最近活動的專案
             if phase == .ready, let p = current, p.status != "active", let next = projects.first?.id { switchProject(next) }

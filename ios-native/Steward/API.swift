@@ -20,6 +20,8 @@ enum APIError: LocalizedError {
 
 struct API {
     let base: URL
+    /// 程式碼頁正在看的 worktree:程式碼頁的請求都加 ?wt=<id>,管家就改用那個 worktree 裡的專案資料夾
+    var worktree: String? = nil
 
     /// 一般請求 30 秒;問管家要等模型回答,管家那邊最多等 180 秒
     static let session: URLSession = {
@@ -162,7 +164,7 @@ struct API {
     private func codePath(_ project: String, _ op: String, _ q: [URLQueryItem]) -> String {
         var c = URLComponents()
         c.path = "api/code/\(project)/\(op)"
-        c.queryItems = q
+        c.queryItems = q + (worktree.map { [URLQueryItem(name: "wt", value: $0)] } ?? [])
         return c.string ?? ""
     }
 

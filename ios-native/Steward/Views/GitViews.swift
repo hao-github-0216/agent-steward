@@ -12,6 +12,9 @@ struct GitView: View {
     @State private var busy: String?
     @State private var discarding: [String]?
     @State private var newBranch: String?
+    @State private var worktrees = WorktreeController()
+    /// 提交時暫存區有其他資料夾的檔案:問只提交這個資料夾、還是一起提交
+    @State private var outside: CommitOutside?
 
     var body: some View {
         List {
@@ -25,6 +28,7 @@ struct GitView: View {
                 files("已暫存", s.staged, which: "staged")
                 files("變更", s.unstaged, which: "unstaged")
                 files("新檔案", s.untracked, which: "untracked")
+                WorktreeSection(project: project, ctl: worktrees)
                 Section {
                     NavigationLink(value: CodeRoute.history) { Label("最近的提交", systemImage: "clock.arrow.circlepath") }
                 }
@@ -36,10 +40,18 @@ struct GitView: View {
         .refreshable { await load() }
         .onChange(of: model.uploads.refresh) { Task { await load() } }
         .onChange(of: model.code.gitChanged) { Task { await load() } }
+        .modifier(WorktreeDialogs(project: project, ctl: worktrees))
         .confirmationDialog(discarding.map { $0.count > 1 ? "捨棄 \($0.count) 個檔案的變更?" : "捨棄這些變更?" } ?? "", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } }), titleVisibility: .visible) {
             Button("捨棄", role: .destructive) { if let paths = discarding { Task { await run("discard", ["paths": paths]) } } }
         } message: {
             Text("改過的檔案會還原成上次提交的內容;新檔案會移到電腦的垃圾桶(救得回來)。")
+        }
+        .confirmationDialog("暫存區裡有其他資料夾的檔案", isPresented: Binding(get: { outside != nil }, set: { if !$0 { outside = nil } }), titleVisibility: .visible, presenting: outside) { _ in
+            Button("只提交這個資料夾") { Task { await commit("unstage") } }
+            Button("一起提交") { Task { await commit("include") } }
+            Button("取消", role: .cancel) {}
+        } message: { o in
+            Text(o.message + "\n「只提交這個資料夾」會先把其他資料夾的檔案取消暫存(改動還在)。")
         }
         .alert("建立新分支", isPresented: Binding(get: { newBranch != nil }, set: { if !$0 { newBranch = nil } })) {
             TextField("分支名稱", text: Binding(get: { newBranch ?? "" }, set: { newBranch = $0 }))
@@ -82,7 +94,12 @@ struct GitView: View {
             }
             .buttonStyle(.bordered)
         } footer: {
-            if let info { Text(info) } else if let up = s.upstream { Text("追蹤 \(up)") }
+            VStack(alignment: .leading, spacing: 4) {
+                if let info { Text(info) } else if let up = s.upstream, !up.isEmpty { Text("追蹤 \(up)") }
+                if let prefix = s.prefix, !prefix.isEmpty {
+                    Text("這個專案是 \(s.repoName ?? "repo") 裡的 \(prefix) 資料夾:下面只列這個資料夾的檔案;分支、拉取、推送是整個 repo 共用的。")
+                }
+            }
         }
     }
 
@@ -111,7 +128,7 @@ struct GitView: View {
                 .disabled(busy != nil || (stagedCount + (s.unstaged?.count ?? 0) + (s.untracked?.count ?? 0)) == 0)
                 Spacer()
                 Button {
-                    Task { if await run("commit", ["message": message], done: "已提交") { message = "" } }
+                    Task { await commit(nil) }
                 } label: {
                     if busy == "commit" { ProgressView() } else { Text(stagedCount > 0 ? "提交(\(stagedCount) 個檔案)" : "提交") }
                 }
@@ -121,7 +138,12 @@ struct GitView: View {
         } header: {
             Text("提交")
         } footer: {
-            if stagedCount == 0 { Text("先把要提交的檔案暫存(在變更清單左滑「暫存」)。") }
+            VStack(alignment: .leading, spacing: 4) {
+                if stagedCount == 0 { Text("先把要提交的檔案暫存(在變更清單左滑「暫存」)。") }
+                if let o = s.outsideStaged, !o.isEmpty {
+                    Text("⚠️ 暫存區還有 \(o.count) 個其他資料夾的檔案,提交時會問你要不要一起提交。").foregroundStyle(.orange)
+                }
+            }
         }
     }
 
@@ -164,6 +186,7 @@ struct GitView: View {
         do {
             status = try await api.gitStatus(project: project.id)
             if status?.repo == true { branches = (try? await api.gitBranches(project: project.id)) ?? [] }
+            if status?.repo == true { await worktrees.load(model, project) } else { worktrees.list = nil }
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -188,6 +211,27 @@ struct GitView: View {
         }
         await load()
         return ok
+    }
+
+    /// 提交;暫存區有其他資料夾的檔案時管家回 409,問完再帶 outside 重送
+    private func commit(_ outsideChoice: String?) async {
+        guard let api = model.api else { return }
+        busy = "commit"
+        defer { busy = nil }
+        do {
+            try await api.gitCommit(project: project.id, message: message, outside: outsideChoice)
+            message = ""
+            info = "已提交"
+            error = nil
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch let o as CommitOutside {
+            outside = o
+            return
+        } catch {
+            self.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+        await load()
     }
 
     /// 請管家依變更寫提交訊息

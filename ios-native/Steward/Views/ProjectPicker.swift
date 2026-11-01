@@ -185,6 +185,7 @@ struct ProjectRow: View {
                 HStack(spacing: 6) {
                     if project.private == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary) }
                     Text(project.name).font(.headline).lineLimit(1)
+                    WorktreeBadge(project: project)
                     Spacer(minLength: 4)
                     let n = model.openCount(project)
                     if n > 0 {
