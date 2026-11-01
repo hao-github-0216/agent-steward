@@ -90,13 +90,14 @@ final class WorktreeController {
             let r = try await api.worktreeChat(project: project.id, id: w.id)
             error = nil
             switch r.kind {
-            case "focus": info = "已跳到 \(r.paneId ?? "窗格")"
+            case "focus": info = "已在 herdr 跳到 \(r.paneId ?? "窗格")"
             case "resume": info = "已在新 tab「\(r.label ?? "")」接回原本的對話"
             default: info = "已在 worktree 裡開新的 \(r.agent ?? "agent")(找不到原本的對話)"
             }
             if let n = r.note, !n.isEmpty { note = n }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            model.mode = .terminal
+            // 新 tab 開在這個專案的 space,切到終端機就看得到;跳到的舊窗格可能在別的 space,切過去網頁會把 herdr 拉回專案的 space,所以不切
+            if r.kind != "focus" { model.mode = .terminal }
         } catch {
             self.error = error.localizedDescription
             UINotificationFeedbackGenerator().notificationOccurred(.error)

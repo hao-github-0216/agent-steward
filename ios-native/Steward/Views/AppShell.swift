@@ -107,7 +107,8 @@ struct ProjectTitleMenu: View {
 
     @ViewBuilder
     private func item(_ p: Project) -> some View {
-        if p.private == true { Label(p.name, systemImage: "lock.fill") } else { Text(p.name) }
+        let wt = model.worktreeCounts[p.id].map { $0 > 0 ? " ⑂\($0)" : "" } ?? ""
+        if p.private == true { Label(p.name + wt, systemImage: "lock.fill") } else { Text(p.name + wt) }
     }
 }
 
