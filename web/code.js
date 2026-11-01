@@ -2004,7 +2004,7 @@
 	function leftRow(l) {
 		const who = l.session ? `${esc(agentName(l.session.agent))} 開的` : "開它的 session 不明";
 		return `<div class="wt-row left" title="${esc(l.branch)}"><div class="l1"><span class="src src-${l.source}">${WT_SRC[l.source]}</span><b>${esc(l.branch)}</b></div>
-			<div class="l2">worktree 已移除 · ${l.merged ? "✔ 已合併" : `還沒合併 · ↑${l.ahead}`} · ${who}${l.lastModified ? ` · ${ago(l.lastModified)}` : ""}</div></div>`;
+			<div class="l2">worktree 已移除 · ${l.merged ? `✔ 已合併${l.savedOnRemove ? `(移除時另存了 ${l.savedOnRemove.files.length} 個沒 commit 的檔案)` : ""}` : `還沒合併 · ↑${l.ahead}`} · ${who}${l.lastModified ? ` · ${ago(l.lastModified)}` : ""}</div></div>`;
 	}
 	/** 資料夾樹:repo → 作業資料夾 → worktree(可操作)/ 留下的分支(只顯示);目前的資料夾預設展開 */
 	function folderTree(t) {
@@ -2085,7 +2085,8 @@
 			const ex = merged ? xs[b.mergedAt] - 26 : Math.max(fx + 120, xs[xs.length - 1] + 70);
 			const on = sel === b.key ? " on" : "";
 			const who = it?.session ? agentName(it.session.agent) + (it.session.alive ? `·${it.session.pane?.paneId || ""}` : "") : "";
-			const tag = it && !("id" in it) ? (merged ? "✔ 已合併 · worktree 已移除" : "worktree 已移除") : merged ? "✔ 已合併" : "";
+			const saved = b.savedOnRemove ? `(另存 ${b.savedOnRemove.files.length} 個檔)` : "";
+			const tag = it && !("id" in it) ? (merged ? `✔ 已合併${saved} · worktree 已移除` : "worktree 已移除") : merged ? `✔ 已合併${saved}` : "";
 			brSvg += `<g class="gl-br${on}" data-gkey="${esc(b.key)}" style="color:${col}">
 				<path d="M${fx} ${MAINY} C ${fx} ${y}, ${fx} ${y}, ${fx + 24} ${y} L ${ex} ${y}${merged ? ` C ${ex + 26} ${y}, ${ex + 26} ${y}, ${ex + 26} ${MAINY}` : ""}" class="gl-path${merged ? " merged" : ""}"/>
 				${merged ? "" : `<circle cx="${ex}" cy="${y}" r="6" class="gl-tip"/>`}
@@ -2176,7 +2177,21 @@
 				break;
 			} catch (e) {
 				const code = e.data?.code;
-				if (e.status === 409 && ["alive", "locked", "dirty"].includes(code) && !confirm[code]) {
+				if (e.status === 409 && code === "dirty" && !confirm.dirty) {
+					// 沒 commit 的改動:列出檔案,讓使用者選捨棄或存進分支(已合併的分支建議捨棄)
+					const d = e.data.detail || {};
+					const files = (d.files || []).map((f) => `<li>${esc(f)}</li>`).join("") + (d.total > (d.files || []).length ? `<li>…共 ${d.total} 個</li>` : "");
+					const choice = await new Promise((resolve) => {
+						const btns = [{ label: "捨棄這些改動", primary: d.suggest === "discard", onClick: () => resolve("discard") }];
+						if (d.canCommit !== false) btns.push({ label: "存進分支再移除", primary: d.suggest !== "discard", onClick: () => resolve("commit") });
+						const w = dialog({ title: "還有沒 commit 的改動", html: `<p>${esc(e.message)}</p><ul class="wt-list">${files}</ul>`, buttons: btns });
+						w.querySelector("[data-x]").addEventListener("click", () => resolve(null));
+					});
+					if (!choice) return;
+					confirm.dirty = choice;
+					continue;
+				}
+				if (e.status === 409 && ["alive", "locked"].includes(code) && !confirm[code]) {
 					if (!(await confirmBox("還要確認一下", e.message, "繼續移除"))) return;
 					confirm[code] = true;
 					continue;

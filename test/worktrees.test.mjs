@@ -268,3 +268,25 @@ test("紀錄檔只讀新增的部分:後來才進 worktree、中文路徑都對�
 	appendFileSync(f, JSON.stringify({ type: "worktree-state", sessionId: "s1", worktreeSession: { worktreePath: wt, sessionId: "s1" } }) + "\n");
 	assert.equal(W.claudeSessionOfWorktree(wt, projects)?.sessionId, "s1");
 });
+
+test("移除時有沒 commit 的改動:回檔案清單與建議;已合併建議捨棄,捨棄不會讓分支多 commit", async () => {
+	const root = repo();
+	const store = newStore();
+	const A = store.addProject({ root: join(root, "A"), name: "A", kind: "project", status: "active", private: false });
+	writeFileSync(join(root, ".gitignore"), ".claude/worktrees/\n");
+	git(root, "add", "-A");
+	git(root, "commit", "-qm", "ignore");
+	// 沒合併:建議存進分支
+	const a = claudeWorktree(root, "a", undefined);
+	writeFileSync(join(a, "A", "doc.tex"), "work\n");
+	git(a, "commit", "-qam", "work");
+	writeFileSync(join(a, "A", "doc.aux"), "tmp\n");
+	await assert.rejects(W.removeWorktreeItem(store, A, W.worktreeId(a), {}, {}), (e) => e.code === "dirty" && e.detail.merged === false && e.detail.suggest === "commit" && e.detail.files[0] === "A/doc.aux");
+	// 合併後:建議捨棄;捨棄 → 分支頂端不變、還是已合併
+	git(root, "merge", "-q", "--no-ff", "--no-edit", "worktree-a");
+	const tip = git(root, "rev-parse", "worktree-a");
+	await assert.rejects(W.removeWorktreeItem(store, A, W.worktreeId(a), {}, {}), (e) => e.code === "dirty" && e.detail.merged === true && e.detail.suggest === "discard");
+	await W.removeWorktreeItem(store, A, W.worktreeId(a), { dirty: "discard" }, {});
+	assert.equal(existsSync(a), false);
+	assert.equal(git(root, "rev-parse", "worktree-a"), tip);
+});

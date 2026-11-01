@@ -465,16 +465,34 @@ export async function mergeWorktree(store: Store, p: Project, id: string, deps: 
  *  - 被鎖住(Claude Code session 鎖的):沒確認就回 409(locked),確認後先解鎖
  *  - 窗格還開著:沒確認就回 409(alive)
  */
-export async function removeWorktreeItem(store: Store, p: Project, id: string, confirm: { dirty?: boolean; locked?: boolean; alive?: boolean } = {}, deps: WorktreeDeps = {}) {
+/** 移除 worktree 前保留未提交改動時用的 commit 訊息(樹狀圖靠它認出「只多了這種 commit」的分支其實已經合併) */
+export const SAVED_ON_REMOVE = "移除 worktree 前保留的未提交改動";
+
+/**
+ * 移除 worktree 資料夾,分支保留:
+ *  - 窗格還開著、被鎖住(Claude Code 的 session 鎖的):沒確認就回 409(alive / locked)
+ *  - 還有沒 commit 的改動:沒確認就回 409(dirty),detail 帶檔案清單和建議;
+ *    confirm.dirty = "commit" 先 commit 到它的分支再移除(改動不會丟,但分支會多一個 commit),"discard" 直接丟掉
+ *    (舊版的 true 當成 "commit")。分支已經合併過時建議 discard:存進去會讓它看起來又沒合併
+ */
+export async function removeWorktreeItem(store: Store, p: Project, id: string, confirm: { dirty?: boolean | "commit" | "discard"; locked?: boolean; alive?: boolean } = {}, deps: WorktreeDeps = {}) {
 	const { list, item } = await findWorktree(store, p, id, deps);
 	if (item.source === "main") throw new WorktreesError(400, "主資料夾不能移除");
 	if (item.session?.alive && !confirm.alive) throw new WorktreesError(409, `開它的 ${item.session.agent} 窗格還開著,移除後它就沒有資料夾可以用了。確定要移除嗎?`, "alive");
 	if (item.locked && !confirm.locked) throw new WorktreesError(409, `這個 worktree 被鎖住了(${item.locked})。通常是 Claude Code 的 session 還在用它;確定要解鎖並移除嗎?`, "locked");
-	if (item.exists && item.dirty && !confirm.dirty) throw new WorktreesError(409, `還有 ${item.dirty} 個沒 commit 的改動。確定的話會先把它們 commit 到分支「${item.branch ?? "(無分支)"}」再移除,改動不會丟。`, "dirty");
-	if (item.exists && item.dirty) {
-		if (!item.branch) throw new WorktreesError(400, "這個 worktree 不在分支上,沒 commit 的改動沒地方存,請先讓 agent 處理");
+	const dirtyMode = confirm.dirty === true ? "commit" : confirm.dirty || undefined;
+	if (item.exists && item.dirty && !dirtyMode) {
+		const files = (await run(item.path, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=all"])).out.split("\0").filter(Boolean).filter((l) => /^.. /.test(l)).map((l) => l.slice(3));
+		const merged = !!item.branch && !!list.target && (await run(list.repoRoot, ["merge-base", "--is-ancestor", item.head, list.target])).code === 0;
+		const msg = merged
+			? `還有 ${item.dirty} 個沒 commit 的改動。這條分支已經合併回 ${list.target},建議「捨棄」;存進分支會讓它多一個 commit、看起來又沒合併。`
+			: `還有 ${item.dirty} 個沒 commit 的改動。「存進分支」會先 commit 到「${item.branch ?? "(無分支)"}」再移除,改動不會丟;「捨棄」會直接丟掉。`;
+		throw new WorktreesError(409, msg, "dirty", { files: files.slice(0, 200), total: files.length, merged, suggest: merged ? "discard" : "commit", canCommit: !!item.branch });
+	}
+	if (item.exists && item.dirty && dirtyMode === "commit") {
+		if (!item.branch) throw new WorktreesError(400, "這個 worktree 不在分支上,沒 commit 的改動沒地方存;要移除請選「捨棄」");
 		await ok(item.path, ["add", "-A"], 120_000);
-		await ok(item.path, ["-c", "user.name=agent-steward", "-c", "user.email=steward@localhost", "commit", "-q", "--no-verify", "-m", "移除 worktree 前保留的未提交改動"], 120_000);
+		await ok(item.path, ["-c", "user.name=agent-steward", "-c", "user.email=steward@localhost", "commit", "-q", "--no-verify", "-m", SAVED_ON_REMOVE], 120_000);
 	}
 	if (item.locked) await ok(list.repoRoot, ["worktree", "unlock", item.path]);
 	if (item.exists) await ok(list.repoRoot, ["worktree", "remove", "--force", item.path], 120_000);

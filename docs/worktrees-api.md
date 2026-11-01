@@ -67,7 +67,7 @@
 | 跟它對話 | `POST worktrees/<id>/chat` 本文可帶 `{ "agent": "claude" }`(對不到 session 時開哪種 agent,預設 claude) | `{ kind: "focus"\|"resume"\|"new", paneId, agent?, label?, note? }`;`note` 有值就提示使用者(agent 停在確認畫面) | 400 主資料夾 / 資料夾不在 |
 | 合併預覽 | `GET worktrees/<id>/merge` | `{ target, branch, commits:[{hash,subject}], files:[{status,path}], stat, diff, blocker?, uncommitted }`;`blocker` 有值 → 合併按鈕停用並顯示原因;`uncommitted>0` → 提醒「worktree 裡還有 N 個沒 commit 的改動,不會一起合併」 | 400 detached / 主資料夾 |
 | 合併 | `POST worktrees/<id>/merge` | `{ merged: true, target, branch, commit }` → 接著問「要不要一併移除這個 worktree?」(預設不勾) | 409 `main-dirty`、409 `conflict`(`detail.conflicts`,已自動取消、主資料夾不變)、400 `nothing` |
-| 移除 | `POST worktrees/<id>/remove` 本文 `{ "confirm": { "alive"?: true, "locked"?: true, "dirty"?: true } }` | `{ removed: true, branch }`(分支保留) | 409 `alive` / `locked` / `dirty`:顯示 `error`,使用者同意後把那一項加進 `confirm` 再送一次(可能連續問 3 次) |
+| 移除 | `POST worktrees/<id>/remove` 本文 `{ "confirm": { "alive"?: true, "locked"?: true, "dirty"?: "discard" \| "commit" } }` | `{ removed: true, branch }`(分支保留) | 409 `alive` / `locked`:顯示 `error`,同意後把那一項設成 true 再送。409 `dirty`:`detail = { files, total, merged, suggest: "discard"\|"commit", canCommit }`,列出檔案讓使用者選「捨棄」(`dirty:"discard"`,直接丟掉)或「存進分支再移除」(`dirty:"commit"`,`canCommit:false` 時不能選);預設選 `suggest`(已合併的分支建議捨棄,存進去會讓它看起來又沒合併)。舊版的 `dirty:true` 等於 `"commit"` |
 | 加入 .gitignore | `POST worktrees/ignore` | `{ added: [".claude/worktrees/"], file }` | |
 | 從版本控制移除 | `POST worktrees/untrack` | `{ untracked: [...], ignoreAdded: [...], note }`(只放進暫存區,沒 commit;顯示 `note`) | |
 
@@ -115,6 +115,7 @@
 }
 ```
 
+- `savedOnRemove`(leftovers 與 graph.branches 都可能有):`{ commits, files }`,分支頂端是管家移除 worktree 時「存進分支」產生的 commit;判斷合併時不算它們,所以已合併的照樣是 `merged: true` / 有 `mergedAt`,畫面上標「✔ 已合併(移除時另存了 N 個檔案)」
 - `folder`:`""` 代表歸不到任何資料夾 → 樹上放在 repo 根節點下的「其他」。主資料夾(source=main)的 folder 一律是 `""`,樹上當作 repo 根節點本身,不另外畫。
 - `graph.branches[].key`:worktree 用它的 `id`(和 items 對得上,節點可以直接用 chat/files/merge/remove);留下的分支是 `branch:<名稱>`,只顯示、沒有操作。
 - 資料夾樹:repo →(每個 folder)→ 歸在那裡的 items 與 leftovers;`current` 的資料夾預設展開,其他收合並顯示數量(items + 未合併的 leftovers)。

@@ -99,3 +99,30 @@ test("不是 git 的專案回 repo:false", async () => {
 	const p = store.addProject({ root: tmp("plain-"), name: "p", kind: "project", status: "active", private: false });
 	assert.deepEqual(await worktreeTree(store, p, {}), { repo: false });
 });
+
+test("合併後才「存進分支再移除」:分支只多了另存的 commit,樹狀圖仍算已合併並列出另存的檔案", async () => {
+	const { removeWorktreeItem, worktreeId } = await import("../src/worktrees.ts");
+	const root = tmp("course-");
+	git(root, "init", "-q", "-b", "main");
+	git(root, "config", "user.email", "t@t");
+	git(root, "config", "user.name", "t");
+	writeFileSync(join(root, ".gitignore"), ".claude/worktrees/\n");
+	commitFile(root, "hw1/a.tex", "1\n", "c1");
+	const store = new Store(join(tmp("st-"), "state.json"));
+	const hw1 = store.addProject({ root: join(root, "hw1"), name: "hw1", kind: "project", status: "active", private: false });
+	const path = join(root, ".claude", "worktrees", "x");
+	git(root, "worktree", "add", "-q", "-b", "worktree-x", path, "HEAD");
+	commitFile(path, "hw1/a.tex", "2\n", "work");
+	git(root, "merge", "-q", "--no-ff", "--no-edit", "worktree-x");
+	writeFileSync(join(path, "hw1", "a.aux"), "tmp\n");
+	await removeWorktreeItem(store, hw1, worktreeId(path), { dirty: "commit" }, {});
+	assert.equal(git(root, "log", "-1", "--format=%an %s", "worktree-x"), "agent-steward 移除 worktree 前保留的未提交改動");
+	const t = await worktreeTree(store, hw1, { panes: [], claudeProjectsDir: tmp("cp-") });
+	const l = t.leftovers.find((x) => x.branch === "worktree-x");
+	assert.equal(l.merged, true);
+	assert.deepEqual(l.savedOnRemove, { commits: 1, files: ["hw1/a.aux"] });
+	const g = t.graph.branches.find((x) => x.branch === "worktree-x");
+	assert.ok(g.mergedAt !== undefined);
+	assert.equal(g.ahead, 1);
+	assert.deepEqual(g.savedOnRemove.files, ["hw1/a.aux"]);
+});

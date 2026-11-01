@@ -248,8 +248,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		if (op === "merge" && req.method === "GET") return send(res, 200, await mergePreview(store, p, id, deps()));
 		if (op === "merge" && req.method === "POST") return send(res, 200, await mergeWorktree(store, p, id, deps()));
 		if (op === "remove" && req.method === "POST") {
-			const c = (b as { confirm?: Record<string, boolean> }).confirm ?? {};
-			return send(res, 200, await removeWorktreeItem(store, p, id, { dirty: !!c.dirty, locked: !!c.locked, alive: !!c.alive }, deps()));
+			const c = (b as { confirm?: Record<string, unknown> }).confirm ?? {};
+			const dirty = c.dirty === "discard" || c.dirty === "commit" ? c.dirty : !!c.dirty;
+			return send(res, 200, await removeWorktreeItem(store, p, id, { dirty, locked: !!c.locked, alive: !!c.alive }, deps()));
 		}
 		if (op === "chat" && req.method === "POST") {
 			const { item } = await findWorktree(store, p, id, deps());

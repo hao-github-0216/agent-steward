@@ -4,7 +4,7 @@
 //  - agent 留下的分支 = worktree 已經移除、但分支還在的 worktree-* / steward/branch-*;一般手動分支不畫
 import { join, relative, sep } from "node:path";
 import type { Project, Store } from "./store.ts";
-import { claudeSessionOfWorktree, listWorktrees, real, run, type WorktreeDeps, type WorktreeItem, type WorktreeSession } from "./worktrees.ts";
+import { claudeSessionOfWorktree, listWorktrees, real, run, SAVED_ON_REMOVE, type WorktreeDeps, type WorktreeItem, type WorktreeSession } from "./worktrees.ts";
 import { pathInside } from "./platform.ts";
 import { HOME } from "./config.ts";
 
@@ -23,6 +23,8 @@ export interface LeftoverBranch {
 	folder: string;
 	ahead: number; // 分岔後多了幾個 commit
 	merged: boolean;
+	/** 移除 worktree 時另存的未提交改動(分支頂端的「移除前保留」commit);判斷有沒有合併時不算它們 */
+	savedOnRemove?: { commits: number; files: string[] };
 	session?: Pick<WorktreeSession, "agent" | "id" | "originalCwd">;
 	lastModified?: string;
 }
@@ -40,6 +42,7 @@ export interface GraphBranch {
 	forkAt: number; // nodes 的索引(從哪個點分出去)
 	mergedAt?: number; // 合回主線的那個點(nodes 的索引);沒合併就沒有
 	ahead: number;
+	savedOnRemove?: { commits: number; files: string[] };
 }
 
 export interface WorktreeTree {
@@ -77,6 +80,22 @@ function majorityFolder(files: string[], known: string[]): string {
 }
 
 const lines = (s: string) => s.split("\n").filter(Boolean);
+
+/**
+ * 分支頂端如果是管家移除 worktree 時另存的 commit(作者 agent-steward、訊息固定),往回跳過它們,
+ * 用真正的工作內容判斷有沒有合併;另存的 commit 數和檔案另外回報
+ */
+async function effectiveHead(repoRoot: string, head: string): Promise<{ head: string; saved?: { commits: number; files: string[] } }> {
+	let cur = head;
+	let n = 0;
+	for (; n < 20; n++) {
+		const [an, subj, parent] = (await run(repoRoot, ["show", "-s", "--format=%an%x1f%s%x1f%P", cur])).out.trim().split("\x1f");
+		if (an !== "agent-steward" || subj !== SAVED_ON_REMOVE || !parent || parent.includes(" ")) break;
+		cur = parent;
+	}
+	if (!n) return { head };
+	return { head: cur, saved: { commits: n, files: lines((await run(repoRoot, ["diff", "--name-only", cur, head])).out) } };
+}
 
 export async function worktreeTree(store: Store, p: Project, deps: WorktreeDeps = {}): Promise<WorktreeTree | { repo: false }> {
 	const list = await listWorktrees(store, p, deps);
@@ -129,12 +148,15 @@ export async function worktreeTree(store: Store, p: Project, deps: WorktreeDeps 
 			if (proot && pathInside(real(proot), real(repoRoot))) folder = folderOfPath(rel(repoRoot, proot), known);
 		}
 		let merged = false;
+		let savedOnRemove: LeftoverBranch["savedOnRemove"];
 		if (target) {
-			merged = (await run(repoRoot, ["merge-base", "--is-ancestor", head, target])).code === 0;
+			const eff = await effectiveHead(repoRoot, head);
+			savedOnRemove = eff.saved;
+			merged = (await run(repoRoot, ["merge-base", "--is-ancestor", eff.head, target])).code === 0;
 			// 合併了:target...head 是空的,改看分支自己的 commit 改了哪裡
 			if (!folder) folder = majorityFolder(merged ? lines((await run(repoRoot, ["diff-tree", "-r", "--name-only", "--no-commit-id", "--root", head])).out) : await changedFiles(target, head), known);
 		}
-		leftovers.push({ branch, head, source, folder, ahead: 0, merged, session, lastModified: date || undefined });
+		leftovers.push({ branch, head, source, folder, ahead: 0, merged, savedOnRemove, session, lastModified: date || undefined });
 	}
 
 	// 資料夾:已登記的,加上有東西歸進去但沒登記的
@@ -177,8 +199,10 @@ async function branchGraph(repoRoot: string, target: string, branches: { key: st
 		}
 		return lo;
 	};
-	const raw: { key: string; branch: string | null; fork: number; merged?: number; ahead: number }[] = [];
-	for (const b of branches) {
+	const raw: { key: string; branch: string | null; fork: number; merged?: number; ahead: number; savedOnRemove?: { commits: number; files: string[] } }[] = [];
+	for (const b0 of branches) {
+		const eff = await effectiveHead(repoRoot, b0.head);
+		const b = { ...b0, head: eff.head };
 		// 先看有沒有合回主線:主線上最早含有分支頂端的位置,而且那個 commit 不是分支頂端本身(是的話代表分支就在主線上,沒有自己的 commit)
 		const at = await firstContaining(b.head);
 		const merged = at >= 0 && chain[at].hash !== b.head ? at : undefined;
@@ -188,7 +212,7 @@ async function branchGraph(repoRoot: string, target: string, branches: { key: st
 		const ahead = base ? Number((await run(repoRoot, ["rev-list", "--count", `${base}..${b.head}`])).out.trim()) || 0 : 0;
 		let fork = at >= 0 && merged === undefined ? at : base ? await firstContaining(base) : -1;
 		if (fork < 0) fork = 0; // 分岔點比畫得到的主線還舊:接在最舊的點
-		raw.push({ key: b.key, branch: b.branch, fork, merged, ahead });
+		raw.push({ key: b.key, branch: b.branch, fork, merged, ahead, savedOnRemove: eff.saved });
 	}
 	// 只留關鍵點:分岔點、合併點、最新
 	const keep = [...new Set([...raw.flatMap((x) => [x.fork, ...(x.merged !== undefined ? [x.merged] : [])]), chain.length - 1])].filter((i) => i >= 0).sort((a, b) => a - b);
@@ -196,7 +220,7 @@ async function branchGraph(repoRoot: string, target: string, branches: { key: st
 	const nodes: GraphNode[] = keep.map((ci, i) => ({ ...chain[ci], gapBefore: i === 0 ? ci : ci - keep[i - 1] - 1 }));
 	return {
 		nodes,
-		branches: raw.map((x) => ({ key: x.key, branch: x.branch, forkAt: index.get(x.fork)!, mergedAt: x.merged !== undefined ? index.get(x.merged) : undefined, ahead: x.ahead })),
+		branches: raw.map((x) => ({ key: x.key, branch: x.branch, forkAt: index.get(x.fork)!, mergedAt: x.merged !== undefined ? index.get(x.merged) : undefined, ahead: x.ahead, ...(x.savedOnRemove ? { savedOnRemove: x.savedOnRemove } : {}) })),
 		truncated,
 	};
 }
