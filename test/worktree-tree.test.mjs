@@ -1,4 +1,6 @@
 // 分支樹狀圖資料:worktree / agent 留下的分支歸到哪個資料夾、分岔圖的分岔點與合併點
+// 先隔離使用者的 git 設定,要在載入 src 之前
+import "./helpers/git-isolation.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

@@ -1,4 +1,6 @@
 // git 面板只管專案資料夾:一個 repo 底下有好幾個專案資料夾(course/hw1、course/hw2)時,狀態、暫存、diff、歷史都不混在一起
+// 先隔離使用者的 git 設定,要在載入 src 之前
+import "./helpers/git-isolation.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

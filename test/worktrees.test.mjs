@@ -1,4 +1,6 @@
 // 專案的「分支」總覽:三種來源、session 對應、兄弟專案只算自己資料夾、.gitignore 防呆、合併與移除的安全檢查
+// 先隔離使用者的 git 設定,要在載入 src 之前
+import "./helpers/git-isolation.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

@@ -22,6 +22,9 @@ chmodSync(bin, 0o755);
 process.env.HERDR_BIN_PATH = bin;
 const { findSnapPane, parseSnap, snapPrompt, terminalContext } = await import("../src/snap.ts");
 
+// 用到假 herdr 的測試在 Windows 上略過
+const noShebang = { skip: process.platform === "win32" && "假 herdr 是 shebang 腳本,Windows 跑不了" };
+
 test("parseSnap 擋掉怪資料、截長度", () => {
 	assert.equal(parseSnap(null), undefined);
 	const s = parseSnap({ kind: "bogus", label: "", text: "x".repeat(30_000), from: "12", to: "x" });
@@ -44,7 +47,7 @@ test("snapPrompt:有出處、圈到的內容、周圍內容;沒文字時說明�
 	assert.doesNotMatch(snapPrompt({ kind: "page", label: "看板", text: "辨識的字" }, false), /截圖/);
 });
 
-test("findSnapPane:用畫面內容找出圈的是哪個窗格(不一定是目前的窗格)", () => {
+test("findSnapPane:用畫面內容找出圈的是哪個窗格(不一定是目前的窗格)", noShebang, () => {
 	const p = findSnapPane("TypeError: x is not a function");
 	assert.equal(p.pane_id, "w1:p2");
 	assert.match(terminalContext(p), /npm test/);

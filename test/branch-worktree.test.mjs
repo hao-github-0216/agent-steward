@@ -1,4 +1,6 @@
 // 支線的 git worktree:帶上主線未提交的改動、共用 node_modules、diff 只算支線自己的改動、移除時改動存進分支
+// 先隔離使用者的 git 設定,要在載入 src 之前
+import "./helpers/git-isolation.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

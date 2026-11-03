@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "跨 session、跨 agent 的專案管家:自動記錄進度、看板派工、網頁上的程式碼與終端機",
+  "scripts": {
+    "test": "node --experimental-strip-types --no-warnings --test \"test/*.test.mjs\""
+  },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",

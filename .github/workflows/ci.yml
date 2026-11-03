@@ -150,3 +150,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/work"
           node --experimental-strip-types --no-warnings scripts/ci-plugins.mjs "$RUNNER_TEMP/work"
 
+  unit:
+    # 單元測試(test/*.test.mjs);Windows 先跑看看,失敗不擋
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - run: npm test
+

@@ -41,6 +41,9 @@ const { Store } = await import("../src/store.ts");
 const { askCard, cancelQuestion, collectReplies, deliverFollowUps, finalReply, retryQuestion } = await import("../src/followup.ts");
 const { listPanes } = await import("../src/herdr.ts");
 
+// 用到假 herdr 的測試在 Windows 上略過
+const noShebang = { skip: process.platform === "win32" && "假 herdr 是 shebang 腳本,Windows 跑不了" };
+
 // Claude Code 的紀錄格式
 const T = (ms) => new Date(ms).toISOString();
 const userLine = (text, ms) => JSON.stringify({ type: "user", timestamp: T(ms), message: { role: "user", content: text } });
@@ -63,7 +66,7 @@ function setup(name, card) {
 const calls = () => readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
 const prompts = () => calls().filter((a) => a[0] === "agent" && a[1] === "prompt");
 
-test("完成的卡:問題送給同一個 agent,卡片回到進行中,對話最上面記下原本的結果", () => {
+test("完成的卡:問題送給同一個 agent,卡片回到進行中,對話最上面記下原本的結果", noShebang, () => {
 	const { store, card } = setup("same", {});
 	askCard(store, card.id, "為什麼要這樣改?");
 	const sent = [];
@@ -81,7 +84,7 @@ test("完成的卡:問題送給同一個 agent,卡片回到進行中,對話最�
 	assert.equal(c.thread[1].status, "sent");
 });
 
-test("agent 回答完:要看到工作過、停下一段時間才收;收的是最後一次動作之後說的話", () => {
+test("agent 回答完:要看到工作過、停下一段時間才收;收的是最後一次動作之後說的話", noShebang, () => {
 	const { store, card, transcript } = setup("reply", {});
 	askCard(store, card.id, "改了哪幾行?");
 	deliverFollowUps(store, listPanes());
@@ -102,7 +105,7 @@ test("agent 回答完:要看到工作過、停下一段時間才收;收的是最
 	assert.match(c.note, /^追問有回覆:改了第 3 行/);
 });
 
-test("紀錄裡還沒有回答就不收(下一輪再看)", () => {
+test("紀錄裡還沒有回答就不收(下一輪再看)", noShebang, () => {
 	const { store, card } = setup("noreply", {});
 	askCard(store, card.id, "還有別的嗎?");
 	deliverFollowUps(store, listPanes());
@@ -112,7 +115,7 @@ test("紀錄裡還沒有回答就不收(下一輪再看)", () => {
 	assert.equal(store.card(card.id).column, "running");
 });
 
-test("進行中的卡:先排隊,這一輪做完才送;agent 在忙也先等", () => {
+test("進行中的卡:先排隊,這一輪做完才送;agent 在忙也先等", noShebang, () => {
 	const { store, card } = setup("queue", { column: "running" });
 	askCard(store, card.id, "做完之後順便說明");
 	deliverFollowUps(store, listPanes());
@@ -131,7 +134,7 @@ test("進行中的卡:先排隊,這一輪做完才送;agent 在忙也先等", ()
 	assert.equal(store.card(card.id).column, "running");
 });
 
-test("窗格關掉了:開新 tab、啟動同一種 agent,帶著卡片紀錄和這次的問題", () => {
+test("窗格關掉了:開新 tab、啟動同一種 agent,帶著卡片紀錄和這次的問題", noShebang, () => {
 	const { store, card } = setup("restart", { terminalId: "t-gone", paneId: "w1:p5" });
 	store.updateCard(card.id, { thread: [
 		{ id: "o1", role: "agent", text: "原本的回答", at: T(Date.now() - 100_000), original: true },
@@ -153,7 +156,7 @@ test("窗格關掉了:開新 tab、啟動同一種 agent,帶著卡片紀錄和�
 	assert.equal(c.column, "running");
 });
 
-test("舊卡沒有終端機 ID:認不出窗格是不是同一個,不打進那個窗格,改開新的 agent", () => {
+test("舊卡沒有終端機 ID:認不出窗格是不是同一個,不打進那個窗格,改開新的 agent", noShebang, () => {
 	const { store, card } = setup("noterm", {});
 	store.updateCard(card.id, { terminalId: undefined });
 	askCard(store, card.id, "這是舊卡的追問");
@@ -164,7 +167,7 @@ test("舊卡沒有終端機 ID:認不出窗格是不是同一個,不打進那個
 	assert.ok(calls().some((a) => a[0] === "tab" && a[1] === "create"));
 });
 
-test("取消排隊中的問題;送不出去標成失敗,可以重送", () => {
+test("取消排隊中的問題;送不出去標成失敗,可以重送", noShebang, () => {
 	const { store, card } = setup("cancel", { column: "running" });
 	const q = askCard(store, card.id, "不問了").thread.at(-1);
 	assert.equal(cancelQuestion(store, card.id, q.id).thread?.length ?? 0, 0);
@@ -184,7 +187,7 @@ test("取消排隊中的問題;送不出去標成失敗,可以重送", () => {
 	assert.throws(() => askCard(store, card.id, "提案不能問"), /還沒做過/);
 });
 
-test("等回覆中的問題,卡片卻不在進行中了:標成沒收到回覆,下一題送得出去", () => {
+test("等回覆中的問題,卡片卻不在進行中了:標成沒收到回覆,下一題送得出去", noShebang, () => {
 	const { store, card } = setup("stale", {});
 	store.updateCard(card.id, { column: "blocked", thread: [{ id: "q1", role: "user", text: "舊問題", at: T(Date.now() - 60_000), status: "sent", sentAt: T(Date.now() - 60_000) }] });
 	askCard(store, card.id, "新問題");
