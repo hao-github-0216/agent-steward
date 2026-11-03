@@ -22,7 +22,8 @@ import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./pl
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
 import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
-import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, parseRef, routeFor, syncProviders } from "./models.ts";
+import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, NoModelError, parseRef, routeFor, syncProviders } from "./models.ts";
+import { publicProjectView } from "./privacy.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, inProject, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
@@ -201,7 +202,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 		try {
 			const st = (p.state ?? {}) as { goal?: string; progress?: string; nextSteps?: string[]; blockers?: string[] };
 			const recent = recentChat(p.id, 6).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 400)}`).join("\n");
-			const ask = () => steward.oneShot(SUGGEST_SYS, `專案:${p.name}\n目標:${st.goal || "(未記錄)"}\n進度:${st.progress || "(未記錄)"}\n下一步:${(st.nextSteps ?? []).join(";") || "(無)"}\n卡住:${(st.blockers ?? []).join(";") || "(無)"}\n\n最近問答:\n${recent || "(還沒有)"}`, "suggest");
+			const ask = () => steward.oneShot(SUGGEST_SYS, `專案:${p.name}\n目標:${st.goal || "(未記錄)"}\n進度:${st.progress || "(未記錄)"}\n下一步:${(st.nextSteps ?? []).join(";") || "(無)"}\n卡住:${(st.blockers ?? []).join(";") || "(無)"}\n\n最近問答:\n${recent || "(還沒有)"}`, "suggest", { private: p.private });
 			// 有些模型偶爾混簡體字:看到常見簡體字就重問一次
 			const SIMPLIFIED = /[这们为么备条认续时间会没还进开关应该从说过对现发问题项单证据读写样钟头无产业东车门见长难风险]/;
 			let out = await ask();
@@ -382,10 +383,15 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			if (req.method === "POST" && sub === "git/commitmsg") {
 				const diff = String(await gitAction(p, "diffText", {}));
 				if (!diff.trim()) return send(res, 400, { error: "沒有變更" });
-				const msg = await steward.oneShot(
-					"你是 git 提交訊息產生器。根據 diff 寫一則提交訊息:第一行 50 字以內的摘要,必要時空一行後用條列補充重點。只輸出提交訊息本身,不要加說明、不要用 markdown 程式碼框。語言跟著專案既有的提交習慣;看不出來就用繁體中文。",
-					`專案:${p.name}\n最近的提交:\n${((await gitAction(p, "log", {})) as { subject: string }[]).slice(0, 8).map((c) => `- ${c.subject}`).join("\n")}\n\n變更:\n${diff}`,
-				);
+				const log = ((await gitAction(p, "log", {})) as { subject: string }[]).slice(0, 8).map((c) => `- ${c.subject}`).join("\n");
+				let msg: string;
+				try {
+					// 隱私專案的 diff 只送隱私路由的模型;沒設定就回清楚的錯誤
+					msg = await steward.oneShot("你是 git 提交訊息產生器。根據 diff 寫一則提交訊息:第一行 50 字以內的摘要,必要時空一行後用條列補充重點。只輸出提交訊息本身,不要加說明、不要用 markdown 程式碼框。語言跟著專案既有的提交習慣;看不出來就用繁體中文。", `專案:${p.name}\n最近的提交:\n${log}\n\n變更:\n${diff}`, "commitmsg", { private: p.private });
+				} catch (e) {
+					if (e instanceof NoModelError) return send(res, 400, { error: e.message });
+					throw e;
+				}
 				return send(res, 200, { message: msg.replace(/^```\w*\n?|```$/g, "").trim() });
 			}
 			const ga = sub.match(/^git\/(\w+)$/);
@@ -712,7 +718,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const { p: target, hints } = projectByName(want);
 					const from = url.searchParams.get("cwd") ? resolveProject(store, url.searchParams.get("cwd")!) : undefined;
 					const text = !target ? `找不到「${want}」這個專案。現有的專案:${hints.join("、")}` : target.private && target.id !== from?.id ? PRIVATE_NOTE(target) : brief(store, target);
-					return url.searchParams.get("format") === "json" ? send(res, 200, { project: target ?? null, text }) : send(res, 200, text, "text/plain; charset=utf-8");
+					return url.searchParams.get("format") === "json" ? send(res, 200, { project: publicProjectView(target, from), text }) : send(res, 200, text, "text/plain; charset=utf-8");
 				}
 				const p = projectFrom(url.searchParams) ?? ensureSpecial(store, MISC_ROOT);
 				const text = brief(store, p);

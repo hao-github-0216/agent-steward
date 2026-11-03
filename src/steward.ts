@@ -12,6 +12,7 @@ import { isCliKind, runCli } from "./agent-cli.ts";
 import { brief } from "./brief.ts";
 import { recentChat } from "./chat-log.ts";
 import { notify } from "./notify.ts";
+import { pushText, routeForProject } from "./privacy.ts";
 import { ensureSpecial, OVERVIEW_ROOT } from "./projects.ts";
 import type { Card, Project, Store } from "./store.ts";
 
@@ -184,7 +185,7 @@ export class Steward {
 						// agent 在等使用者核准某個操作:提醒一次,繼續等
 						if (!task.state.checkpoint.askedUser) {
 							const p = store.project(card.projectId);
-							void notify(`⏸ 派出去的工作在等你回應(${p?.name ?? "?"})\n「${card.title}」\nherdr 窗格 ${card.paneId ?? paneId}`, { projectId: card.projectId });
+							void notify(pushText(p, `⏸ 派出去的工作在等你回應(${p?.name ?? "?"})\n「${card.title}」\nherdr 窗格 ${card.paneId ?? paneId}`, "⏸ 有一個隱私專案的派工在等你回應,請到看板查看"), { projectId: card.projectId });
 						}
 						return sleep({ askedUser: true, idleSince: null });
 					}
@@ -386,13 +387,14 @@ export class Steward {
 
 	/**
 	 * 單次問模型(不寫進任何專案對話):建議問題、產生提交訊息。用路由設定,主要失敗自動改用備用。
+	 * 隱私專案只用隱私路由的模型,失敗也不改用備用。
 	 */
-	async oneShot(system: string, user: string, role: "suggest" | "commitmsg" = "commitmsg"): Promise<string> {
+	async oneShot(system: string, user: string, role: "suggest" | "commitmsg" = "commitmsg", opts: { private?: boolean } = {}): Promise<string> {
 		try {
-			return await this.oneShotWith(system, user, routeFor(role));
+			return await this.oneShotWith(system, user, routeForProject(role, { private: opts.private }));
 		} catch (e) {
-			if (!hasFallback(role)) throw e;
-			return this.oneShotWith(system, user, routeFor(role, { fallback: true }));
+			if (opts.private || !hasFallback(role)) throw e;
+			return this.oneShotWith(system, user, routeForProject(role, { fallback: true }));
 		}
 	}
 
