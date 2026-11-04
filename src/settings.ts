@@ -238,7 +238,7 @@ const listeners = new Set<(s: Settings) => void>();
 
 function write(s: Settings): void {
 	mkdirSync(DATA_DIR, { recursive: true });
-	const tmp = `${SETTINGS_PATH}.tmp`;
+	const tmp = `${SETTINGS_PATH}.${process.pid}.tmp`;
 	writeFileSync(tmp, `${JSON.stringify(s, null, "\t")}\n`, { mode: 0o600 });
 	renameSync(tmp, SETTINGS_PATH);
 	try { chmodSync(SETTINGS_PATH, 0o600); } catch { /* Windows */ }

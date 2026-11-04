@@ -1,4 +1,5 @@
 // 支線:分叉出來的紀錄檔會複製主線的歷史,管家只能讀到「支線自己的內容」
+import "./helpers/data-dir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";

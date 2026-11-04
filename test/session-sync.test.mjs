@@ -1,4 +1,5 @@
 // 把 Claude 窗格的對話 ID 補報給 herdr:herdr 重開時才接得回原本的對話
+import "./helpers/data-dir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ClaudeSessionSync } from "../src/session-sync.ts";

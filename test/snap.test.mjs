@@ -1,4 +1,5 @@
 // 圈選提問:整理網頁送來的資料、組給模型看的段落、找出終端機圈的是哪個窗格
+import "./helpers/data-dir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";

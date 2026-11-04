@@ -1,4 +1,5 @@
 // iPhone 推播:通知文字轉成推播內容、APNs 的 JWT 簽章格式
+import "./helpers/data-dir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, verify } from "node:crypto";
