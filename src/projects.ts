@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { pathInside } from "./platform.ts";
 import { basename, dirname, join, relative } from "node:path";
-import { isPrivatePath, MISC_ROOTS } from "./config.ts";
+import { isAgentTempPath, isPrivatePath, MISC_ROOTS } from "./config.ts";
 import type { Project, Store } from "./store.ts";
 
 export const MISC_ROOT = "(雜務)";
@@ -72,6 +72,7 @@ export function resolveProject(store: Store, cwd: string): Project {
 	const linked = cwd ? linkedWorktreeMain(cwd) : undefined;
 	if (linked) return resolveProject(store, linked);
 	if (!cwd || MISC_ROOTS.includes(cwd.replace(/\/$/, ""))) return ensureSpecial(store, MISC_ROOT);
+	if (isAgentTempPath(cwd)) return ensureSpecial(store, MISC_ROOT);
 
 	// 已登記的資料夾(含它的子資料夾),取最長的那個
 	const registered = store
