@@ -1,6 +1,7 @@
 // 監看 herdr:每 10 秒讀一次窗格清單,agent 從「工作中」變成「閒置」且持續一段時間後,
 // 讀它的新對話內容送給管家消化。也負責把派出去的工作卡和窗格對上。
 import { statSync } from "node:fs";
+import { bootstrapMessage, useParentState } from "./bootstrap-context.ts";
 import { pathInside, samePath } from "./platform.ts";
 import { listPanes, type HerdrPane } from "./herdr.ts";
 import { resolveProject } from "./projects.ts";
@@ -197,8 +198,8 @@ export class Watcher {
 	}
 
 	/**
-	 * 補建:新登記(拆出來)的專案,從「上層專案的現有狀態」+「目前開在這個資料夾的 agent 最近的對話記錄」
-	 * 整理出初始狀態。讀對話記錄不推進讀取進度(那段已經記在上層,這裡只是重讀)。
+	 * 補建:只有資料夾有內容且上層紀錄提到它時才參考上層,並從目前開在這裡的 agent 對話整理直接相關的初始狀態。
+	 * 讀對話記錄不推進讀取進度;沒有相關內容就不更新狀態。
 	 */
 	async bootstrap(projectId: string): Promise<string> {
 		const p = this.store.project(projectId);
@@ -209,10 +210,10 @@ export class Watcher {
 			.filter((x) => x.id !== p.id && x.kind === "project" && x.state.updatedAt && pathInside(p.root, x.root) && !samePath(p.root, x.root))
 			.sort((a, b) => b.root.length - a.root.length)[0];
 		const parts: string[] = [];
-		if (parent) {
+		if (parent && useParentState(p.root, parent)) {
 			const s = parent.state;
 			parts.push(
-				`【上層專案「${parent.name}」(${parent.root})的現有狀態】只挑跟「${p.name}」這個子資料夾有關的部分,其他子資料夾的事不要寫進來:`,
+				`【上層專案「${parent.name}」(${parent.root})的現有狀態】這是上層專案的紀錄,大部分跟「${p.name}」無關。只摘出明確跟「${p.name}」這個資料夾有關的部分;沒有就整段忽略。`,
 				`目標:${s.goal}\n進度:${s.progress}\n下一步:\n${s.nextSteps.map((x) => `- ${x}`).join("\n")}\n卡點:\n${s.blockers.map((x) => `- ${x}`).join("\n")}\n決定:\n${s.decisions.map((x) => `- ${x}`).join("\n")}`,
 				`最近的工作:\n${s.recent.map((r) => `- ${r.at} ${r.agent}:${r.summary}`).join("\n")}`,
 			);
@@ -224,8 +225,8 @@ export class Watcher {
 			const excerpt = ref && path ? transcriptExcerpt(ref, Math.max(0, statSync(path).size - FIRST_LOOK_BYTES)) : paneExcerpt(pane.pane_id);
 			if (excerpt?.text.trim()) parts.push(`【${pane.agent} 窗格 ${pane.pane_id} 最近的對話記錄】\n${excerpt.text}`);
 		}
-		if (!parts.length) return "找不到可以補建的資料:上層專案沒有紀錄,這個資料夾裡也沒有開著的 agent。";
-		const msg = `【回報】這是剛從上層專案拆出來的新專案「${p.name}」(${p.root}),請用下面的資料建立它的初始狀態(呼叫 update_project_state,goal 也要填)。session_summary 寫「從現有記錄補建」。\n\n${parts.join("\n\n")}`;
+		if (!parts.length) return "找不到可以補建的資料:上層專案沒有提到這個資料夾(或資料夾是空的),這個資料夾裡也沒有開著的 agent。";
+		const msg = bootstrapMessage(p.name, p.root, parts);
 		const answer = await this.steward.send(p, msg, { role: "digest" });
 		this.store.updateProject(p.id, { lastActivityAt: new Date().toISOString() });
 		return answer;

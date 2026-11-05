@@ -116,9 +116,9 @@ export function createProject(store: Store, steward: Steward, watcher: Watcher, 
 		}, 50);
 	}
 
-	// 有既有紀錄可以參考(上層專案或已開的窗格)就補建初始狀態
+	// 有既有紀錄或已開的窗格才補建初始狀態;新建的資料夾不帶上層紀錄
 	const strays = strayPanes(store, project).length;
-	if (parentProject?.state.updatedAt || strays) watcher.bootstrap(project.id).catch(() => undefined);
+	if ((parentProject?.state.updatedAt && !makeNew) || strays) watcher.bootstrap(project.id).catch(() => undefined);
 	void steward;
 
 	return {
