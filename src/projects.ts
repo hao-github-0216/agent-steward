@@ -83,7 +83,10 @@ export function resolveProject(store: Store, cwd: string): Project {
 	const root = gitRoot(cwd);
 	if (root && !MISC_ROOTS.includes(root)) {
 		if (registered && registered.root.length >= root.length) return active(store, registered);
-		return active(store, store.projectByRoot(root) ?? store.addProject({ root, name: basename(root), kind: "project", status: "active", private: isPrivatePath(root) }));
+		const own = store.projectByRoot(root);
+		// 巢狀 repo 被停止追蹤:裡面的工作算到包住它的已登記專案,不丟到雜務
+		if (own?.status === "ignored" && registered) return active(store, registered);
+		return active(store, own ?? store.addProject({ root, name: basename(root), kind: "project", status: "active", private: isPrivatePath(root) }));
 	}
 	if (registered) return active(store, registered);
 

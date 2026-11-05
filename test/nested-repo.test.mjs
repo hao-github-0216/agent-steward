@@ -1,4 +1,4 @@
-// Git 面板認得專案資料夾裡面的 repo:列出巢狀 repo、外層沒有 commit 時歷史是空的、?repo= 只認伺服器列出的 repo、路徑一律相對於專案資料夾
+// Git 面板認得專案資料夾裡面的 repo:列出巢狀 repo、外層沒有 commit 時歷史是空的、?repo= 只認伺服器列出的 repo、路徑一律相對於專案資料夾;停止追蹤的巢狀 repo 算回上層專案
 import "./helpers/git-isolation.mjs";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,6 +14,8 @@ after(() => {
 	for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 const { CodeError, nestedRepos, status, statusIn, diffIn, gitAction, gitActionIn } = await import("../src/code.ts");
+const { resolveProject } = await import("../src/projects.ts");
+const { Store } = await import("../src/store.ts");
 
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 const proj = (root) => ({ id: "x", root, name: "x", kind: "project", status: "active", private: false });
@@ -119,4 +121,18 @@ test("巢狀掃描跳過隱藏與依賴資料夾、限制深度、找到就停�
 	git(own, "commit", "-qm", "init");
 	git(own, "worktree", "add", "-q", "-b", "b1", join(own, "wt1"));
 	assert.deepEqual(await nestedRepos(proj(own)), []);
+});
+
+test("停止追蹤的巢狀 repo 算回上層專案,恢復追蹤後算回自己", () => {
+	const root = tmp();
+	const inner = repo(join(root, "inner"));
+	const sub = join(inner, "sub");
+	mkdirSync(sub);
+	const store = new Store(join(DATA, "x-state.json"));
+	const A = store.addProject({ root, name: "A", kind: "project", status: "active", private: false });
+	const B = store.addProject({ root: inner, name: "B", kind: "project", status: "active", private: false });
+	store.updateProject(B.id, { status: "ignored" });
+	assert.equal(resolveProject(store, sub).id, A.id);
+	store.updateProject(B.id, { status: "active" });
+	assert.equal(resolveProject(store, sub).id, B.id);
 });
