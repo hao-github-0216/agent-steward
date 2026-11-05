@@ -7,7 +7,7 @@
 	const MAX_COLS = 4, MAX_ROWS = 3;
 	const mobile = () => innerWidth <= 800;
 	const cm = {
-		pid: null, view: "files", expanded: new Set([""]), hidden: false, dirs: {}, git: null, history: null, openCommit: null, selRow: null,
+		pid: null, view: "files", expanded: new Set([""]), hidden: false, dirs: {}, git: null, gitRepo: null, gitMain: null, history: null, openCommit: null, selRow: null,
 		monaco: null, ready: null,
 		cols: [], // [{ id, size, groups: [group] }]
 		activeGroup: null,
@@ -39,7 +39,8 @@
 		}
 		return data;
 	}
-	const gitPost = (action, body = {}) => api(`git/${action}`, { method: "POST", body: JSON.stringify(body) });
+	const gq = (repo = cm.gitRepo) => (repo && !cm.wt ? `repo=${encodeURIComponent(repo)}` : "");
+	const gitPost = (action, body = {}) => api(`git/${action}${gq() ? `?${gq()}` : ""}`, { method: "POST", body: JSON.stringify(body) });
 	const fail = (e) => toast(e.message || String(e));
 	const baseName = (p) => p.split("/").pop();
 	const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -1601,7 +1602,7 @@
 			if (cm.pid !== id) cm.wts = null;
 			cm.pid = id;
 			cm.wt = wt ? { id: wt.id, branch: wt.branch, source: wt.source, path: wt.path } : null;
-			cm.dirs = {}; cm.expanded = new Set([""]); cm.git = null; cm.history = null; cm.openCommit = null;
+			cm.dirs = {}; cm.expanded = new Set([""]); cm.git = null; cm.gitMain = null; cm.gitRepo = null; cm.history = null; cm.openCommit = null;
 			const kept = cm.stash.get(viewKey());
 			if (kept) {
 				// 之前切走時還有沒存的修改:原封不動放回來
@@ -1628,7 +1629,7 @@
 	function tabSpec(t) {
 		if (t.kind === "diff") {
 			const vs = t.group.active === t && t.group.diff ? t.group.diff.saveViewState() : t.viewState;
-			return { kind: "diff", path: t.path, which: t.which, commit: t.commit, ...(vs ? { view: vs } : {}) };
+			return { kind: "diff", path: t.path, which: t.which, commit: t.commit, repo: t.repo || undefined, ...(vs ? { view: vs } : {}) };
 		}
 		const pos = t.pos ? { pos: t.pos } : {};
 		if (t.kind === "md") return { kind: "md", path: t.path, ...pos };
@@ -1691,7 +1692,7 @@
 		for (const { g, spec } of plan) {
 			for (const ts of spec.tabs || []) {
 				if (!ts?.path) continue;
-				if (ts.kind === "diff") await openDiff(ts.path, ts.which, ts.commit, g, { quiet: true, view: ts.view || null });
+				if (ts.kind === "diff") await openDiff(ts.path, ts.which, ts.commit, g, { quiet: true, view: ts.view || null, repo: ts.repo || null });
 				else if (ts.kind === "md") await openPreview(ts.path, g, { quiet: true, pos: ts.pos });
 				else if (ts.kind === "nb") await openNotebook(ts.path, g, { quiet: true, pos: ts.pos });
 				else await openFile(ts.path, g, { quiet: true, view: ts.view || null, raw: true, pos: ts.pos });
@@ -2245,7 +2246,16 @@
 		// 回來時已經換到別的專案/worktree 就丟掉(不然舊專案的結果會蓋掉新的)
 		const key = cp();
 		const wts = loadWts();
-		const st = await api("git/status").catch((e) => ({ error: e.message }));
+		const main = await api("git/status").catch((e) => ({ error: e.message }));
+		if (cp() !== key) return;
+		cm.gitMain = main;
+		if (cm.wt) cm.gitRepo = null;
+		else {
+			const nested = main.nested || [];
+			const saved = gitRepoChoice(cm.pid);
+			cm.gitRepo = saved === "" ? null : nested.some((x) => x.rel === saved) ? saved : (!main.repo || main.empty) && nested.length ? nested[0].rel : null;
+		}
+		const st = cm.gitRepo ? await api(`git/status?${gq()}`).catch((e) => ({ error: e.message })) : main;
 		if (cp() !== key) return;
 		cm.git = st;
 		const n = st.repo ? st.staged.length + st.unstaged.length + st.untracked.length + st.conflicted.length : 0;
@@ -2258,6 +2268,8 @@
 		const acts = which === "staged" ? '<button data-g="unstage" title="取消暫存">−</button>' : `<button data-g="discard" title="捨棄變更">↺</button><button data-g="stage" title="暫存">＋</button>`;
 		return `<div class="git-row" data-path="${esc(path)}" data-which="${which}" title="${esc(path)}"><span class="nm">${esc(baseName(path))}<span class="dir">${esc(dirOf(path))}</span></span><span class="ra">${acts}</span><span class="g g-${code === "?" ? "U" : code}">${code === "?" ? "U" : code}</span></div>`;
 	}
+	const gitRepoChoice = (pid) => { try { return JSON.parse(localStorage.getItem("steward.gitRepo") || "{}")[pid]; } catch { return undefined; } };
+	const setGitRepoChoice = (pid, rel) => { try { const o = JSON.parse(localStorage.getItem("steward.gitRepo") || "{}"); o[pid] = rel; localStorage.setItem("steward.gitRepo", JSON.stringify(o)); } catch {} };
 	const gitFold = (k) => { try { return JSON.parse(localStorage.getItem("steward.gitFold") || "{}")[k]; } catch { return false; } };
 	const setGitFold = (k, v) => { try { const o = JSON.parse(localStorage.getItem("steward.gitFold") || "{}"); o[k] = v; localStorage.setItem("steward.gitFold", JSON.stringify(o)); } catch {} };
 	function sec(key, title, count, acts, body) {
@@ -2269,8 +2281,25 @@
 		const g = cm.git;
 		if (!g) { root.innerHTML = '<div class="empty" style="padding:12px">讀取中…</div>'; return; }
 		if (g.error) { root.innerHTML = `<div class="hint" style="padding:12px">${esc(g.error)}</div>`; return; }
-		if (!g.repo) { root.innerHTML = '<div class="empty" style="padding:12px">這個專案不是 git repo</div>'; return; }
-		const wtHtml = wtSection();
+		const nested = cm.wt ? [] : (cm.gitMain?.nested || []);
+		const main = cm.gitMain;
+		const mainLabel = main?.repo === false ? "這個資料夾(不是 git repo)" : main?.prefix ? `這個資料夾(在 ${main.repoName} 裡)` : "這個資料夾";
+		const repoSelect = nested.length ? `<div class="git-branch"><span class="hint">Git</span><select id="cvGitRepo" title="切換要看的 git repo"><option value="" ${!cm.gitRepo ? "selected" : ""}>${esc(mainLabel + (main?.empty ? ",還沒有 commit" : ""))}</option>${nested.map((x) => `<option value="${esc(x.rel)}" ${cm.gitRepo === x.rel ? "selected" : ""}>${esc(`${x.rel}(${x.branch || "沒有分支"})`)}</option>`).join("")}</select></div>` : "";
+		const wireRepo = () => {
+			if (!nested.length) return;
+			$("cvGitRepo").onchange = (e) => {
+				setGitRepoChoice(cm.pid, e.target.value);
+				cm.gitRepo = e.target.value || null;
+				cm.history = null; cm.openCommit = null;
+				refreshGit();
+			};
+		};
+		if (!g.repo) {
+			root.innerHTML = nested.length ? `${repoSelect}<div class="hint" style="padding:12px">這個資料夾不是 git repo,可以從上面的選單切到裡面的 repo</div>` : '<div class="empty" style="padding:12px">這個專案不是 git repo</div>';
+			wireRepo(); return;
+		}
+		const repoNote = cm.gitRepo ? `<div class="hint git-sub">下面是「${esc(cm.gitRepo)}」這個 repo 的變更與歷史;分支、拉取、推送、提交都在這個 repo 裡。</div>` : "";
+		const wtHtml = cm.gitRepo ? "" : wtSection();
 		const changes = [...g.unstaged.map((x) => ({ ...x, which: "unstaged" })), ...g.untracked.map((x) => ({ ...x, code: "?", which: "untracked" }))];
 		const anyStaged = g.staged.length > 0;
 		const sync = g.upstream ? `↓${g.behind} ↑${g.ahead}` : "尚未連到遠端";
@@ -2278,8 +2307,8 @@
 		const key = cp();
 		try { branches = (await gitPost("branches")).out.filter((b) => !b.name.startsWith("origin/") && !b.name.startsWith("remotes/")); } catch {}
 		if (cp() !== key || cm.git !== g) return; // 等的時候換了專案或有更新的狀態:交給那一次畫
-		const subNote = g.prefix ? `<div class="hint git-sub" title="git 是以 ${esc(g.repoName)} 整個資料夾為單位">這個專案是 repo「${esc(g.repoName)}」裡的 ${esc(g.prefix)} 資料夾:下面只列 ${esc(g.prefix)} 的變更與歷史,「全部暫存」也只加 ${esc(g.prefix)};分支、拉取、推送是整個 repo 共用的。${g.outsideStaged?.length ? `<br><b>⚠ 暫存區還有 ${g.outsideStaged.length} 個其他資料夾的檔案</b>(提交時會問你要不要一起提交)` : ""}</div>` : "";
-		root.innerHTML = `${wtHtml}${subNote}
+		const subNote = !cm.gitRepo && g.prefix ? `<div class="hint git-sub" title="git 是以 ${esc(g.repoName)} 整個資料夾為單位">這個專案是 repo「${esc(g.repoName)}」裡的 ${esc(g.prefix)} 資料夾:下面只列 ${esc(g.prefix)} 的變更與歷史,「全部暫存」也只加 ${esc(g.prefix)};分支、拉取、推送是整個 repo 共用的。${g.outsideStaged?.length ? `<br><b>⚠ 暫存區還有 ${g.outsideStaged.length} 個其他資料夾的檔案</b>(提交時會問你要不要一起提交)` : ""}</div>` : "";
+		root.innerHTML = `${repoSelect}${repoNote}${wtHtml}${subNote}
 			<div class="git-branch"><select id="cvBranch" title="切換分支">${branches.map((b) => `<option ${b.current ? "selected" : ""}>${esc(b.name)}</option>`).join("") || `<option>${esc(g.branch)}</option>`}</select>
 				<button class="small" data-gb="new" title="建立新分支">＋分支</button></div>
 			<div class="git-branch"><span class="hint">${esc(sync)}</span><span style="flex:1"></span>
@@ -2289,7 +2318,8 @@
 			${g.conflicted.length ? sec("conflict", "衝突", g.conflicted.length, "", `<div class="hint" style="padding:4px 14px 8px">合併衝突請到終端機處理</div>${g.conflicted.map((x) => gitRow(x.path, "!", "unstaged")).join("")}`) : ""}
 			${sec("staged", "已暫存", g.staged.length, anyStaged ? '<button data-ga="unstageAll" title="全部取消暫存">−</button>' : "", g.staged.map((x) => gitRow(x.path, x.code, "staged")).join(""))}
 			${sec("changes", "變更", changes.length, changes.length ? '<button data-ga="discardAll" title="捨棄全部變更">↺</button><button data-ga="stageAll" title="全部暫存">＋</button>' : "", changes.map((x) => gitRow(x.path, x.code, x.which)).join(""))}
-			<div class="git-sec"><div class="h" data-ga="history">${cm.history ? "▾" : "▸"} 歷史(最近 50 筆)</div>${cm.history ? cm.history.map((c) => `<div class="git-row" data-commit="${c.hash}" title="${esc(c.author)} · ${esc(c.date)}"><span class="nm">${esc(c.subject)}<span class="dir">${c.short}</span></span></div>${cm.openCommit?.hash === c.hash ? cm.openCommit.files.map((f) => `<div class="git-row" data-cfile="${esc(f.path)}" data-commit="${c.hash}" style="padding-left:28px"><span class="nm">${esc(baseName(f.path))}<span class="dir">${esc(dirOf(f.path))}</span></span><span class="g g-${f.code[0]}">${f.code[0]}</span></div>`).join("") : ""}`).join("") : ""}</div>`;
+			<div class="git-sec"><div class="h" data-ga="history">${cm.history ? "▾" : "▸"} 歷史(最近 50 筆)</div>${cm.history ? cm.history.map((c) => `<div class="git-row" data-commit="${c.hash}" title="${esc(c.author)} · ${esc(c.date)}"><span class="nm">${esc(c.subject)}<span class="dir">${c.short}</span></span></div>${cm.openCommit?.hash === c.hash ? cm.openCommit.files.map((f) => `<div class="git-row" data-cfile="${esc(f.path)}" data-commit="${c.hash}" style="padding-left:28px"><span class="nm">${esc(baseName(f.path))}<span class="dir">${esc(dirOf(f.path))}</span></span><span class="g g-${f.code[0]}">${f.code[0]}</span></div>`).join("") : ""}`).join("") : ""}${cm.history?.length === 0 && g.empty ? '<div class="hint" style="padding:4px 14px 8px">這個 repo 還沒有任何 commit</div>' : ""}</div>`;
+		wireRepo();
 		$("cvMsg").addEventListener("input", (e) => (cm.msgDraft = e.target.value));
 		$("cvMsg").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) root.querySelector('[data-gb="commit"]').click(); });
 		$("cvBranch").onchange = (e) => gitDo("checkout", { branch: e.target.value }, `已切換到 ${e.target.value}`);
@@ -2319,7 +2349,7 @@
 		if (gb === "push") return gitDo("push", {}, "已推送");
 		if (gb === "genmsg") {
 			const b = e.target; b.disabled = true; b.textContent = "產生中…";
-			try { const r = await api("git/commitmsg", { method: "POST", body: "{}" }); cm.msgDraft = r.message; $("cvMsg").value = r.message; } catch (err) { fail(err); }
+			try { const r = await api(`git/commitmsg${gq() ? `?${gq()}` : ""}`, { method: "POST", body: "{}" }); cm.msgDraft = r.message; $("cvMsg").value = r.message; } catch (err) { fail(err); }
 			b.disabled = false; b.textContent = "產生提交訊息";
 			return;
 		}
@@ -2374,20 +2404,20 @@
 		}
 		openDiff(path, which);
 	});
-	async function openDiff(path, which, commit, into = null, { quiet = false, view = null } = {}) {
+	async function openDiff(path, which, commit, into = null, { quiet = false, view = null, repo = cm.gitRepo } = {}) {
 		await loadMonaco().catch(fail);
 		if (!cm.monaco) return;
 		ensureLayout();
-		const key = `diff:${which}:${commit || ""}:${path}`;
+		const key = `diff:${repo || ""}:${which}:${commit || ""}:${path}`;
 		const old = findTab(key);
 		const g = into || old?.group || cm.activeGroup || allGroups()[0];
 		if (old) closeTab(old, true);
 		try {
-			const d = await api(`git/diff?path=${encodeURIComponent(path)}&which=${which}${commit ? `&commit=${commit}` : ""}`);
+			const d = await api(`git/diff?path=${encodeURIComponent(path)}&which=${which}${commit ? `&commit=${commit}` : ""}${gq(repo) ? `&${gq(repo)}` : ""}`);
 			const lang = langOf(path);
 			const caption = which === "staged" ? "已暫存的變更:上次提交 ↔ 暫存區" : which === "commit" ? `提交 ${commit.slice(0, 7)} 的變更` : which === "untracked" ? "新檔案" : "未暫存的變更:暫存區 ↔ 工作目錄";
 			const target = allGroups().includes(g) ? g : allGroups()[0];
-			const t = { key, group: target, kind: "diff", path, which, commit, label: `${baseName(path)}${which === "staged" ? "(已暫存)" : which === "commit" ? `@${commit.slice(0, 7)}` : "(變更)"}`, title: `${path} · ${caption}`, caption, orig: cm.monaco.editor.createModel(d.original, lang), mod: cm.monaco.editor.createModel(d.modified, lang), ...(view ? { viewState: view } : {}) };
+			const t = { key, group: target, kind: "diff", path, which, commit, repo, label: `${baseName(path)}${which === "staged" ? "(已暫存)" : which === "commit" ? `@${commit.slice(0, 7)}` : "(變更)"}`, title: `${path} · ${caption}`, caption, orig: cm.monaco.editor.createModel(d.original, lang), mod: cm.monaco.editor.createModel(d.modified, lang), ...(view ? { viewState: view } : {}) };
 			target.tabs.push(t);
 			setActiveGroup(target);
 			activate(target, t);

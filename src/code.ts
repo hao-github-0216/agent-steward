@@ -80,6 +80,62 @@ export async function repoPrefix(p: Project): Promise<{ prefix: string; top: str
 	prefixCache.set(p.root, v);
 	return v;
 }
+const nestedCache = new Map<string, { at: number; repos: { rel: string; branch: string }[] }>();
+export async function nestedRepos(p: Project): Promise<{ rel: string; branch: string }[]> {
+	const hit = nestedCache.get(p.root);
+	if (hit && Date.now() - hit.at < 60_000) return hit.repos;
+	const root = realpathSync(p.root);
+	const repos: { rel: string; branch: string }[] = [];
+	let common = "", seen = 0;
+	const own = await git(p, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+	if (own.code === 0) { try { common = realpathSync(own.stdout.trim()); } catch {} }
+	const scan = async (dir: string, depth: number): Promise<void> => {
+		let entries;
+		try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+		for (const e of entries) {
+			if (!e.isDirectory() || e.name.startsWith(".") || ["node_modules", "__pycache__", "venv"].includes(e.name)) continue;
+			if (seen >= 5000) return;
+			seen++;
+			const d = join(dir, e.name);
+			let candidate = false;
+			try { const st = statSync(join(d, ".git")); candidate = st.isFile() || st.isDirectory(); } catch {}
+			if (candidate) {
+				const sub = { ...p, root: d };
+				const r = await git(sub, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]);
+				if (r.code !== 0) continue;
+				const [top, shared] = r.stdout.trim().split("\n");
+				try {
+					if (realpathSync(top) !== realpathSync(d) || (common && realpathSync(shared) === common)) continue;
+				} catch { continue; }
+				const current = await git(sub, ["branch", "--show-current"]);
+				let branch = current.code === 0 ? current.stdout.trim() : "";
+				if (!branch) {
+					const head = await git(sub, ["rev-parse", "--short", "HEAD"]);
+					branch = head.code === 0 ? head.stdout.trim() : "";
+				}
+				repos.push({ rel: relative(root, d).split(sep).join("/"), branch });
+			} else if (depth < 3) await scan(d, depth + 1);
+		}
+	};
+	await scan(root, 1);
+	repos.sort((a, b) => a.rel.localeCompare(b.rel));
+	nestedCache.set(p.root, { at: Date.now(), repos });
+	return repos;
+}
+
+export async function repoView(p: Project, repo: string) {
+	if (!repo) return { p, toProj: (x: string) => x, fromProj: (x: string) => x, repo: "" };
+	if (!(await nestedRepos(p)).some((x) => x.rel === repo)) throw new CodeError(400, "找不到這個 repo");
+	return {
+		p: { ...p, root: join(realpathSync(p.root), ...repo.split("/")) }, repo,
+		toProj: (x: string) => `${repo}/${x}`,
+		fromProj: (x: string) => {
+			if (!x.startsWith(`${repo}/`)) throw new CodeError(400, "路徑不在這個 repo 裡");
+			return x.slice(repo.length + 1);
+		},
+	};
+}
+
 /** repo 根目錄的相對路徑 → 專案資料夾的相對路徑;不在專案資料夾裡回 undefined */
 const fromRoot = (prefix: string, path: string) => (!prefix ? path : path.startsWith(prefix) ? path.slice(prefix.length) : undefined);
 
@@ -93,7 +149,9 @@ export async function stagedOutside(p: Project): Promise<string[]> {
 
 /** git status:分支、上游、領先/落後、各組檔案(只列這個專案資料夾裡的) */
 export async function status(p: Project) {
-	if (!(await isRepo(p))) return { repo: false as const };
+	const nested = await nestedRepos(p);
+	if (!(await isRepo(p))) return { repo: false as const, nested };
+	const empty = (await git(p, ["rev-parse", "--verify", "-q", "HEAD"])).code !== 0;
 	const { prefix, top } = await repoPrefix(p);
 	const out = (await gitOk(p, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--", "."])).split("\0");
 	let branch = "", upstream = "", ahead = 0, behind = 0;
@@ -128,7 +186,22 @@ export async function status(p: Project) {
 	}
 	// 子資料夾專案:告訴網頁這個 repo 還有別的資料夾(分支、拉取/推送是整個 repo 共用的),以及暫存區裡有沒有別的資料夾的檔案
 	const sub = prefix ? { prefix: prefix.replace(/\/$/, ""), repoName: basename(top), outsideStaged: await stagedOutside(p) } : {};
-	return { repo: true as const, branch, upstream, ahead, behind, staged, unstaged, untracked, conflicted, ...sub };
+	return { repo: true as const, branch, upstream, ahead, behind, staged, unstaged, untracked, conflicted, nested, empty, ...sub };
+}
+
+export async function statusIn(p: Project, repo: string) {
+	if (!repo) return status(p);
+	const v = await repoView(p, repo);
+	const st = await status(v.p);
+	if (!st.repo) return st;
+	const { nested, ...rest } = st;
+	return {
+		...rest, repoRel: repo, repoName: basename(v.p.root),
+		staged: st.staged.map((x) => ({ ...x, path: v.toProj(x.path), ...(x.from ? { from: v.toProj(x.from) } : {}) })),
+		unstaged: st.unstaged.map((x) => ({ ...x, path: v.toProj(x.path) })),
+		untracked: st.untracked.map((x) => ({ ...x, path: v.toProj(x.path) })),
+		conflicted: st.conflicted.map((x) => ({ ...x, path: v.toProj(x.path) })),
+	};
 }
 
 /** 差異檢視用:回傳左右兩邊的完整內容(Monaco diff 自己算差異) */
@@ -150,6 +223,25 @@ export async function diffSides(p: Project, rel: string, which: "staged" | "unst
 		return { original: await show(`${commit}^:./${rel}`), modified: await show(`${commit}:./${rel}`) };
 	}
 	return { original: "", modified: work() };
+}
+
+export async function diffIn(p: Project, repo: string, rel: string, which: "staged" | "unstaged" | "untracked" | "commit", commit?: string) {
+	if (!repo) return diffSides(p, rel, which, commit);
+	const v = await repoView(p, repo);
+	return diffSides(v.p, v.fromProj(rel), which, commit);
+}
+
+export async function gitActionIn(p: Project, repo: string, action: string, b: Record<string, unknown>): Promise<unknown> {
+	if (!repo) return gitAction(p, action, b);
+	const v = await repoView(p, repo);
+	const b2 = { ...b };
+	if (Array.isArray(b2.paths)) b2.paths = b2.paths.map((x) => v.fromProj(String(x)));
+	const out = await gitAction(v.p, action, b2);
+	if (action === "show") {
+		const shown = out as { files: { code: string; path: string }[] };
+		return { ...shown, files: shown.files.map((x) => ({ ...x, path: v.toProj(x.path) })) };
+	}
+	return out;
 }
 
 const safePaths = (p: Project, paths: unknown): string[] => {
@@ -214,6 +306,7 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		case "fetch":
 			return gitOk(p, ["fetch", "--prune"], 120_000);
 		case "log": {
+			if ((await git(p, ["rev-parse", "--verify", "-q", "HEAD"])).code !== 0) return [];
 			// 只列改到這個專案資料夾的 commit
 			const out = await gitOk(p, ["log", "-n", "50", "--date=iso-strict", "--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1e", "--", "."]);
 			return out.split("\x1e").map((x) => x.trim()).filter(Boolean).map((x) => {

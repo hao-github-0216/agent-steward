@@ -26,7 +26,7 @@ import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRout
 import { publicProjectView } from "./privacy.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
-import { CodeError, diffSides, fileForChat, fileStamps, findFiles, fsOp, gitAction, inProject, isRepo, listDir, rawFile, readFile, status as gitStatus, uploadFile, writeFile } from "./code.ts";
+import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -288,6 +288,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			if (sub === "worktrees" || sub.startsWith("worktrees/")) return await worktreeRoute(p, sub.slice(10), req, res);
 			// 看/改 worktree 裡的檔案:?wt=<id> 讓這次請求的專案資料夾換成 worktree 裡對應的位置(id 由伺服器對照 git worktree list,不收路徑)
 			const wt = q("wt");
+			const repo = q("repo");
+			if (repo && wt) return send(res, 400, { error: "worktree 裡不能切換 repo" });
 			if (wt) {
 				const item = await worktreeView(p, wt);
 				if (!item.exists) return send(res, 404, { error: "這個 worktree 的資料夾已經不在了" });
@@ -378,12 +380,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				const b = await body(req);
 				return send(res, 200, putSession(p.id, b.layout));
 			}
-			if (req.method === "GET" && sub === "git/status") return send(res, 200, await gitStatus(p));
-			if (req.method === "GET" && sub === "git/diff") return send(res, 200, await diffSides(p, q("path"), (q("which") || "unstaged") as never, q("commit") || undefined));
+			if (req.method === "GET" && sub === "git/status") return send(res, 200, await statusIn(p, repo));
+			if (req.method === "GET" && sub === "git/diff") return send(res, 200, await diffIn(p, repo, q("path"), (q("which") || "unstaged") as never, q("commit") || undefined));
 			if (req.method === "POST" && sub === "git/commitmsg") {
-				const diff = String(await gitAction(p, "diffText", {}));
+				const diff = String(await gitActionIn(p, repo, "diffText", {}));
 				if (!diff.trim()) return send(res, 400, { error: "沒有變更" });
-				const log = ((await gitAction(p, "log", {})) as { subject: string }[]).slice(0, 8).map((c) => `- ${c.subject}`).join("\n");
+				const log = ((await gitActionIn(p, repo, "log", {})) as { subject: string }[]).slice(0, 8).map((c) => `- ${c.subject}`).join("\n");
 				let msg: string;
 				try {
 					// 隱私專案的 diff 只送隱私路由的模型;沒設定就回清楚的錯誤
@@ -397,13 +399,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			const ga = sub.match(/^git\/(\w+)$/);
 			if (req.method === "POST" && ga) {
 				const b = await body(req);
-				const out = await gitAction(p, ga[1], b);
+				const out = await gitActionIn(p, repo, ga[1], b);
 				if (ga[1] === "commit") {
 					// 提交後讓管家記一筆(用本地模型整理,不等它)
-					const headHash = ((await gitAction(p, "log", {})) as { hash: string }[])[0]?.hash ?? "";
-					const head = (await gitAction(p, "show", { commit: headHash })) as { hash: string; body?: string; files: { code: string; path: string }[] };
+					const headHash = ((await gitActionIn(p, repo, "log", {})) as { hash: string }[])[0]?.hash ?? "";
+					const head = (await gitActionIn(p, repo, "show", { commit: headHash })) as { hash: string; body?: string; files: { code: string; path: string }[] };
 					void steward
-						.send(p, `【回報】agent=使用者(網頁) 來源=git 提交\n提交 ${head.hash.slice(0, 7)}:${head.body ?? ""}\n改了 ${head.files.length} 個檔案:\n${head.files.slice(0, 40).map((f) => `${f.code} ${f.path}`).join("\n")}`, { role: "digest" })
+						.send(p, `【回報】agent=使用者(網頁) 來源=git 提交${repo ? ` repo=${repo}` : ""}\n提交 ${head.hash.slice(0, 7)}:${head.body ?? ""}\n改了 ${head.files.length} 個檔案:\n${head.files.slice(0, 40).map((f) => `${f.code} ${f.path}`).join("\n")}`, { role: "digest" })
 						.catch(() => undefined);
 				}
 				return send(res, 200, { ok: true, out });
