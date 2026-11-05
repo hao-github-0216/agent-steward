@@ -13,7 +13,16 @@ export interface ChatQuote {
 	to?: number;
 	text: string;
 }
-export interface CardDraft { title: string; agent: string; instructions: string; doneCriteria: string; status: "draft" | "proposed" | "dispatched"; cardId?: string }
+export interface CardDraft {
+	title: string;
+	agent: string;
+	instructions: string;
+	doneCriteria: string;
+	status: "draft" | "proposed" | "dispatched";
+	cardId?: string;
+	/** 管家擬的原稿(使用者第一次改欄位時記下,比對使用者改了什麼用) */
+	original?: { title: string; instructions: string; doneCriteria: string };
+}
 export interface ChatEntry {
 	id: string; // 時間排序用:毫秒時間戳 + 亂數
 	role: "me" | "bot";
