@@ -2,9 +2,10 @@
 // 管家只有「改專案狀態 / 提工作卡 / 更新工作卡」三類工具,不能碰檔案或跑指令。
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
-import { AssistantEntry, createRegistry, defineExtension, defineTask, defineTool, Harness, section } from "@earendil-works/pi-durable";
+import { AssistantEntry, CompactionTask, createRegistry, defineExtension, defineTask, defineTool, Harness, hook, section } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { DB_PATH } from "./config.ts";
+import { createCompactHook } from "./compaction.ts";
 import { settings } from "./settings.ts";
 import { herdrCli, listPanes } from "./herdr.ts";
 import { buildModels, hasFallback, routeFor } from "./models.ts";
@@ -74,6 +75,7 @@ export class Steward {
 	private cardWatch: unknown;
 	private models?: Awaited<ReturnType<typeof buildModels>>;
 	private configured = new Map<string, string>(); // 對話目前的模型設定,避免每次重設
+	private configuredRef = new Map<string, { provider: string; modelId: string }>();
 	private projectByConversation = new Map<string, string>();
 	private queue = new Map<string, Promise<unknown>>(); // 同一專案的請求串行
 
@@ -256,6 +258,12 @@ export class Steward {
 
 		const StewardExt = defineExtension({
 			name: "steward",
+			hooks: [hook(CompactionTask, createCompactHook({
+				projectOf: (id) => { try { return projectOf(id); } catch { return undefined; } },
+				modelRefOf: (id) => this.configuredRef.get(id),
+				fallbackRef: (p) => routeFor("digest", { private: !!p?.private }),
+				log: (m) => console.error(new Date().toISOString(), m),
+			}))],
 			sections: [
 				section("persona", () => PERSONA(), { tag: false }),
 				section("project", (input) => {
@@ -304,6 +312,7 @@ export class Steward {
 	private async ensureConfigured(p: Project, conv: { id: string; configure: (c: never, x: typeof ctx) => Promise<void> }, role: Role, fallback = false) {
 		const change = this.modelFor(p, role, fallback);
 		const key = `${change.model.provider}/${change.model.modelId}/${change.modelTools ? "noprop" : "prop"}`;
+		this.configuredRef.set(conv.id, { provider: change.model.provider, modelId: change.model.modelId });
 		if (this.configured.get(conv.id) === key) return;
 		await conv.configure(change as never, ctx);
 		this.configured.set(conv.id, key);
@@ -325,6 +334,7 @@ export class Steward {
 	/** 設定頁改了接口或路由:所有對話下次送訊息時重新選模型 */
 	resetModels(): void {
 		this.configured.clear();
+		this.configuredRef.clear();
 	}
 
 	/** 隱私設定改變時(例如使用者在看板切換):下次送訊息時重新設定模型 */
