@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const DATA = realpathSync(mkdtempSync(join(tmpdir(), "steward-nested-data-")));
+const DATA = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-nested-data-")));
 process.env.STEWARD_DATA_DIR = DATA;
 const roots = [DATA];
 after(() => {
@@ -20,7 +20,7 @@ const { Store } = await import("../src/store.ts");
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 const proj = (root) => ({ id: "x", root, name: "x", kind: "project", status: "active", private: false });
 function tmp() {
-	const root = realpathSync(mkdtempSync(join(tmpdir(), "steward-nested-repo-")));
+	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-nested-repo-")));
 	roots.push(root);
 	return root;
 }

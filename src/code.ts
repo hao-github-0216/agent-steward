@@ -88,7 +88,8 @@ export async function nestedRepos(p: Project): Promise<{ rel: string; branch: st
 	const repos: { rel: string; branch: string }[] = [];
 	let common = "", seen = 0;
 	const own = await git(p, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-	if (own.code === 0) { try { common = realpathSync(own.stdout.trim()); } catch {} }
+	// 用 .native:Windows 的短檔名(RUNNER~1)會展開成長檔名,和 git 回的路徑一致
+	if (own.code === 0) { try { common = realpathSync.native(own.stdout.trim()); } catch {} }
 	const scan = async (dir: string, depth: number): Promise<void> => {
 		let entries;
 		try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -101,11 +102,13 @@ export async function nestedRepos(p: Project): Promise<{ rel: string; branch: st
 			try { const st = statSync(join(d, ".git")); candidate = st.isFile() || st.isDirectory(); } catch {}
 			if (candidate) {
 				const sub = { ...p, root: d };
-				const r = await git(sub, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"]);
-				if (r.code !== 0) continue;
-				const [top, shared] = r.stdout.trim().split("\n");
+				// 是不是 repo 最上層交給 git 判斷(prefix 是空的),不比對路徑字串
+				const pre = await git(sub, ["rev-parse", "--show-prefix"]);
+				if (pre.code !== 0 || pre.stdout.trim() !== "") continue;
+				const shared = await git(sub, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+				if (shared.code !== 0) continue;
 				try {
-					if (realpathSync(top) !== realpathSync(d) || (common && realpathSync(shared) === common)) continue;
+					if (common && realpathSync.native(shared.stdout.trim()) === common) continue; // 專案自己 repo 的 linked worktree
 				} catch { continue; }
 				const current = await git(sub, ["branch", "--show-current"]);
 				let branch = current.code === 0 ? current.stdout.trim() : "";
