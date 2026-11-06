@@ -1977,7 +1977,9 @@ function routingPane(s) {
 			<label class="field">主要<select data-route="${k}.primary">${routeOptions(s.routing[k].primary, false, k === "digest" || k === "judge")}</select></label>
 			<label class="field">備用<select data-route="${k}.fallback">${routeOptions(s.routing[k].fallback, false, k === "digest" || k === "judge")}</select></label></div>`).join("")}
 		<div class="route"><div><b>隱私專案</b><div class="hint">隱私專案的所有工作都只用這個模型,不會用備用、也不會送到雲端。只能選本地模型。</div></div>
-			<label class="field">模型<select data-route="privacy">${routeOptions(s.routing.privacy, true)}</select></label></div>`;
+			<label class="field">模型<select data-route="privacy">${routeOptions(s.routing.privacy, true)}</select></label></div>
+		<div class="route"><div><b>記憶搜尋(向量)</b><div class="hint">從已整理掉的舊對話找相關內容,自動附在這次的問題裡。只支援本地或自架(OpenAI 相容)接口,例如 Ollama 的 bge-m3;不設定就只用關鍵字搜尋。</div></div>
+			<label class="field">模型<select data-route="embedding">${routeOptions(s.routing.embedding || '', true, true)}</select></label></div>`;
 }
 async function openSettings(tab = "general", wizard = false) {
 	const r = await fetch("/api/settings").then((x) => x.json().then((d) => ({ ok: x.ok, d }))).catch(() => ({ ok: false, d: { error: "連不上管家" } }));

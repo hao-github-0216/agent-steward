@@ -202,6 +202,7 @@ export function fillEmptyRouting(): boolean {
 	const r = structuredClone(s.routing);
 	let changed = false;
 	for (const role of Object.keys(def) as (keyof typeof def)[]) {
+		if (role === "embedding") continue;
 		if (role === "privacy") { if (!r.privacy && def.privacy) { r.privacy = def.privacy; changed = true; } continue; }
 		if (!r[role].primary && def[role].primary) { r[role] = { primary: def[role].primary, fallback: r[role].fallback || def[role].fallback }; changed = true; }
 	}
@@ -234,6 +235,9 @@ export async function buildModels(): Promise<MutableModels> {
 export function parseRef(ref: string): { provider: string; modelId: string } | undefined {
 	const i = ref.indexOf("/");
 	return i > 0 ? { provider: ref.slice(0, i), modelId: ref.slice(i + 1) } : undefined;
+}
+export function embeddingRef(): { provider: string; modelId: string } | undefined {
+	return parseRef(settings().routing.embedding ?? "");
 }
 export class NoModelError extends Error {}
 const ROLE_LABEL: Record<RouteRole | "privacy", string> = { chat: "聊天室", suggest: "建議問題", digest: "整理 agent 回報", judge: "提案檢查", commitmsg: "產生提交訊息", privacy: "隱私專案" };

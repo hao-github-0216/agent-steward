@@ -511,6 +511,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 							if (isCli(r[role]?.primary) || isCli(r[role]?.fallback)) return send(res, 400, { error: `「${label}」需要呼叫管家的工具,不能用電腦上的 agent CLI` });
 						}
 						if (isCli(r.privacy)) return send(res, 400, { error: "「隱私專案」只能用本地模型,不能用 agent CLI" });
+						const embedding = parseRef(r.embedding ?? before.routing.embedding ?? "");
+						const embeddingProvider = embedding && provs.find((p) => p.id === embedding.provider);
+						if (embeddingProvider?.type === "agent-cli" || embeddingProvider?.type === "builtin") return send(res, 400, { error: "記憶搜尋(向量)只支援本地或自架(OpenAI 相容)接口" });
 					}
 					if (incoming.access) delete incoming.access.passwordHash; // 密碼只能用 /api/auth/password 改
 					// 接口清單整份取代(刪除才會生效);被遮罩的金鑰沿用原本的

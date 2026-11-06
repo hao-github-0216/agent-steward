@@ -81,7 +81,7 @@ export interface Settings {
 	/** 內建外掛的開關(設定 → 外掛);相依軟體裝在 ~/.agent-steward/tools */
 	plugins: Record<PluginId, { enabled: boolean }>;
 	providers: ProviderConfig[];
-	routing: Record<RouteRole, Route> & { privacy: string };
+	routing: Record<RouteRole, Route> & { privacy: string; embedding: string };
 	notify: {
 		kind: NotifyKind;
 		hermes: { url: string; route: string };
@@ -107,6 +107,7 @@ export const DEFAULTS: Settings = {
 		judge: { primary: "", fallback: "" },
 		commitmsg: { primary: "", fallback: "" },
 		privacy: "",
+		embedding: "",
 	},
 	notify: {
 		kind: "none",
@@ -229,6 +230,7 @@ export function defaultRouting(providers: ProviderConfig[], firstModel: (p: Prov
 		judge: { primary: c || l, fallback: c && l ? l : "" },
 		commitmsg: { primary: main, fallback: "" },
 		privacy: l,
+		embedding: "",
 	};
 }
 
