@@ -24,6 +24,7 @@ import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKer
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, NoModelError, parseRef, routeFor, syncProviders } from "./models.ts";
 import { publicProjectView } from "./privacy.ts";
+import { embedTexts } from "./recall.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile } from "./code.ts";
@@ -638,6 +639,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 						]);
 						return send(res, 200, { ok: true, models: list, model, latencyMs: Date.now() - t0, reply: reply.slice(0, 80) });
 					} catch (e) {
+						// 向量模型(例如 bge-m3)不能聊天:改用 /embeddings 測,通過就說明它只能用在記憶搜尋
+						const info = c.type === "openai-compatible" || c.type === "pi-models" ? compatInfo(c) : undefined;
+						if (info?.baseUrl) {
+							try {
+								const t1 = Date.now();
+								const [vec] = await embedTexts({ baseUrl: info.baseUrl, apiKey: info.apiKey, model }, ["ping"]);
+								if (vec?.length) return send(res, 200, { ok: true, models: list, model, latencyMs: Date.now() - t1, reply: `這是向量模型(${vec.length} 維),不能聊天;請到 路由 → 記憶搜尋(向量) 選它` });
+							} catch {
+								/* 也不是向量模型:回報原本的錯誤 */
+							}
+						}
 						return send(res, 200, { ok: false, models: list, model, error: String((e as Error).message ?? e).slice(0, 300) });
 					}
 				}
