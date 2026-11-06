@@ -2,10 +2,12 @@
 // 管家只有「改專案狀態 / 提工作卡 / 更新工作卡」三類工具,不能碰檔案或跑指令。
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
-import { AssistantEntry, CompactionTask, createRegistry, defineExtension, defineTask, defineTool, Harness, hook, section } from "@earendil-works/pi-durable";
+import { AssistantEntry, CompactionTask, createRegistry, defineExtension, defineTask, defineTool, GenerationTask, Harness, hook, section } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { DB_PATH } from "./config.ts";
+import { join } from "node:path";
+import { DATA_DIR, DB_PATH } from "./config.ts";
 import { createCompactHook } from "./compaction.ts";
+import { createRecallHook, embedderFor, readEntriesFrom, Recall, RecallStore } from "./recall.ts";
 import { settings } from "./settings.ts";
 import { herdrCli, listPanes } from "./herdr.ts";
 import { buildModels, hasFallback, routeFor } from "./models.ts";
@@ -76,6 +78,7 @@ export class Steward {
 	private models?: Awaited<ReturnType<typeof buildModels>>;
 	private configured = new Map<string, string>(); // 對話目前的模型設定,避免每次重設
 	private configuredRef = new Map<string, { provider: string; modelId: string }>();
+	private recall?: Recall; // 記憶搜尋:舊對話的索引,每次請求前帶入相關段落
 	private projectByConversation = new Map<string, string>();
 	private queue = new Map<string, Promise<unknown>>(); // 同一專案的請求串行
 
@@ -258,12 +261,19 @@ export class Steward {
 
 		const StewardExt = defineExtension({
 			name: "steward",
-			hooks: [hook(CompactionTask, createCompactHook({
-				projectOf: (id) => { try { return projectOf(id); } catch { return undefined; } },
-				modelRefOf: (id) => this.configuredRef.get(id),
-				fallbackRef: (p) => routeFor("digest", { private: !!p?.private }),
-				log: (m) => console.error(new Date().toISOString(), m),
-			}))],
+			hooks: [
+				hook(CompactionTask, createCompactHook({
+					projectOf: (id) => { try { return projectOf(id); } catch { return undefined; } },
+					modelRefOf: (id) => this.configuredRef.get(id),
+					fallbackRef: (p) => routeFor("digest", { private: !!p?.private }),
+					log: (m) => console.error(new Date().toISOString(), m),
+				})),
+				hook(GenerationTask, createRecallHook({
+					recall: () => this.recall,
+					projectOf: (id) => { try { return projectOf(id as never); } catch { return undefined; } }, // 原值查,跟工具一樣(執行時可能是數字)
+					log: (m) => console.log(new Date().toISOString(), m),
+				})),
+			],
 			sections: [
 				section("persona", () => PERSONA(), { tag: false }),
 				section("project", (input) => {
@@ -294,6 +304,19 @@ export class Steward {
 		}, ctx);
 		for (const p of store.projects()) if (p.conversationId) this.projectByConversation.set(p.conversationId, p.id);
 		this.harness.resume();
+		// 記憶搜尋的索引在背景建立;失敗只記錄,不影響管家
+		try {
+			this.recall = new Recall({
+				store: new RecallStore(join(DATA_DIR, "recall.sqlite")),
+				projects: () => store.projects(),
+				readEntries: readEntriesFrom(() => this.harness as never, ctx),
+				embedder: embedderFor,
+				log: (m) => console.log(new Date().toISOString(), m),
+			});
+			this.recall.start();
+		} catch (e) {
+			console.error(new Date().toISOString(), "[recall] 啟動失敗", e);
+		}
 	}
 
 	/**
@@ -574,6 +597,7 @@ ${brief(this.deps.store, p, { recent: 5 })}
 	}
 
 	async close(): Promise<void> {
+		this.recall?.stop();
 		await this.harness.close(ctx);
 	}
 }
