@@ -1,11 +1,24 @@
 // 作業系統差異集中在這裡(macOS / Windows;Linux 大致同 macOS)。
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 
 export const IS_WIN = process.platform === "win32";
 const HOME = homedir();
+
+/**
+ * git 回傳的路徑轉成這台電腦的標準寫法。Windows:git 回 C:/Users/... 正斜線,而且可能和 8.3 短檔名(RUNNER~1)對不上
+ * → 展開成完整名稱、用反斜線(路徑不存在就只把斜線轉過來);其他系統原樣回傳。
+ */
+export function fromGit(p: string): string {
+	if (!IS_WIN || !p) return p;
+	try {
+		return realpathSync.native(p);
+	} catch {
+		return resolve(p);
+	}
+}
 
 /** 比對用的路徑:Windows 不分大小寫、斜線統一 */
 function norm(p: string): string {

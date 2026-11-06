@@ -1,6 +1,6 @@
 // 從工作目錄判斷屬於哪個專案:git 根目錄 > 已登記的資料夾 > 雜務。
 import { execFileSync } from "node:child_process";
-import { pathInside } from "./platform.ts";
+import { fromGit, pathInside } from "./platform.ts";
 import { basename, dirname, join, relative } from "node:path";
 import { isAgentTempPath, isPrivatePath, MISC_ROOTS } from "./config.ts";
 import type { Project, Store } from "./store.ts";
@@ -10,11 +10,11 @@ export const OVERVIEW_ROOT = "(總覽)";
 
 export function gitRoot(cwd: string): string | undefined {
 	try {
-		return execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
+		return fromGit(execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "ignore"],
 			timeout: 3000,
-		}).trim() || undefined;
+		}).trim()) || undefined;
 	} catch {
 		return undefined;
 	}
@@ -58,7 +58,8 @@ export function linkedWorktreeMain(cwd: string): string | undefined {
 	let main: string | undefined;
 	try {
 		const [common, top] = execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).trim().split("\n");
-		if (common && top && basename(common) === ".git" && dirname(common) !== top) main = join(dirname(common), relative(top, cwd));
+		const c = fromGit(common), t = fromGit(top), here = fromGit(cwd);
+		if (c && t && basename(c) === ".git" && dirname(c) !== t) main = join(dirname(c), relative(t, here));
 	} catch {
 		/* 不是 git 或資料夾不在 */
 	}

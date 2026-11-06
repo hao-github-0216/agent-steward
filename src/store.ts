@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { IS_WIN, samePath } from "./platform.ts";
 
 export type ProjectKind = "project" | "misc" | "overview";
 // closed = herdr 的 space 被關掉而收起來(之後在資料夾裡開 agent 或從看板點開就自動恢復);
@@ -160,7 +161,7 @@ export class Store {
 		return this.data.projects[id];
 	}
 	projectByRoot(root: string): Project | undefined {
-		return this.projects().find((p) => p.root === root);
+		return this.projects().find((p) => p.root === root || (IS_WIN && samePath(p.root, root)));
 	}
 	addProject(p: Omit<Project, "id" | "createdAt" | "state"> & { state?: ProjectState }): Project {
 		const project: Project = { ...p, id: randomUUID(), createdAt: new Date().toISOString(), state: p.state ?? emptyState() };

@@ -8,14 +8,14 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realp
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const DATA = mkdtempSync(join(tmpdir(), "steward-data-"));
+const DATA = process.platform === "win32" ? realpathSync.native(mkdtempSync(join(tmpdir(), "steward-data-"))) : mkdtempSync(join(tmpdir(), "steward-data-"));
 process.env.STEWARD_DATA_DIR = DATA;
 const W = await import("../src/worktrees.ts");
 const { Store } = await import("../src/store.ts");
 const { resolveProject, ownerOf } = await import("../src/projects.ts");
 
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
-const tmp = (p) => realpathSync(mkdtempSync(join(tmpdir(), p)));
+const tmp = (p) => realpathSync.native(mkdtempSync(join(tmpdir(), p)));
 
 /** repo 根目錄底下兩個兄弟專案資料夾 A、B(像 course/hw1、course/hw2) */
 function repo() {

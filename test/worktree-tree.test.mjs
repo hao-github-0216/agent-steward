@@ -8,14 +8,14 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const DATA = mkdtempSync(join(tmpdir(), "steward-data-"));
+const DATA = process.platform === "win32" ? realpathSync.native(mkdtempSync(join(tmpdir(), "steward-data-"))) : mkdtempSync(join(tmpdir(), "steward-data-"));
 process.env.STEWARD_DATA_DIR = DATA;
 const { worktreeTree } = await import("../src/worktree-tree.ts");
 const { claudeSlug } = await import("../src/worktrees.ts");
 const { Store } = await import("../src/store.ts");
 
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
-const tmp = (p) => realpathSync(mkdtempSync(join(tmpdir(), p)));
+const tmp = (p) => realpathSync.native(mkdtempSync(join(tmpdir(), p)));
 const commitFile = (cwd, file, text, msg) => {
 	mkdirSync(join(cwd, file, ".."), { recursive: true });
 	writeFileSync(join(cwd, file), text);

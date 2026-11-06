@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 process.env.STEWARD_DATA_DIR = mkdtempSync(join(tmpdir(), "steward-data-"));
 const { status, gitAction, diffSides } = await import("../src/code.ts");
@@ -14,7 +14,7 @@ const { status, gitAction, diffSides } = await import("../src/code.ts");
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 
 function course() {
-	const root = realpathSync(mkdtempSync(join(tmpdir(), "course-")));
+	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "course-")));
 	git(root, "init", "-q", "-b", "main");
 	git(root, "config", "user.email", "t@t");
 	git(root, "config", "user.name", "t");
@@ -38,7 +38,7 @@ test("子資料夾專案:狀態只列自己的檔案,路徑相對於專案資料
 	assert.deepEqual(st.unstaged.map((x) => x.path), ["sol.tex"]);
 	assert.deepEqual(st.untracked.map((x) => x.path), ["new.txt"]);
 	assert.equal(st.prefix, "hw1");
-	assert.equal(st.repoName, root.split("/").pop());
+	assert.equal(st.repoName, basename(root));
 	assert.deepEqual(st.outsideStaged, []);
 
 	// 單一檔案暫存、diff 都用相對路徑

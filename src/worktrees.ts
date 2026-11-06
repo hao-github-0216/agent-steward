@@ -12,7 +12,7 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { DATA_DIR, HOME } from "./config.ts";
 import type { HerdrPane } from "./herdr.ts";
-import { pathInside } from "./platform.ts";
+import { IS_WIN, fromGit, pathInside } from "./platform.ts";
 import type { Branch, Project, Store } from "./store.ts";
 
 export class WorktreesError extends Error {
@@ -99,7 +99,7 @@ async function ok(cwd: string, args: string[], timeout?: number): Promise<string
 
 export const real = (p: string) => {
 	try {
-		return realpathSync(p);
+		return IS_WIN ? realpathSync.native(p) : realpathSync(p);
 	} catch {
 		return p;
 	}
@@ -112,7 +112,7 @@ export function parsePorcelain(out: string): { path: string; head: string; branc
 	for (const block of out.split(/\n\n+/)) {
 		const lines = block.split("\n").filter(Boolean);
 		if (!lines[0]?.startsWith("worktree ")) continue;
-		const it: (typeof items)[number] = { path: lines[0].slice(9), head: "", branch: null };
+		const it: (typeof items)[number] = { path: fromGit(lines[0].slice(9)), head: "", branch: null };
 		for (const l of lines.slice(1)) {
 			if (l.startsWith("HEAD ")) it.head = l.slice(5);
 			else if (l.startsWith("branch ")) it.branch = l.slice(7).replace(/^refs\/heads\//, "");
@@ -248,8 +248,9 @@ export async function repoOf(root: string): Promise<RepoInfo | undefined> {
 	if (r.code !== 0) return undefined;
 	const [common, top, prefix = ""] = r.out.split("\n");
 	if (!common || !top) return undefined;
+	const c = fromGit(common), t = fromGit(top);
 	// 主資料夾 = 共用 .git 的上一層;bare repo 等特殊情況就用 toplevel
-	const repoRoot = basename(common) === ".git" ? dirname(common) : top;
+	const repoRoot = basename(c) === ".git" ? dirname(c) : t;
 	return { repoRoot, prefix: prefix.replace(/\/$/, "") };
 }
 
