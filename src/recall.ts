@@ -31,8 +31,9 @@ export class RecallStore {
 				UNIQUE(conv_id, entry_id, role, part)
 			);
 			CREATE INDEX IF NOT EXISTS chunks_by_project ON chunks(project_id, at);
+			-- project_id、at 放進索引當過濾欄位:先在全文索引裡過濾,不要讓 SQLite 逐筆 JOIN 再比對(實測 18 秒 → 0.02 秒)
 			CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-				text, content='chunks', content_rowid='id', tokenize='trigram'
+				text, project_id UNINDEXED, at UNINDEXED, content='chunks', content_rowid='id', tokenize='trigram'
 			);
 			CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 		`);
@@ -40,14 +41,14 @@ export class RecallStore {
 
 	addChunks(rows: RecallChunk[]): number {
 		const insert = this.db.prepare("INSERT OR IGNORE INTO chunks(project_id, conv_id, entry_id, part, role, at, text) VALUES (?, ?, ?, ?, ?, ?, ?)");
-		const fts = this.db.prepare("INSERT INTO chunks_fts(rowid, text) VALUES (?, ?)");
+		const fts = this.db.prepare("INSERT INTO chunks_fts(rowid, text, project_id, at) VALUES (?, ?, ?, ?)");
 		let added = 0;
 		this.db.exec("BEGIN");
 		try {
 			for (const row of rows) {
 				const result = insert.run(row.project_id, row.conv_id, row.entry_id, row.part, row.role, row.at, row.text);
 				if (Number(result.changes) > 0) {
-					fts.run(result.lastInsertRowid, row.text);
+					fts.run(result.lastInsertRowid, row.text, row.project_id, row.at);
 					added++;
 				}
 			}
@@ -80,10 +81,15 @@ export class RecallStore {
 	}
 
 	keyword(projectId: string, match: string, before: number, limit: number): { id: number; text: string; at: number; role: string; entry_id: number; part: number; score: number }[] {
-		return this.db.prepare(`SELECT c.id, c.text, c.at, c.role, c.entry_id, c.part, bm25(chunks_fts) AS score
-			FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
-			WHERE chunks_fts MATCH ? AND c.project_id = ? AND c.at < ? ORDER BY score ASC, c.id ASC LIMIT ?`)
-			.all(match, projectId, before, limit) as unknown as ReturnType<RecallStore["keyword"]>;
+		// 先在全文索引裡比對並過濾專案與時間,取前幾名後才去 chunks 拿內容
+		const top = this.db.prepare(`SELECT rowid AS id, rank AS score FROM chunks_fts
+			WHERE chunks_fts MATCH ? AND project_id = ? AND at < ? ORDER BY rank LIMIT ?`)
+			.all(match, projectId, before, limit) as unknown as { id: number; score: number }[];
+		const get = this.db.prepare("SELECT id, text, at, role, entry_id, part FROM chunks WHERE id = ?");
+		return top.flatMap(({ id, score }) => {
+			const row = get.get(id) as { id: number; text: string; at: number; role: string; entry_id: number; part: number } | undefined;
+			return row ? [{ ...row, id: Number(row.id), at: Number(row.at), entry_id: Number(row.entry_id), part: Number(row.part), score }] : [];
+		});
 	}
 
 	vectors(projectId: string, model: string): { id: number; at: number; vec: Float32Array }[] {
@@ -331,7 +337,17 @@ export class Recall {
 			} catch (error) { this.cooldown(error); }
 		}
 		const ids = vectorIds.length && keywords.length ? rrf([vectorIds, keywords]) : vectorIds.length ? vectorIds : keywords;
-		const selected = ids.slice(0, Math.max(0, limit)).map((id) => this.deps.store.chunk(p.id, id)).filter((row): row is StoredRecallChunk => !!row && row.at < before);
+		// 回報常重複貼同一段內容:開頭 200 字(去掉空白)相同的只留排名最前的那段
+		const seen = new Set<string>();
+		const selected = ids.map((id) => this.deps.store.chunk(p.id, id))
+			.filter((row): row is StoredRecallChunk => {
+				if (!row || row.at >= before) return false;
+				const key = row.text.replace(/\s+/g, "").slice(0, 200);
+				if (seen.has(key)) return false;
+				seen.add(key);
+				return true;
+			})
+			.slice(0, Math.max(0, limit));
 		const used = new Set<number>();
 		const hits: RecallHit[] = [];
 		let remaining = 5000;

@@ -484,3 +484,29 @@ test("端對端:真正 durable beforeRequest 收到舊紀錄,對話只保存原�
 	assert.equal(users.length, 1);
 	assert.equal(messageText(users[0].messages[0]), input);
 });
+
+test("search:重複貼上的相同段落只留排名最前的一段", async (t) => {
+	const store = storeFor(t);
+	const same = `重複的回報內容 worktree-cleanup ${"說明文字".repeat(60)}`;
+	store.addChunks([
+		row({ entry_id: 1, at: 100, text: same }),
+		row({ entry_id: 2, at: 110, text: same }),
+		row({ entry_id: 3, at: 120, text: `  ${same}  ` }),
+		row({ entry_id: 4, at: 130, text: `另一段不同的內容 worktree-cleanup ${"其他".repeat(60)}` }),
+	]);
+	const hits = await recallFor(store).search(p1, "worktree-cleanup", 1000);
+	assert.equal(hits.length, 2);
+	assert.equal(new Set(hits.map((h) => h.text.replace(/\s+/g, "").slice(0, 200))).size, 2);
+});
+
+test("RecallStore.keyword:大量資料時先在全文索引裡過濾,查詢很快,而且不會跨專案", (t) => {
+	const store = storeFor(t);
+	const rows = Array.from({ length: 6000 }, (_, i) => row({ project_id: i % 3 ? p1.id : p2.id, conv_id: "c", entry_id: i + 1, at: i, text: `第 ${i} 段 worktree 移除前存進分支 ${"填充".repeat(80)}` }));
+	store.addChunks(rows);
+	const match = keywordMatch("worktree 存進分支");
+	const started = Date.now();
+	const hits = store.keyword(p2.id, match, 1e9, 30);
+	assert.ok(Date.now() - started < 2000, `查詢花了 ${Date.now() - started}ms`);
+	assert.equal(hits.length, 30);
+	assert.ok(hits.every((h) => rows[h.entry_id - 1].project_id === p2.id));
+});
