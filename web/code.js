@@ -716,13 +716,15 @@
 	/**
 	 * 雙指縮放 + 點兩下放大/還原(手機),Ctrl/⌘+滾輪或觸控板捏合(電腦)。
 	 * 用 CSS zoom 放大內容,版面跟著變大,原生捲動就能左右上下看。
+	 * min:最小縮放(函式,視窗大小變了會跟著變);沒給就是 1(不能比原本小)。
 	 */
-	function attachZoom(box, wrap, { onEnd } = {}) {
+	function attachZoom(box, wrap, { onEnd, min = () => 1 } = {}) {
 		let z = 1, pinch = null, lastTap = 0;
+		const lo = () => Math.min(1, min());
 		const apply = (nz, cx, cy) => {
 			const r = box.getBoundingClientRect();
 			const px = (box.scrollLeft + cx - r.left) / z, py = (box.scrollTop + cy - r.top) / z;
-			z = Math.min(6, Math.max(1, nz));
+			z = Math.min(6, Math.max(lo(), nz));
 			wrap.style.zoom = z;
 			box.scrollLeft = px * z - (cx - r.left);
 			box.scrollTop = py * z - (cy - r.top);
@@ -745,7 +747,7 @@
 			if (pinch && e.touches.length < 2) { pinch = null; onEnd?.(z); return; }
 			if (e.touches.length || e.changedTouches.length !== 1) return;
 			const now = Date.now(), p = e.changedTouches[0];
-			if (now - lastTap < 300 && !String(getSelection?.() ?? "").trim()) { apply(z > 1.05 ? 1 : 2.5, p.clientX, p.clientY); onEnd?.(z); lastTap = 0; } else lastTap = now;
+			if (now - lastTap < 300 && !String(getSelection?.() ?? "").trim()) { apply(Math.abs(z - 1) > 0.05 ? 1 : 2.5, p.clientX, p.clientY); onEnd?.(z); lastTap = 0; } else lastTap = now;
 		});
 		box.addEventListener("wheel", (e) => {
 			if (!e.ctrlKey && !e.metaKey) return; // 觸控板捏合在 Chrome 是 Ctrl+滾輪
@@ -757,6 +759,8 @@
 			get zoom() { return z; },
 			/** 工具列的放大縮小、還原上次的縮放 */
 			setZoom(nz) { const r = box.getBoundingClientRect(); apply(nz, r.left + r.width / 2, r.top + r.height / 2); onEnd?.(z); },
+			/** 視窗大小變了:最小縮放跟著變,目前比新的最小還小就拉回來 */
+			refit() { if (z < lo() - 0.001) this.setZoom(lo()); },
 		};
 	}
 	// PDF.js(只在觸控裝置載入)
@@ -771,23 +775,35 @@
 			const doc = await lib.getDocument({ data }).promise;
 			t.pdfDoc = doc;
 			wrap.innerHTML = "";
-			const width = Math.max(200, n.clientWidth - 16);
+			// 縮放 1 = 每頁塞滿視窗寬度;視窗大小變了(分割畫面、全螢幕、拖拉邊界)就重新塞滿
+			const fitWidth = () => Math.max(200, n.clientWidth - 16);
+			const size = (p, width) => {
+				p.css = width / p.w;
+				p.box.style.width = `${Math.round(p.w * p.css)}px`;
+				p.box.style.height = `${Math.round(p.h * p.css)}px`;
+				p.box.style.setProperty("--scale-factor", p.css); // 文字層跟著這個變數縮放
+			};
+			let width = fitWidth();
 			const pages = [];
 			for (let i = 1; i <= doc.numPages; i++) {
 				const page = await doc.getPage(i);
 				const vp = page.getViewport({ scale: 1 });
-				const css = width / vp.width;
 				// 每頁:畫布(圖) + 透明文字層(可以長按選字、複製)
 				const box = el("div", "pdfpage");
-				box.style.width = `${Math.round(vp.width * css)}px`;
-				box.style.height = `${Math.round(vp.height * css)}px`;
-				box.style.setProperty("--scale-factor", css);
 				const c = document.createElement("canvas");
 				const tl = el("div", "textLayer");
 				box.append(c, tl);
 				wrap.appendChild(box);
-				pages.push({ page, c, tl, box, css, done: 0, visible: false, text: false });
+				const p = { page, c, tl, box, w: vp.width, h: vp.height, css: 1, done: 0, visible: false, text: false };
+				size(p, width);
+				pages.push(p);
 			}
+			// 最小縮放:最高的那一頁整頁放得進視窗高度(一次至少看得到一整頁)
+			const minZoom = () => {
+				const tallest = Math.max(...pages.map((p) => p.h * p.css));
+				const room = n.clientHeight - 16;
+				return tallest > 0 && room > 0 ? room / tallest : 1;
+			};
 			const dpr = window.devicePixelRatio || 1;
 			let zoom = 1;
 			const render = async (p) => {
@@ -816,9 +832,33 @@
 			}, { root: n, rootMargin: "150% 0px" });
 			for (const p of pages) io.observe(p.box);
 			t.pdfPages = pages;
-			t.zoomer = attachZoom(n, wrap, { onEnd: (z) => { zoom = z; t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); for (const p of pages) if (p.visible) render(p); } });
+			t.zoomer = attachZoom(n, wrap, { min: minZoom, onEnd: (z) => { zoom = z; t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); for (const p of pages) if (p.visible) render(p); } });
 			applyPos(t);
 			pdfPageLabel(t);
+			// 視窗大小變了:頁寬重新塞滿視窗,停在原本看的那一頁、頁內同一個位置
+			const relayout = () => {
+				if (!n.isConnected || !n.clientWidth) return; // 被關掉或藏起來(同一欄切到別的分頁)
+				const w = fitWidth();
+				// 用捲動時記下的「第幾頁、頁內位置」:分割畫面會搬動元素,瀏覽器搬動時已經把捲動位置歸零了
+				const at = t.pos?.page != null ? { page: t.pos.page, frac: t.pos.frac || 0 } : pdfWhere(t);
+				t.restoring = true; // 改頁面大小時捲動會亂跳,先不要記位置
+				if (Math.abs(w - width) >= 1) {
+					width = w;
+					for (const p of pages) size(p, w);
+					for (const p of pages) if (p.visible) render(p);
+				}
+				t.zoomer.refit();
+				const r = at && pdfPageRect(t, at.page);
+				if (r) n.scrollTop = r.top + r.height * at.frac;
+				requestAnimationFrame(() => { t.restoring = false; });
+			};
+			let timer = 0;
+			const ro = new ResizeObserver(() => {
+				if (!n.isConnected) return ro.disconnect();
+				clearTimeout(timer);
+				timer = setTimeout(relayout, 80);
+			});
+			ro.observe(n);
 		} catch (e) {
 			wrap.innerHTML = `<div class="empty" style="padding:20px">PDF 顯示失敗:${esc(e.message || String(e))}</div>`;
 		}
