@@ -1,5 +1,5 @@
 // 派工:使用者核准工作卡後,在專案對應的 herdr space 開新 tab、啟動指定 agent、送出指示。
-import { herdrKindOf } from "./agents.ts";
+import { dispatchableAgents, dispatchProblem, herdrKindOf } from "./agents.ts";
 import { herdrCli, listPanes, listWorkspaces, type HerdrPane } from "./herdr.ts";
 import { ownerOf } from "./projects.ts";
 import { boundSpace, ensureSpace } from "./spaces.ts";
@@ -95,8 +95,10 @@ export async function dispatchCard(store: Store, watcher: Watcher, input: Card, 
 	if (!project) throw new Error("找不到專案");
 	const attempts = (input.attempts ?? 0) + 1;
 	const card = store.updateCard(input.id, { attempts });
-	// 看板上的 agent 名稱 → herdr agent start --kind(設定頁「Agent」列的都支援)
-	const kind = herdrKindOf(card.agent) ?? "pi";
+	const problem = dispatchProblem(card.agent, dispatchableAgents());
+	if (problem) return store.updateCard(card.id, { column: "blocked", note: problem });
+	// 看板上的 agent 名稱 → herdr agent start --kind(前面已確認認得且已安裝)
+	const kind = herdrKindOf(card.agent)!;
 	const ws = pickWorkspace(store, project);
 	const label = `#${card.id}${attempts > 1 ? `(${attempts})` : ""} ${card.title}`.slice(0, 40);
 	const created = herdrCli(["tab", "create", ...(ws ? ["--workspace", ws] : []), "--cwd", project.root, "--label", label, "--no-focus"]);

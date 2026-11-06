@@ -1190,8 +1190,19 @@ function cardLine(c, projName = "") {
 }
 // ---------- 資訊卡 ----------
 let openCardId = null;
+let cardAgents = null, cardAgentsRequest = null;
 const COL_LABEL = Object.fromEntries(COLS);
-function openCard(id) { openCardId = id; renderCardPop(); }
+function agentIdOf(nameOrId, agents = cardAgents || []) {
+	const n = String(nameOrId || "").trim().toLowerCase();
+	return agents.find((a) => a.id.toLowerCase() === n || a.name.toLowerCase() === n)?.id;
+}
+function openCard(id) {
+	openCardId = id; renderCardPop();
+	if (cardAgents === null && !cardAgentsRequest) cardAgentsRequest = fetch("/api/agents").then((r) => r.ok ? r.json() : null).catch(() => null).then((r) => {
+		cardAgents = r?.agents || [];
+		renderCardPop();
+	});
+}
 function closeCard() { openCardId = null; $("cardPop")?.remove(); }
 function renderCardPop() {
 	if (!openCardId) return;
@@ -1236,11 +1247,25 @@ function renderCardPop() {
 	const prevTurns = wrap.dataset.turns === undefined ? null : Number(wrap.dataset.turns);
 	const atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
 	const scroll = body.scrollTop;
+	const currentAgent = agentIdOf(c.agent);
+	const agentOptions = cardAgents === null
+		? `<option value="${esc(c.agent)}" selected>${esc(c.agent)}</option>`
+		: `${!currentAgent ? `<option value="${esc(c.agent)}" selected>${esc(c.agent)}(沒有安裝)</option>` : ""}${cardAgents.map((a) => `<option value="${esc(a.id)}" ${a.id === currentAgent ? "selected" : ""}>${esc(a.name)}</option>`).join("")}`;
 	body.innerHTML = `<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>· 第 ${c.attempts} 次派工</span>` : ""}<span>· 更新於 ${esc(ago(c.updatedAt))}</span>${c.paneId ? `<span>· 窗格 ${esc(c.paneId)}</span>` : ""}</div>
+			${["proposed", "blocked", "done"].includes(c.column) ? `<label class="field">交給<select data-cagent>${agentOptions}</select></label>` : ""}
 			${c.note ? `<div class="cnote">${esc(c.note)}</div>` : ""}
 			<h4>指示</h4><pre class="ctext">${esc(c.instructions || "(沒有)")}</pre>
 			<h4>完成標準</h4><div>${esc(c.doneCriteria || "(沒有)")}</div>
 			${threadHtml(c)}`;
+	body.querySelector("[data-cagent]")?.addEventListener("change", async (e) => {
+		const agent = e.target.value;
+		const r = await post(`/api/cards/${c.id}`, { agent }).catch(() => ({ error: "連不上管家" }));
+		if (r.error) { toast(r.error); renderCardPop(); return; }
+		const i = state.cards.findIndex((x) => x.id === c.id);
+		if (i >= 0) state.cards[i] = r;
+		toast(`改交給 ${(cardAgents || []).find((a) => a.id === agentIdOf(agent))?.name || agent}`);
+		renderCardPop();
+	});
 	if (typeof chatMd !== "undefined") chatMd.typeset(body);
 	// 有對話時:剛打開、多了一則、或原本就在最下面 → 捲到最後;不然停在原本的位置
 	if (turns && (prevTurns === null || turns > prevTurns || atEnd)) body.scrollTop = body.scrollHeight;
@@ -1914,7 +1939,12 @@ function agentRow(a) {
 function agentsPane() {
 	if (!setAgents) return '<div class="empty">偵測中…</div>';
 	const inst = setAgents.filter((a) => a.installed), other = setAgents.filter((a) => !a.installed);
+	const available = setAgents.filter((a) => a.installed && a.dispatch);
+	const saved = setState.s.cards?.defaultAgent || "";
+	const selected = agentIdOf(saved, available) || saved;
 	return `<div class="hint">這台電腦上偵測到的 AI agent。「接上專案管家」會修改它的設定檔(先備份成 *.bak-steward-日期),之後開工就能讀到專案進度、問管家、回報;「拿掉」只移除專案管家加的部分。</div>
+		<div class="route"><div><b>自動提案預設交給</b><div class="hint">管家自動提案、開工作卡時交給誰;選『讓管家決定』時只會從這台電腦裝好的 agent 裡挑。每張卡在核准前都還能改。</div></div>
+			<label class="field">交給<select data-k="cards.defaultAgent"><option value="" ${!selected ? "selected" : ""}>讓管家決定</option>${selected && !agentIdOf(selected, available) ? `<option value="${esc(saved)}" selected>${esc(saved)}(沒有安裝)</option>` : ""}${available.map((a) => `<option value="${esc(a.id)}" ${a.id === selected ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label></div>
 		${inst.map(agentRow).join("") || '<div class="empty">沒有偵測到支援的 agent</div>'}
 		<details><summary class="hint">其他支援的 agent(這台電腦沒有裝,${other.length} 個)</summary>${other.map((a) => `<div class="hint">· ${esc(a.name)}</div>`).join("")}</details>
 		<div><button class="small" id="agentsRescan">重新偵測</button></div>`;
@@ -2205,7 +2235,7 @@ function collectSettings() {
 		if (el.hasAttribute("data-num")) v = Number(v) || 0;
 		const keys = el.dataset.k.split(".");
 		let o = setState.s;
-		for (const k of keys.slice(0, -1)) o = o[k];
+		for (const k of keys.slice(0, -1)) o = o[k] ??= {};
 		o[keys.at(-1)] = v;
 	}
 }

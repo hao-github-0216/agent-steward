@@ -9,6 +9,7 @@ import { DATA_DIR, DB_PATH } from "./config.ts";
 import { createCompactHook } from "./compaction.ts";
 import { createRecallHook, embedderFor, readEntriesFrom, Recall, RecallStore } from "./recall.ts";
 import { settings } from "./settings.ts";
+import { chooseCardAgent, dispatchableAgents } from "./agents.ts";
 import { herdrCli, listPanes } from "./herdr.ts";
 import { buildModels, hasFallback, routeFor } from "./models.ts";
 import { isCliKind, runCli } from "./agent-cli.ts";
@@ -53,6 +54,7 @@ const PERSONA = () => `你是「專案管家」,負責追蹤使用者${settings(
 - 只有在出現「明確、可以獨立交給一個 agent 完成」的下一步時才提案,一次最多一張,並先看 list_cards 避免重複。
 - 提案只是建議,使用者核准後才會被派出去;你自己絕對不執行工作。
 - instructions 要讓一個完全沒背景的 agent 也能開工;done_criteria 要可驗證。
+- agent 只能從【提案檢查】訊息列出的可派工 agent 裡選;設定固定交給某個 agent 時就用它。
 - 「雜務」與「總覽」對話不提案。
 
 回答要精簡,不要客套。`;
@@ -141,16 +143,17 @@ export class Steward {
 			description: "提出一張工作單,等使用者核准後才會派給 agent。",
 			parameters: Type.Object({
 				title: Type.String(),
-				agent: Type.String({ description: "建議交給誰:pi / claude / codex / opencode" }),
+				agent: Type.String({ description: "交給哪個 agent(用訊息裡列出的可派工 agent id;管家會依設定與這台電腦裝了什麼調整)" }),
 				instructions: Type.String({ description: "給 agent 的完整指示" }),
 				done_criteria: Type.String({ description: "可驗證的完成標準" }),
 			}),
 			execute: async (args, api) => {
 				const p = projectOf(api.conversationId);
 				if (p.kind !== "project") return { output: [{ type: "text", text: "雜務/總覽不提案" }] };
-				const card = store.addCard({ projectId: p.id, title: args.title, agent: args.agent, instructions: args.instructions, doneCriteria: args.done_criteria });
+				const pick = chooseCardAgent(args.agent, { available: dispatchableAgents(), defaultAgent: settings().cards.defaultAgent });
+				const card = store.addCard({ projectId: p.id, title: args.title, agent: pick.agent, instructions: args.instructions, doneCriteria: args.done_criteria });
 				this.deps.onCardProposed?.(card, p);
-				return { output: [{ type: "text", text: `已提案 ${card.id},等待核准` }] };
+				return { output: [{ type: "text", text: `已提案 ${card.id},交給 ${pick.agent},等待核准${pick.note ? `(${pick.note})` : ""}` }] };
 			},
 		});
 
@@ -504,14 +507,14 @@ ${brief(this.deps.store, p, { recent: 5 })}
 	 * 浮動球「開工作卡」:根據專案狀態、最近的問答、附加的檔案路徑和使用者的指示擬一張草稿。
 	 * 用「提案檢查」的模型(隱私專案用隱私模型);previous 有給就是依指示修改那張草稿。
 	 */
-	async draftCard(p: Project, opts: { instruction: string; files: string[]; agents: string[]; previous?: { title: string; agent: string; instructions: string; doneCriteria: string } }): Promise<{ title: string; agent: string; instructions: string; doneCriteria: string }> {
+	async draftCard(p: Project, opts: { instruction: string; files: string[]; agents: { id: string; name: string }[]; previous?: { title: string; agent: string; instructions: string; doneCriteria: string } }): Promise<{ title: string; agent: string; instructions: string; doneCriteria: string }> {
 		const system = `${this.chatSystem(p)}
 
 現在使用者要你擬一張「工作卡」,之後會交給一個 AI agent 去做。規則:
 - 標題簡短具體(30 字以內)。
 - instructions 要讓一個完全沒背景的 agent 也能開工:寫清楚專案位置(${p.root})、要做什麼、要先讀哪些檔案(只寫路徑,不要貼檔案內容)、有什麼限制;遵守專案狀態裡的重要決定與卡點。
 - done_criteria 要可驗證。
-- agent 從這些裡面選最適合的一個:${opts.agents.join(" / ") || "pi"}。
+- agent 從這些裡面選最適合的一個:${opts.agents.map((a) => a.id).join(" / ") || "pi"}。
 - 只輸出一個 JSON 物件:{"title": "…", "agent": "…", "instructions": "…", "done_criteria": "…"},不要其他文字。`;
 		const user = [
 			opts.previous ? `目前的草稿:\n${JSON.stringify(opts.previous, null, 1)}\n\n請依照使用者的意見修改:${opts.instruction || "(沒有說明,請讓它更清楚完整)"}` : `使用者的指示:${opts.instruction || "(沒有特別說明,請根據最近的問答判斷要做什麼)"}`,
@@ -525,7 +528,8 @@ ${brief(this.deps.store, p, { recent: 5 })}
 			const j = JSON.parse(m[0]) as Record<string, unknown>;
 			const str = (k: string) => String(j[k] ?? "").trim();
 			if (!str("title") || !str("instructions")) throw new Error("草稿缺少標題或指示");
-			const agent = opts.agents.includes(str("agent")) ? str("agent") : (opts.agents[0] ?? "pi");
+			// 預設只用在新草稿;修改草稿時保留使用者在下拉選單選的
+			const agent = chooseCardAgent(str("agent"), { available: opts.agents, defaultAgent: opts.previous ? "" : settings().cards.defaultAgent }).agent;
 			return { title: str("title").slice(0, 80), agent, instructions: str("instructions"), doneCriteria: str("done_criteria") || "完成上述要求並說明改了什麼" };
 		};
 		try { return await tryRef(false); }

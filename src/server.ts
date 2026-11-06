@@ -11,7 +11,7 @@ import { getCurrent, getSession, putCurrent, putSession } from "./code-session.t
 import { listDevices, pushAll, pushConfigured, registerDevice, unregisterDevice } from "./apns.ts";
 import { expandHome, findTailscale, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
-import { listAgents, setAgent } from "./agents.ts";
+import { agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
@@ -516,6 +516,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 						const embeddingProvider = embedding && provs.find((p) => p.id === embedding.provider);
 						if (embeddingProvider?.type === "agent-cli" || embeddingProvider?.type === "builtin") return send(res, 400, { error: "記憶搜尋(向量)只支援本地或自架(OpenAI 相容)接口" });
 					}
+					// 只在使用者改了這一項時檢查:原本選的 agent 後來沒裝了,也不能擋住其他設定的儲存
+					if (typeof incoming.cards?.defaultAgent === "string" && incoming.cards.defaultAgent && incoming.cards.defaultAgent !== before.cards.defaultAgent) {
+						const id = agentIdOf(incoming.cards.defaultAgent);
+						if (!id || !dispatchableAgents().some((a) => a.id === id)) return send(res, 400, { error: "「自動提案預設交給」只能選這台電腦裝好、能派工的 agent" });
+						incoming.cards.defaultAgent = id;
+					}
 					if (incoming.access) delete incoming.access.passwordHash; // 密碼只能用 /api/auth/password 改
 					// 接口清單整份取代(刪除才會生效);被遮罩的金鑰沿用原本的
 					if (Array.isArray(incoming.providers)) {
@@ -916,7 +922,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (!p) return send(res, 404, { error: "unknown project" });
 				if (p.kind !== "project") return send(res, 400, { error: "「雜務」和「總覽」不能開工作卡,請先選一個專案" });
 				const b = await body(req);
-				const agents = listAgents().filter((a) => a.installed && a.dispatch).map((a) => a.id);
+				const agents = dispatchableAgents();
 				if (!mdraft[2]) {
 					// 擬一張新的(或依意見修改 reviseOf 那張)
 					const message = String(b.message ?? "").trim();
@@ -940,7 +946,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				const draft = {
 					...entry.draft,
 					title: String(f.title ?? entry.draft.title).trim().slice(0, 80),
-					agent: agents.includes(String(f.agent)) ? String(f.agent) : entry.draft.agent,
+					agent: agents.some((a) => a.id === agentIdOf(String(f.agent))) ? agentIdOf(String(f.agent))! : (agentIdOf(entry.draft.agent) ?? entry.draft.agent),
 					instructions: String(f.instructions ?? entry.draft.instructions).trim(),
 					doneCriteria: String(f.doneCriteria ?? entry.draft.doneCriteria).trim(),
 				};
@@ -1073,7 +1079,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (!p || p.kind !== "project") return send(res, 404, { error: "找不到專案" });
 				const title = String(b.title ?? "").trim();
 				if (!title) return send(res, 400, { error: "請填標題" });
-				return send(res, 200, store.addCard({ projectId: p.id, title, agent: String(b.agent ?? "pi"), instructions: String(b.instructions ?? ""), doneCriteria: String(b.doneCriteria ?? "完成上述要求並說明改了什麼") }));
+				return send(res, 200, store.addCard({ projectId: p.id, title, agent: chooseCardAgent(typeof b.agent === "string" ? b.agent : undefined, { available: dispatchableAgents(), defaultAgent: settings().cards.defaultAgent }).agent, instructions: String(b.instructions ?? ""), doneCriteria: String(b.doneCriteria ?? "完成上述要求並說明改了什麼") }));
 			}
 			// 資訊卡「在終端機看這個窗格」:用 terminalId 找(窗格搬過 space 也找得到)
 			m = path.match(/^\/api\/cards\/([^/]+)\/focus$/);
@@ -1139,7 +1145,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (!card) return send(res, 404, { error: "unknown card" });
 				const b = await body(req);
 				const patch: Record<string, string> = {};
-				for (const k of ["title", "agent", "instructions", "doneCriteria", "note"]) if (typeof b[k] === "string") patch[k] = b[k];
+				if (typeof b.agent === "string") {
+					if (card.column === "running" || card.column === "approved") return send(res, 409, { error: "派工中或進行中的卡不能換 agent" });
+					const id = agentIdOf(b.agent);
+					if (!id || !dispatchableAgents().some((a) => a.id === id)) return send(res, 400, { error: "這台電腦沒有裝這個 agent" });
+					patch.agent = id;
+				}
+				for (const k of ["title", "instructions", "doneCriteria", "note"]) if (typeof b[k] === "string") patch[k] = b[k];
 				return send(res, 200, store.updateCard(card.id, patch));
 			}
 			// 網頁端診斷記錄(複製流程等),寫到 logs/client.log,上限 2MB
@@ -1268,7 +1280,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				return send(res, 404, { error: "not found" });
 			}
 			if (req.method === "GET" && path === "/api/plugins") return send(res, 200, { latex: pluginEnabled("latex"), notebook: pluginEnabled("notebook"), office: pluginEnabled("office") });
-			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: listAgents().filter((a) => a.installed && a.dispatch).map((a) => ({ id: a.id, name: a.name })) });
+			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: dispatchableAgents() });
 			if (req.method === "GET" && path === "/api/terminal/current") return send(res, 200, terminalCurrent(url.searchParams.get("space") || undefined));
 			// 三個頁面共用的「目前專案」
 			if (req.method === "GET" && path === "/api/current") return send(res, 200, getCurrent() ?? {});

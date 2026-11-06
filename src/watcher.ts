@@ -1,6 +1,8 @@
 // 監看 herdr:每 10 秒讀一次窗格清單,agent 從「工作中」變成「閒置」且持續一段時間後,
 // 讀它的新對話內容送給管家消化。也負責把派出去的工作卡和窗格對上。
 import { statSync } from "node:fs";
+import { agentIdOf, dispatchableAgents } from "./agents.ts";
+import { settings } from "./settings.ts";
 import { bootstrapMessage, useParentState } from "./bootstrap-context.ts";
 import { pathInside, samePath } from "./platform.ts";
 import { listPanes, type HerdrPane } from "./herdr.ts";
@@ -238,7 +240,10 @@ export class Watcher {
 		if (p.lastProposalCheckAt && Date.now() - Date.parse(p.lastProposalCheckAt) < PROPOSAL_EVERY_MS) return;
 		this.store.updateProject(p.id, { lastProposalCheckAt: new Date().toISOString() });
 		try {
-			await this.steward.send(p, "【提案檢查】專案狀態剛更新。看有沒有現在就能派給 agent、而且不碰任何等待放行事項的工作;有就提案一張,沒有就回「無」。", { role: "judge" });
+			const agents = dispatchableAgents();
+			const fixed = agents.find((a) => a.id === agentIdOf(settings().cards.defaultAgent));
+			const available = fixed ? `只用 ${fixed.id}(使用者設定固定交給它)` : agents.map((a) => a.id).join(" / ") || "(這台電腦沒有偵測到)";
+			await this.steward.send(p, `【提案檢查】專案狀態剛更新。看有沒有現在就能派給 agent、而且不碰任何等待放行事項的工作;有就提案一張,沒有就回「無」。\n可派工的 agent:${available}`, { role: "judge" });
 		} catch (e) {
 			this.lastError = `提案檢查失敗 ${p.name}: ${e}`;
 		}

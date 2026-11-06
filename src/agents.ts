@@ -319,6 +319,36 @@ export function removeAll(): string[] {
 	for (const def of AGENTS) if (def.apply && agentStatus(def).integrated) def.apply(false, changed);
 	return changed;
 }
+/** 工作卡用:接受 id 或顯示名稱,一律回傳能派工的 canonical id。 */
+export function agentIdOf(nameOrId: string): string | undefined {
+	const n = nameOrId.trim().toLowerCase();
+	return AGENTS.find((a) => a.herdrKind && (a.id.toLowerCase() === n || a.name.toLowerCase() === n))?.id;
+}
+
+export function dispatchableAgents(): { id: string; name: string }[] {
+	return listAgents().filter((a) => a.installed && a.dispatch).map(({ id, name }) => ({ id, name }));
+}
+
+/** 所有提案與草稿共用的 agent 選擇規則;available 由呼叫端注入。 */
+export function chooseCardAgent(requested: string | undefined, opts: { available: { id: string; name: string }[]; defaultAgent: string }): { agent: string; note?: string } {
+	const { available, defaultAgent } = opts;
+	const requestedId = requested ? agentIdOf(requested) : undefined;
+	const fixed = defaultAgent ? available.find((a) => a.id === agentIdOf(defaultAgent)) : undefined;
+	if (fixed) return { agent: fixed.id, ...(requested && requestedId !== fixed.id ? { note: `設定固定交給 ${fixed.name}` } : {}) };
+	const wanted = available.find((a) => a.id === requestedId);
+	if (wanted) return { agent: wanted.id };
+	const fallback = available.find((a) => a.id === "pi") ?? available[0];
+	if (fallback) return { agent: fallback.id, ...(requested ? { note: `「${requested}」這台電腦沒有裝或不能派工,改交給 ${fallback.name}` } : {}) };
+	return { agent: requestedId ?? (requested?.trim() || "pi"), note: "這台電腦沒有偵測到能派工的 agent" };
+}
+
+export function dispatchProblem(agent: string, available: { id: string; name: string }[]): string | undefined {
+	const id = agentIdOf(agent);
+	if (!id) return `不認得「${agent}」這個 agent,請在工作卡上改選一個再重新派工`;
+	if (!available.some((a) => a.id === id)) return `這台電腦沒有裝 ${AGENTS.find((a) => a.id === id)!.name},請在工作卡上改選一個再重新派工`;
+	return undefined;
+}
+
 /** 派工用:看板上的名稱 → herdr agent kind */
 export function herdrKindOf(name: string): string | undefined {
 	const n = name.trim().toLowerCase();

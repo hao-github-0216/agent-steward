@@ -11,6 +11,10 @@ struct CardPopup: View {
     @State private var error: String?
     @State private var question = ""
     @State private var sending = false
+    @State private var agents: [AgentInfo] = []
+    @State private var agentsLoaded = false
+    /// agent 清單抓到了才標「沒有安裝」,避免載入中或抓不到時誤標
+    @State private var agentsReady = false
 
     var body: some View {
         NavigationStack {
@@ -72,6 +76,11 @@ struct CardPopup: View {
                 ToolbarItem(placement: .confirmationAction) { Button("關閉") { dismiss() } }
             }
         }
+        .task {
+            guard !agentsLoaded, let api = model.api else { return }
+            agentsLoaded = true
+            do { agents = try await api.agents(); agentsReady = true } catch { self.error = error.localizedDescription }
+        }
     }
 
     private func meta(_ c: Card) -> some View {
@@ -87,6 +96,11 @@ struct CardPopup: View {
         }
     }
 
+    private func agentIdOf(_ nameOrId: String) -> String? {
+        let n = nameOrId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return agents.first { $0.id.lowercased() == n || $0.name?.lowercased() == n }?.id
+    }
+
     @ViewBuilder
     private func actions(_ c: Card) -> some View {
         let canJump = (c.terminalId != nil || c.paneId != nil) && ["running", "blocked", "done"].contains(c.column)
@@ -100,6 +114,20 @@ struct CardPopup: View {
         }()
         if !moves.isEmpty || canJump {
             Section {
+                if ["proposed", "blocked", "done"].contains(c.column) {
+                    Picker("交給", selection: Binding(
+                        get: { agentIdOf(c.agent ?? "") ?? c.agent ?? "" },
+                        set: { agent in Task { await updateAgent(c, agent) } }
+                    )) {
+                        if agentIdOf(c.agent ?? "") == nil {
+                            Text(agentsReady ? "\(c.agent ?? "")(沒有安裝)" : (c.agent ?? "")).tag(c.agent ?? "")
+                        }
+                        ForEach(agents) { agent in
+                            Text(agent.name ?? agent.id).tag(agent.id)
+                        }
+                    }
+                    .disabled(busy)
+                }
                 ForEach(moves, id: \.1) { label, column, primary in
                     Button(role: column == "rejected" ? .destructive : nil) {
                         Task { await move(c, column) }
@@ -174,6 +202,22 @@ struct CardPopup: View {
             try await model.move(c.id, to: column)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             dismiss()
+        } catch {
+            self.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    private func updateAgent(_ c: Card, _ agent: String) async {
+        guard let api = model.api, agent != (agentIdOf(c.agent ?? "") ?? c.agent ?? "") else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let updated = try await api.updateCard(c.id, agent: agent)
+            if let i = model.cards.firstIndex(where: { $0.id == c.id }) { model.cards[i] = updated }
+            await model.refresh()
+            error = nil
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             self.error = error.localizedDescription
             UINotificationFeedbackGenerator().notificationOccurred(.error)

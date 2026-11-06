@@ -48,6 +48,7 @@ export interface Settings {
 	version: 1;
 	/** 管家怎麼稱呼使用者(空白 = 「使用者」) */
 	user: { name: string };
+	cards: { defaultAgent: string };
 	server: {
 		port: number;
 		terminalPort: number;
@@ -93,6 +94,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
 	version: 1,
 	user: { name: "" },
+	cards: { defaultAgent: "" },
 	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], publicUrl: "" },
 	access: { passwordHash: "", tailscale: { enabled: false }, tailscaleUsers: [], lan: { enabled: false } },
 	paths: { createRoot: "~", privacy: [], usePiPrivacy: false },

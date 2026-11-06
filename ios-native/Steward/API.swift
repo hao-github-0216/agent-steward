@@ -270,6 +270,10 @@ struct API {
         try await call(request("api/cards/\(id)/move", method: "POST", body: ["column": column]))
     }
 
+    func updateCard(_ id: String, agent: String) async throws -> Card {
+        try await call(request("api/cards/\(id)", method: "POST", body: ["agent": agent]))
+    }
+
     /// 追問這張卡(完成/卡住的馬上送給做這張卡的 agent;進行中的先排隊)
     func askCard(_ id: String, text: String) async throws -> Card {
         try await call(request("api/cards/\(id)/ask", method: "POST", body: ["text": text]))
