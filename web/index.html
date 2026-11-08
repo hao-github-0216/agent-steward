@@ -299,6 +299,7 @@ body.code #fontDown, body.code #fontUp, body.code #fontSize { display: none; }
 .cv-act button { position: relative; font: inherit; font-size: 11px; padding: 8px 2px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
 .cv-act button.on { background: var(--chip); color: var(--ink); font-weight: 600; }
 .cv-act .badge { position: absolute; top: 2px; right: 2px; float: none; font-size: 10px; padding: 0 5px; background: var(--accent); }
+.cv-act .badge.behind { top: auto; bottom: -5px; left: 50%; right: auto; transform: translateX(-50%); background: var(--warn); }
 .cv-side { flex: 0 0 290px; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
 .cv-proj { padding: 8px; border-bottom: 1px solid var(--line); }
 .cv-projname { width: 100%; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 6px 8px; color: var(--ink); }
@@ -584,7 +585,7 @@ textarea.nb-edit { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; m
 .modal label.field.check { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 8px 0; }
 .modal label.field.check input { width: auto; margin: 0; }
 .modal .mbody .warn { color: var(--warn); font-size: 12px; margin: 0 0 8px; }
-.modal input[type=text], .modal select { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.modal input[type=text], .modal input[type=number], .modal select { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .crumb { font-size: 12px; color: var(--muted); word-break: break-all; }
 .dirlist { border: 1px solid var(--line); border-radius: 10px; max-height: 260px; overflow: auto; }
 .dirrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; }
@@ -841,7 +842,7 @@ try {
 <section id="codeView" hidden>
 	<div class="cv-act">
 		<button id="cvFilesBtn" class="on" title="檔案">檔案</button>
-		<button id="cvGitBtn" title="版本控制">Git<span class="badge" id="cvGitCount" hidden></span></button>
+		<button id="cvGitBtn" title="版本控制">Git<span class="badge" id="cvGitCount" hidden></span><span class="badge behind" id="cvGitBehind" hidden></span></button>
 	</div>
 	<div class="cv-side">
 		<div class="cv-proj"><div id="cvProject" class="cv-projname"></div></div>
@@ -2040,6 +2041,12 @@ function renderSettings() {
 			<div class="hint">這些資料夾底下的專案只會用「隱私專案」指定的模型(通常是本地模型),內容不會送到雲端。一行一個,可以用 ~ 開頭。</div>
 			<textarea data-k="paths.privacy" data-lines>${esc(s.paths.privacy.join("\n"))}</textarea>
 			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> 同時沿用 pi 的隱私清單${detected.piPrivacy ? "" : "(這台電腦沒有 pi 的清單)"}</label>
+			<h4>程式碼頁面</h4>
+			<div class="hint">開著程式碼頁面時，定期在背景抓取遠端（只抓不合併，不會動到檔案），遠端有新的 commit 就在 Git 標出 ↓ 數字，提醒你拉取。抓取時不會跳出登入視窗；登入失敗會自動停止，手動按「抓取」成功後恢復。</div>
+			<div class="row">
+				<label class="field">自動抓取遠端<select data-k="code.autoFetch"><option value="ask" ${s.code.autoFetch === "ask" ? "selected" : ""}>先問我</option><option value="on" ${s.code.autoFetch === "on" ? "selected" : ""}>開啟</option><option value="off" ${s.code.autoFetch === "off" ? "selected" : ""}>關閉</option></select></label>
+				<label class="field">每隔幾分鐘<input type="number" min="1" max="60" data-num data-k="code.autoFetchMinutes" value="${s.code.autoFetchMinutes}"></label>
+			</div>
 			<h4>圈選提問(這台裝置)</h4>
 			<div class="hint">按快捷鍵後圈出畫面上的一塊,旁邊會跳出小框問管家。點下面的框再按想用的組合鍵;手機按浮動球旁的圈選鈕,或長按浮動球。</div>
 			<div class="row"><label class="field">快捷鍵<input type="text" id="snapKeyIn" readonly value="${esc(pref("steward.snapKey") || window.snapKeyDefault || "Alt+S")}"></label><button type="button" class="small" id="snapKeyReset">還原成 ${esc(window.snapKeyDefault || "Alt+S")}</button></div>`,

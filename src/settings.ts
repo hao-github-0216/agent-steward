@@ -49,6 +49,12 @@ export interface Settings {
 	/** 管家怎麼稱呼使用者(空白 = 「使用者」) */
 	user: { name: string };
 	cards: { defaultAgent: string };
+	code: {
+		/** 自動抓取遠端更新:ask = 先詢問,on = 開啟,off = 關閉 */
+		autoFetch: "ask" | "on" | "off";
+		/** 自動抓取的間隔(分鐘) */
+		autoFetchMinutes: number;
+	};
 	server: {
 		port: number;
 		terminalPort: number;
@@ -95,6 +101,7 @@ export const DEFAULTS: Settings = {
 	version: 1,
 	user: { name: "" },
 	cards: { defaultAgent: "" },
+	code: { autoFetch: "ask", autoFetchMinutes: 3 },
 	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], publicUrl: "" },
 	access: { passwordHash: "", tailscale: { enabled: false }, tailscaleUsers: [], lan: { enabled: false } },
 	paths: { createRoot: "~", privacy: [], usePiPrivacy: false },

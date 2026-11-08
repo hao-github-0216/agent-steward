@@ -8,6 +8,7 @@
 	const mobile = () => innerWidth <= 800;
 	const cm = {
 		pid: null, view: "files", expanded: new Set([""]), hidden: false, dirs: {}, git: null, gitRepo: null, gitMain: null, history: null, openCommit: null, selRow: null,
+		fetchPrefs: null, fetchPrefsAt: 0, askLater: false, lastAutoFetch: new Map(),
 		monaco: null, ready: null,
 		cols: [], // [{ id, size, groups: [group] }]
 		activeGroup: null,
@@ -2289,6 +2290,34 @@
 	}
 
 	// ---------- Git ----------
+	async function loadFetchPrefs() {
+		try {
+			const r = await fetch("/api/code-prefs");
+			if (!r.ok) return;
+			cm.fetchPrefs = await r.json();
+			cm.fetchPrefsAt = Date.now();
+			if (cm.view === "git") renderGit();
+		} catch {}
+	}
+	async function autoFetchTick(force = false) {
+		if (!document.body.classList.contains("code") || document.hidden || (!document.documentElement.classList.contains("inapp") && !document.hasFocus()) || !cm.pid || cm.fetchPrefs?.autoFetch !== "on" || !cm.git?.repo || !cm.git.upstream) return;
+		const key = `${cp()}|${cm.gitRepo || ""}`;
+		const now = Date.now(), minutes = cm.fetchPrefs.autoFetchMinutes;
+		if (!force && now - (cm.lastAutoFetch.get(key) || 0) < minutes * 60000) return;
+		cm.lastAutoFetch.set(key, now);
+		try {
+			const r = (await gitPost("autofetch", {})).out;
+			// 自己抓了,或別的分頁/裝置剛抓過(recent、running):都重新讀狀態,↓ 數字才會跟著更新
+			if (r.fetched !== undefined || r.skipped === "recent" || r.skipped === "running") await refreshGit();
+		} catch {}
+	}
+	loadFetchPrefs();
+	setInterval(() => {
+		if (Date.now() - cm.fetchPrefsAt > 60000) loadFetchPrefs();
+		autoFetchTick();
+	}, 30000);
+	window.addEventListener("focus", () => autoFetchTick());
+	document.addEventListener("visibilitychange", () => { if (!document.hidden) autoFetchTick(); });
 	async function refreshGit() {
 		if (!cm.pid) return;
 		// git 狀態很快、分支樹狀資料比較慢:狀態先畫,樹狀資料回來再補上分支區塊;
@@ -2310,6 +2339,8 @@
 		const n = st.repo ? st.staged.length + st.unstaged.length + st.untracked.length + st.conflicted.length : 0;
 		$("cvGitCount").hidden = !n;
 		$("cvGitCount").textContent = n;
+		$("cvGitBehind").hidden = !(st.repo && st.upstream && st.behind > 0);
+		$("cvGitBehind").textContent = `↓${st.behind || 0}`;
 		if (cm.view === "git") renderGit();
 		if (await wts && cp() === key && cm.view === "git") renderGit();
 	}
@@ -2352,6 +2383,12 @@
 		const changes = [...g.unstaged.map((x) => ({ ...x, which: "unstaged" })), ...g.untracked.map((x) => ({ ...x, code: "?", which: "untracked" }))];
 		const anyStaged = g.staged.length > 0;
 		const sync = g.upstream ? `↓${g.behind} ↑${g.ahead}` : "尚未連到遠端";
+		const minutes = cm.fetchPrefs?.autoFetchMinutes ?? 3;
+		const fetchPrompt = cm.fetchPrefs?.autoFetch === "ask" && g.upstream && !cm.askLater ? `<div class="hint git-sub">要讓管家每 ${minutes} 分鐘自動抓取遠端，遠端有新的 commit 時提醒你嗎？（只抓不合併，不會動到檔案）<br><button class="small primary" data-gb="afOn">好</button><button class="small" data-gb="afOff">不要</button><button class="small" data-gb="afLater">之後再問</button></div>` : "";
+		const behindNote = g.upstream && g.behind > 0 ? `<div class="hint git-sub"><b>遠端有 ${g.behind} 個新的 commit</b>，按「拉取」更新${g.unstaged.length || g.staged.length ? "（有還沒提交的變更時，拉取可能會失敗）" : ""}</div>` : "";
+		const authNote = g.autoFetch?.authFailed ? `<div class="hint git-sub">自動抓取已停止：登入遠端失敗（${esc(g.autoFetch.authFailed)}）。手動按「抓取」成功後會恢復。</div>` : "";
+		const fetchedMinutes = g.autoFetch?.at ? Math.floor((Date.now() - new Date(g.autoFetch.at).getTime()) / 60000) : null;
+		const syncTitle = fetchedMinutes === null ? "" : `上次抓取：${fetchedMinutes < 1 ? "剛剛" : `${fetchedMinutes} 分鐘前`}`;
 		let branches = [];
 		const key = cp();
 		try { branches = (await gitPost("branches")).out.filter((b) => !b.name.startsWith("origin/") && !b.name.startsWith("remotes/")); } catch {}
@@ -2360,8 +2397,9 @@
 		root.innerHTML = `${repoSelect}${repoNote}${wtHtml}${subNote}
 			<div class="git-branch"><select id="cvBranch" title="切換分支">${branches.map((b) => `<option ${b.current ? "selected" : ""}>${esc(b.name)}</option>`).join("") || `<option>${esc(g.branch)}</option>`}</select>
 				<button class="small" data-gb="new" title="建立新分支">＋分支</button></div>
-			<div class="git-branch"><span class="hint">${esc(sync)}</span><span style="flex:1"></span>
-				<button class="small" data-gb="fetch" title="抓取遠端">抓取</button><button class="small" data-gb="pull" title="拉取(只快轉)">拉取</button><button class="small" data-gb="push" title="推送">推送${g.ahead ? ` ${g.ahead}` : ""}</button></div>
+			${fetchPrompt}${behindNote}${authNote}
+			<div class="git-branch"><span class="hint" title="${esc(syncTitle)}">${esc(sync)}</span><span style="flex:1"></span>
+				<button class="small" data-gb="fetch" title="抓取遠端">抓取</button><button class="small${g.upstream && g.behind > 0 ? " primary" : ""}" data-gb="pull" title="拉取(只快轉)">拉取${g.upstream && g.behind > 0 ? ` ↓${g.behind}` : ""}</button><button class="small" data-gb="push" title="推送">推送${g.ahead ? ` ${g.ahead}` : ""}</button></div>
 			<div class="git-commit"><textarea id="cvMsg" placeholder="提交訊息(⌘/Ctrl+Enter 提交)">${esc(cm.msgDraft || "")}</textarea>
 				<div class="row"><button class="small" data-gb="genmsg">產生提交訊息</button><button class="small primary" data-gb="commit">${anyStaged ? "提交" : changes.length ? "全部暫存並提交" : "提交"}</button></div></div>
 			${g.conflicted.length ? sec("conflict", "衝突", g.conflicted.length, "", `<div class="hint" style="padding:4px 14px 8px">合併衝突請到終端機處理</div>${g.conflicted.map((x) => gitRow(x.path, "!", "unstaged")).join("")}`) : ""}
@@ -2393,6 +2431,20 @@
 		if (wf && cm.wts?.repo) { toggleWtFold(wf.dataset.wtfold); renderGit(); const mt = wtMapTab(); if (mt?.pv) renderWtMap(mt); return; }
 		if (fold) { setGitFold(fold, !gitFold(fold)); return renderGit(); }
 		if (gb === "new") { const n = await askName("建立新分支", "", "分支名稱"); if (n) gitDo("checkout", { branch: n, create: true }, `已建立並切換到 ${n}`); return; }
+		if (gb === "afOn" || gb === "afOff") {
+			try {
+				const r = await fetch("/api/code-prefs", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ autoFetch: gb === "afOn" ? "on" : "off" }) });
+				const prefs = await r.json();
+				if (!r.ok) throw new Error(prefs.error || `錯誤 ${r.status}`);
+				cm.fetchPrefs = prefs;
+				cm.fetchPrefsAt = Date.now();
+				toast(gb === "afOn" ? "已開啟自動抓取，可以在 設定 → 一般 調整" : "不會自動抓取，之後可以在 設定 → 一般 開啟");
+				if (gb === "afOn") await autoFetchTick(true);
+				renderGit();
+			} catch (err) { fail(err); }
+			return;
+		}
+		if (gb === "afLater") { cm.askLater = true; return renderGit(); }
 		if (gb === "fetch") return gitDo("fetch", {}, "已抓取");
 		if (gb === "pull") return gitDo("pull", {}, "已拉取");
 		if (gb === "push") return gitDo("push", {}, "已推送");

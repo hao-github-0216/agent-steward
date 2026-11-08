@@ -7,6 +7,7 @@ import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readF
 import type { Readable } from "node:stream";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { Project } from "./store.ts";
+import { settings, onSettingsChange } from "./settings.ts";
 
 export const EDIT_LIMIT = 5 * 1024 * 1024; // 5MB 以下正常編輯
 export const VIEW_LIMIT = 50 * 1024 * 1024; // 50MB 以下唯讀(頭尾各 N 行)
@@ -45,9 +46,9 @@ export const hashOf = (buf: Buffer | string) => createHash("sha1").update(buf).d
 
 // ---------- git ----------
 
-export function git(p: Project, args: string[], opts: { timeout?: number; input?: string } = {}): Promise<{ code: number; stdout: string; stderr: string }> {
+export function git(p: Project, args: string[], opts: { timeout?: number; input?: string; env?: Record<string, string> } = {}): Promise<{ code: number; stdout: string; stderr: string }> {
 	return new Promise((res) => {
-		const child = execFile("git", ["-C", p.root, ...args], { timeout: opts.timeout ?? 20_000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" } }, (err, stdout, stderr) => {
+		const child = execFile("git", ["-C", p.root, ...args], { timeout: opts.timeout ?? 20_000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env } }, (err, stdout, stderr) => {
 			res({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout: String(stdout), stderr: String(stderr) });
 		});
 		if (opts.input !== undefined) {
@@ -55,6 +56,30 @@ export function git(p: Project, args: string[], opts: { timeout?: number; input?
 		}
 	});
 }
+
+async function quietEnv(p: Project): Promise<Record<string, string>> {
+	const env: Record<string, string> = { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" };
+	if (process.env.GIT_SSH_COMMAND === undefined && (await git(p, ["config", "--get", "core.sshCommand"])).code !== 0) env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes";
+	return env;
+}
+
+const autoFetchState = new Map<string, { at?: number; error?: string; authFailed?: string; running?: Promise<unknown> }>();
+const AUTH_FAIL = /Authentication failed|could not read (Username|Password)|terminal prompts disabled|Permission denied \(publickey|Host key verification failed|HTTP Basic: Access denied|Invalid username or password|Repository not found|returned error: 40[13]|access denied/i;
+
+export function autoFetchInfo(top: string): { at?: number; error?: string; authFailed?: string } {
+	const cur = autoFetchState.get(top);
+	if (!cur) return {};
+	const { running, ...info } = cur;
+	return info;
+}
+
+let autoFetchMode = settings().code.autoFetch;
+onSettingsChange((s) => {
+	if (s.code.autoFetch === "on" && autoFetchMode !== "on") {
+		for (const cur of autoFetchState.values()) delete cur.authFailed;
+	}
+	autoFetchMode = s.code.autoFetch;
+});
 
 async function gitOk(p: Project, args: string[], timeout?: number): Promise<string> {
 	const r = await git(p, args, { timeout });
@@ -189,7 +214,7 @@ export async function status(p: Project) {
 	}
 	// 子資料夾專案:告訴網頁這個 repo 還有別的資料夾(分支、拉取/推送是整個 repo 共用的),以及暫存區裡有沒有別的資料夾的檔案
 	const sub = prefix ? { prefix: prefix.replace(/\/$/, ""), repoName: basename(top), outsideStaged: await stagedOutside(p) } : {};
-	return { repo: true as const, branch, upstream, ahead, behind, staged, unstaged, untracked, conflicted, nested, empty, ...sub };
+	return { repo: true as const, branch, upstream, ahead, behind, staged, unstaged, untracked, conflicted, nested, empty, autoFetch: autoFetchInfo(top), ...sub };
 }
 
 export async function statusIn(p: Project, repo: string) {
@@ -306,8 +331,43 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 			if (!st.repo) throw new CodeError(400, "不是 git repo");
 			return gitOk(p, st.upstream ? ["push"] : ["push", "-u", "origin", st.branch], 120_000);
 		}
-		case "fetch":
-			return gitOk(p, ["fetch", "--prune"], 120_000);
+		case "autofetch": {
+			const prefs = settings().code;
+			if (prefs.autoFetch !== "on") return { skipped: "off" };
+			if (!(await isRepo(p))) return { skipped: "not-repo" };
+			if (!(await git(p, ["remote"])).stdout.trim()) return { skipped: "no-remote" };
+			const { top } = await repoPrefix(p);
+			const cur = autoFetchState.get(top) ?? {};
+			if (cur.authFailed) return { skipped: "auth", authFailed: cur.authFailed };
+			if (cur.running) {
+				await cur.running;
+				return { skipped: "running", ...autoFetchInfo(top) };
+			}
+			if (cur.at && Date.now() - cur.at < prefs.autoFetchMinutes * 60000 - 5000) return { skipped: "recent", ...autoFetchInfo(top) };
+			const running = (async () => {
+				const r = await git(p, ["fetch", "--prune", "--no-recurse-submodules"], { timeout: 60000, env: await quietEnv(p) });
+				const at = Date.now();
+				if (r.code === 0) {
+					autoFetchState.set(top, { at });
+					return { fetched: true, at };
+				}
+				const msg = r.stderr.trim().split("\n").map((line) => line.trim()).filter(Boolean).pop()?.slice(0, 300) || "git fetch 失敗";
+				if (AUTH_FAIL.test(r.stderr)) {
+					autoFetchState.set(top, { at, authFailed: msg });
+					return { fetched: false, authFailed: msg };
+				}
+				autoFetchState.set(top, { at, error: msg });
+				return { fetched: false, error: msg };
+			})();
+			autoFetchState.set(top, { ...cur, running });
+			return running;
+		}
+		case "fetch": {
+			const out = await gitOk(p, ["fetch", "--prune"], 120_000);
+			const { top } = await repoPrefix(p);
+			autoFetchState.set(top, { at: Date.now() });
+			return out;
+		}
 		case "log": {
 			if ((await git(p, ["rev-parse", "--verify", "-q", "HEAD"])).code !== 0) return [];
 			// 只列改到這個專案資料夾的 commit

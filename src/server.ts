@@ -502,6 +502,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					const before = settings();
 					const prevServer = JSON.stringify({ port: before.server.port, terminalPort: before.server.terminalPort, hosts: before.server.hosts, lan: before.access.lan.enabled });
 					const incoming = stripMasked((await body(req)).settings ?? {});
+					if (incoming.code) {
+						if (incoming.code.autoFetch !== undefined && !["ask", "on", "off"].includes(incoming.code.autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });
+						if (incoming.code.autoFetchMinutes !== undefined) {
+							const minutes = Number(incoming.code.autoFetchMinutes);
+							incoming.code.autoFetchMinutes = Number.isFinite(minutes) && minutes > 0 ? Math.min(60, Math.max(1, Math.round(minutes))) : 3;
+						}
+					}
 					// agent CLI 不能呼叫管家的工具:整理回報、提案檢查不能用;它也不是本地模型,隱私專案不能用
 					{
 						const provs: ProviderConfig[] = Array.isArray(incoming.providers) ? incoming.providers : before.providers;
@@ -1280,6 +1287,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				return send(res, 404, { error: "not found" });
 			}
 			if (req.method === "GET" && path === "/api/plugins") return send(res, 200, { latex: pluginEnabled("latex"), notebook: pluginEnabled("notebook"), office: pluginEnabled("office") });
+			if (req.method === "GET" && path === "/api/code-prefs") {
+				const { autoFetch, autoFetchMinutes } = settings().code;
+				return send(res, 200, { autoFetch, autoFetchMinutes });
+			}
+			if (req.method === "PUT" && path === "/api/code-prefs") {
+				const { autoFetch } = await body(req);
+				if (!["ask", "on", "off"].includes(autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });
+				const { code } = updateSettings({ code: { autoFetch } });
+				return send(res, 200, { autoFetch: code.autoFetch, autoFetchMinutes: code.autoFetchMinutes });
+			}
 			if (req.method === "GET" && path === "/api/agents") return send(res, 200, { agents: dispatchableAgents() });
 			if (req.method === "GET" && path === "/api/terminal/current") return send(res, 200, terminalCurrent(url.searchParams.get("space") || undefined));
 			// 三個頁面共用的「目前專案」
