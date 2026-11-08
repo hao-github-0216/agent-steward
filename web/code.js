@@ -244,9 +244,18 @@
 			cm.activeGroup = g;
 		}
 	}
+	/** 把比例換算成加總等於個數,相對大小不變。
+	 *  flex-grow 加總小於 1 時只會分到那個比例的空間:例如拖過分割線後關掉右欄,剩下的左欄是 0.75,右邊就會空一塊 */
+	function fitSizes(items) {
+		const ok = (x) => (Number.isFinite(x.size) && x.size > 0 ? x.size : 1);
+		const sum = items.reduce((a, x) => a + ok(x), 0);
+		for (const x of items) x.size = (ok(x) * items.length) / sum;
+	}
 	/** 依 cm.cols 重新排 DOM(群組元素沿用,編輯器不會重建) */
 	function layout() {
 		ensureLayout();
+		fitSizes(cm.cols);
+		for (const col of cm.cols) fitSizes(col.groups);
 		const root = $("cvGroups");
 		root.replaceChildren();
 		cm.cols.forEach((col, ci) => {
