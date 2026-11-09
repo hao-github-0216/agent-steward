@@ -14,7 +14,7 @@ const begin = "# ---- generated: begin (scripts/gen-install.mjs) ----";
 const end = "# ---- generated: end ----";
 const source = (file) => readFileSync(new URL(file, root), "utf8");
 const block = (file) => {
-	const text = source(file);
+	const text = source(file).replace(/\r\n/g, "\n"); // Windows 取出的檔案是 CRLF
 	assert.equal(text.split(begin).length, 2, file);
 	assert.equal(text.split(end).length, 2, file);
 	return text.slice(text.indexOf(begin) + begin.length + 1, text.indexOf(end));
@@ -102,7 +102,7 @@ test("PowerShell component data includes the Windows ttyd source and uses the ca
 	assert.ok(generated.includes(`$TtydSourceWindows = '${ttyd.source.windows}'`));
 	assert.ok(generated.includes(`$HerdrRepo = '${herdr.repo}'`));
 	assert.ok(generated.includes(`$HerdrTag = '${herdr.tag}'`));
-	assert.match(source(files[0]), /^\t\. Set-ComponentData$/m);
+	assert.match(source(files[0]).replace(/\r\n/g, "\n"), /^\t\. Set-ComponentData$/m);
 	for (const lang of ["zh-TW", "en"]) {
 		const start = generated.indexOf(`\t\t'${lang}' {`, generated.indexOf("function Set-ComponentData"));
 		assert.ok(start >= 0, lang);

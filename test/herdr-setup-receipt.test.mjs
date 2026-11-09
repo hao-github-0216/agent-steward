@@ -43,7 +43,7 @@ test("herdr setup records its shortcut, respects removal, and supports --readd",
 	writeFileSync(config, original);
 	const explanation = run();
 	assert.equal(readFileSync(config, "utf8"), original);
-	assert.match(explanation, /You removed the herdr folder-navigation shortcut.*--readd-herdr-key/);
+	assert.match(explanation, /You removed the herdr folder-navigation shortcut.*(--readd-herdr-key|-ReaddHerdrKey)/); // Windows 上的提示用 -ReaddHerdrKey
 
 	run("--readd");
 	assert.match(readFileSync(config, "utf8"), /key = "prefix\+e"/);

@@ -183,10 +183,10 @@ jobs:
             if ($text -notlike "*HOME_OK=$($T.FullName)*") { throw "Child HOME was not verified" }
             if ($code -eq 0) { throw "Installation should require -Yes without a terminal" }
             if ($text -notlike "*This window is not interactive*") { throw "Installer did not refuse with the expected message" }
-            # PowerShell 換了家目錄後可能自己建立快取;只檢查安裝程式會寫的地方
+            # PowerShell may create its own cache under the new HOME; only check the paths the installer writes
             Get-ChildItem -LiteralPath $T.FullName -Force -Recurse -Depth 2 | ForEach-Object { "in HOME: $($_.FullName.Substring($T.FullName.Length))" }
             foreach ($d in @(".agent-steward", ".local")) { if (Test-Path (Join-Path $T.FullName $d)) { throw "Refused installation wrote $d to HOME" } }
-            # 子程序照預期以結束碼 1 拒絕;Actions 會拿最後的 $LASTEXITCODE 當這一步的結果,檢查通過就歸零
+            # The child refused with exit code 1 as expected; Actions uses the last $LASTEXITCODE as the step result, so reset it
             $global:LASTEXITCODE = 0
           } finally {
             $env:USERPROFILE = $oldProfile
@@ -219,7 +219,8 @@ jobs:
               if ($text -notlike "*HOME_OK=$($T.FullName)*") { throw "Child HOME was not verified" }
               if ($code -ne 0) { throw "Dry run failed: $code" }
               if ($lang -eq "zh-TW") {
-                if ($text -notmatch "安裝程式 — 看完再決定要不要裝") { throw "Missing Chinese title" }
+                # Windows PowerShell 5.1 does not read this script as UTF-8, so the Chinese title is written with escapes
+                if ($text -notmatch [regex]::Unescape("\u5b89\u88dd\u7a0b\u5f0f \u2014 \u770b\u5b8c\u518d\u6c7a\u5b9a\u8981\u4e0d\u8981\u88dd")) { throw "Missing Chinese title" }
               } elseif ($text -notmatch "agent-steward .* installer") { throw "Missing English title" }
               Get-ChildItem -LiteralPath $T.FullName -Force -Recurse -Depth 2 | ForEach-Object { "in HOME: $($_.FullName.Substring($T.FullName.Length))" }
               foreach ($d in @(".agent-steward", ".local")) { if (Test-Path (Join-Path $T.FullName $d)) { throw "Dry run wrote $d to HOME" } }
@@ -239,7 +240,7 @@ jobs:
           $env:STEWARD_FROM = (Get-Location).Path
           $env:STEWARD_REF = "${{ github.sha }}"
           irm "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.ps1" | iex
-          if (-not (Test-Path "$HOME\.agent-steward\app\src\main.ts")) { throw "安裝沒有完成" }
+          if (-not (Test-Path "$HOME\.agent-steward\app\src\main.ts")) { throw "Installation did not complete" }
       - name: Installation receipt exists
         shell: powershell
         run: |
