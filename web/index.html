@@ -149,11 +149,25 @@ section.content { padding: 16px; overflow-y: auto; overflow-x: hidden; overscrol
 .col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .col .cards { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
 /* 資訊卡 */
-.modal.cardpop .box { width: min(560px, 100%); }
+.modal.cardpop .box { width: min(560px, 100%); min-width: 0; }
+.cardpop .mhead, .cardpop .cask, .cardpop .mfoot { flex-shrink: 0; }
+.cardpop .mhead { gap: 12px; }
+.cardpop .mhead h3 { min-width: 0; overflow-wrap: anywhere; }
+.cardpop .mhead button { flex-shrink: 0; }
+/* 內容共用一個捲動區,各段保留完整高度。 */
+.modal.cardpop .mbody { gap: 18px; overflow-x: hidden; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: var(--muted) var(--bg); }
+.cardpop .mbody::-webkit-scrollbar { display: block; width: 8px; }
+.cardpop .mbody::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 8px; }
+.cardpop .mbody::-webkit-scrollbar-track { background: var(--bg); }
+.cardpop .mbody > * { flex-shrink: 0; min-width: 0; }
+.cardpop .mbody, .cardpop .csection, .cardpop .turn { overflow-wrap: anywhere; }
+.cardpop .csection { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cardpop .cmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.cardpop .cmeta > * { min-width: 0; max-width: 100%; }
+.cardpop select { min-width: 0; max-width: 100%; }
 .cardpop .cnote { color: var(--warn); font-size: 13px; white-space: pre-wrap; }
 .cardpop h4 { margin: 0; font-size: 12px; color: var(--muted); }
-.cardpop .ctext { white-space: pre-wrap; word-break: break-word; font: 13px/1.5 Menlo, monospace; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 0; max-height: 40vh; overflow: auto; }
+.cardpop .ctext { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 Menlo, monospace; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 0; }
 .cardpop .mfoot .sp { flex: 1; }
 /* 工作卡追問:問題靠右、agent 的回覆照 Markdown 排;輸入框在下面 */
 .cardpop .thread { display: flex; flex-direction: column; gap: 12px; }
@@ -166,7 +180,7 @@ section.content { padding: 16px; overflow-y: auto; overflow-x: hidden; overscrol
 .cardpop .turn.wait { color: var(--muted); font-size: 13px; }
 .cardpop .cask { display: flex; gap: 8px; align-items: flex-end; padding: 10px 16px; border-top: 1px solid var(--line); }
 .cardpop .cask[hidden] { display: none; }
-.cardpop .cask textarea { flex: 1; resize: none; min-height: 36px; max-height: 140px; border: 1px solid var(--line); border-radius: 16px; padding: 8px 12px; font: inherit; font-size: 14px; background: var(--bg); color: var(--ink); }
+.cardpop .cask textarea { flex: 1; min-width: 0; resize: none; min-height: 36px; max-height: min(140px, 20vh); max-height: min(140px, 20dvh); border: 1px solid var(--line); border-radius: 16px; padding: 8px 12px; font: inherit; font-size: 14px; background: var(--bg); color: var(--ink); }
 .cardpop button.link { background: none; border: 0; color: var(--accent); padding: 0 2px; cursor: pointer; font: inherit; }
 @media (max-width: 800px) {
 	.modal.cardpop { place-items: end stretch; padding: 0; }
@@ -1292,8 +1306,8 @@ function renderCardPop() {
 	body.innerHTML = `<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>· 第 ${c.attempts} 次派工</span>` : ""}<span>· 更新於 ${esc(ago(c.updatedAt))}</span>${c.paneId ? `<span>· 窗格 ${esc(c.paneId)}</span>` : ""}</div>
 			${["proposed", "blocked", "done"].includes(c.column) ? `<label class="field">交給<select data-cagent>${agentOptions}</select></label>` : ""}
 			${c.note ? `<div class="cnote">${esc(c.note)}</div>` : ""}
-			<h4>指示</h4><pre class="ctext">${esc(c.instructions || "(沒有)")}</pre>
-			<h4>完成標準</h4><div>${esc(c.doneCriteria || "(沒有)")}</div>
+			<section class="csection"><h4>指示</h4><pre class="ctext">${esc(c.instructions || "(沒有)")}</pre></section>
+			<section class="csection"><h4>完成標準</h4><div>${esc(c.doneCriteria || "(沒有)")}</div></section>
 			${threadHtml(c)}`;
 	body.querySelector("[data-cagent]")?.addEventListener("change", async (e) => {
 		const agent = e.target.value;
@@ -1305,14 +1319,14 @@ function renderCardPop() {
 		renderCardPop();
 	});
 	if (typeof chatMd !== "undefined") chatMd.typeset(body);
-	// 有對話時:剛打開、多了一則、或原本就在最下面 → 捲到最後;不然停在原本的位置
-	if (turns && (prevTurns === null || turns > prevTurns || atEnd)) body.scrollTop = body.scrollHeight;
-	else body.scrollTop = scroll;
-	wrap.dataset.turns = String(turns);
 	const ask = wrap.querySelector("[data-cp=ask]");
 	ask.hidden = !["done", "blocked", "running"].includes(c.column);
 	ask.querySelector("textarea").placeholder = c.column === "running" ? "追問(這一輪做完就送出)⌘↩︎ 送出" : "追問這張卡…  ⌘↩︎ 送出";
 	wrap.querySelector("[data-cp=foot]").innerHTML = `${canJump ? '<button class="small" data-jumpcard>在終端機看這個窗格</button>' : ""}<span class="sp"></span>${acts}`;
+	// 輸入區與按鈕排好後再捲動:初開、新回覆、原本在底部時跳到最後,其餘保留閱讀位置。
+	if (turns && (prevTurns === null || turns > prevTurns || atEnd)) body.scrollTop = body.scrollHeight;
+	else body.scrollTop = scroll;
+	wrap.dataset.turns = String(turns);
 }
 /** 追問對話:原本的結果、問題(排隊中可以取消,送不出去可以重送)、agent 的完整回覆 */
 function threadHtml(c) {
@@ -1328,7 +1342,7 @@ function threadHtml(c) {
 		? `<div class="turn me"><div class="bubble">${esc(x.text)}</div>${status(x)}</div>`
 		: `<div class="turn ag"><div class="who">${x.original ? "原本的結果" : esc(c.agent || "agent")}</div><div class="md">${chatMd.render(x.text)}</div></div>`).join("");
 	const waiting = c.column === "running" && t.some((x) => x.status === "sent") ? `<div class="turn wait">${esc(c.agent || "agent")} 回覆中…</div>` : "";
-	return `<h4>追問</h4><div class="thread">${rows}${waiting}</div>`;
+	return `<section class="csection"><h4>結果與追問</h4><div class="thread">${rows}${waiting}</div></section>`;
 }
 async function askCard(id) {
 	const ta = $("cardAsk");
