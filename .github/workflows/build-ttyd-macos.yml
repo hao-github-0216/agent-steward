@@ -1,0 +1,168 @@
+name: Build ttyd for macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a prerelease (never marks it as the latest release)
+        type: boolean
+        default: false
+      tag:
+        description: Tag for the optional dependency release
+        type: string
+        default: deps-ttyd-1.7.7-1
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and check the universal binary
+        run: |
+          test "$(uname -m)" = arm64
+          sh scripts/build-ttyd-macos.sh "$RUNNER_TEMP/work" dist
+      - name: Test the HTTP server on Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/ttyd -i 127.0.0.1 -p 7681 cat > "$RUNNER_TEMP/ttyd-http.log" 2>&1 &
+          pid=$!
+          cleanup() {
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          if ! status=$(curl -fsS --retry 20 --retry-connrefused --retry-delay 1 \
+            --connect-timeout 2 --max-time 5 -o "$RUNNER_TEMP/ttyd.html" \
+            -w '%{http_code}' http://127.0.0.1:7681/); then
+            cat "$RUNNER_TEMP/ttyd-http.log"
+            exit 1
+          fi
+          kill -0 "$pid"
+          test "$status" = 200
+          grep -Eiq '<(!doctype html|html)' "$RUNNER_TEMP/ttyd.html"
+          echo "PASS: HTTP $status with HTML on 127.0.0.1:7681"
+      - name: Test the Intel slice with Rosetta when available
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if probe=$(arch -x86_64 /usr/bin/true 2>&1); then
+            echo 'Rosetta is available.'
+          else
+            printf 'Rosetta probe failed: %s\n' "$probe"
+            if install_log=$(sudo softwareupdate --install-rosetta --agree-to-license 2>&1); then
+              printf '%s\n' "$install_log"
+            else
+              printf '::warning::Could not install Rosetta; skipping the translated Intel test.\n%s\n' "$install_log"
+              exit 0
+            fi
+          fi
+          if version=$(arch -x86_64 ./dist/ttyd --version 2>&1); then
+            printf '%s\n' "$version"
+            printf '%s\n' "$version" | grep -Eq '^ttyd version 1\.7\.7(-unknown)?$'
+          else
+            printf '::warning::Intel slice failed under Rosetta.\n%s\n' "$version"
+            exit 1
+          fi
+      - name: Generate the archive checksum
+        run: cd dist && shasum -a 256 ttyd-1.7.7-macos-universal.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ttyd-1.7.7-macos-universal
+          path: dist/
+          if-no-files-found: error
+
+  test-intel:
+    needs: build
+    runs-on: macos-15-intel
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ttyd-1.7.7-macos-universal
+          path: dist
+      - name: Test natively on Intel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          (cd dist && shasum -a 256 -c SHA256SUMS)
+          chmod +x ./dist/ttyd
+          version=$(./dist/ttyd --version)
+          printf '%s\n' "$version"
+          printf '%s\n' "$version" | grep -Eq '^ttyd version 1\.7\.7(-unknown)?$'
+          ./dist/ttyd -i 127.0.0.1 -p 7681 cat > "$RUNNER_TEMP/ttyd-http.log" 2>&1 &
+          pid=$!
+          cleanup() {
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          if ! status=$(curl -fsS --retry 20 --retry-connrefused --retry-delay 1 \
+            --connect-timeout 2 --max-time 5 -o "$RUNNER_TEMP/ttyd.html" \
+            -w '%{http_code}' http://127.0.0.1:7681/); then
+            cat "$RUNNER_TEMP/ttyd-http.log"
+            exit 1
+          fi
+          kill -0 "$pid"
+          test "$status" = 200
+          grep -Eiq '<(!doctype html|html)' "$RUNNER_TEMP/ttyd.html"
+          echo "PASS: native Intel HTTP $status with HTML on 127.0.0.1:7681"
+
+  publish:
+    if: ${{ inputs.publish }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ttyd-1.7.7-macos-universal
+          path: dist
+      - name: Reject an existing release and check the archive
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git check-ref-format "refs/tags/$TAG"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; refusing to overwrite it."
+            exit 1
+          fi
+          (cd dist && sha256sum -c SHA256SUMS)
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/ttyd-1.7.7-macos-universal.tar.gz
+      - name: Publish a dependency prerelease without changing latest
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes=$(cat <<EOF
+          This is agent-steward's ttyd 1.7.7 build for macOS 12 and later, with universal arm64 and x86_64 support.
+
+          Built from pinned source archives with SHA-256 verification using this workflow:
+          https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/.github/workflows/build-ttyd-macos.yml
+          Build run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          json-c 0.17, libuv 1.44.2, Mbed TLS 2.28.10, and libwebsockets 4.3.3 are linked statically. Only macOS system libraries (including zlib) are loaded dynamically. The executable has an ad-hoc signature, not Developer ID signing or notarization. Mbed TLS 2.28.10 is the final, end-of-life release in the 2.28 series.
+
+          Licenses: ttyd, json-c, libuv, and libwebsockets use MIT; Mbed TLS is used under Apache-2.0. Full upstream license texts and additional notices are included in LICENSES/. BUILD-INFO.txt records versions, source URLs, and SHA-256 values.
+
+          This dependency prerelease is intentionally not marked as the repository's latest release.
+          EOF
+          )
+          gh release create "$TAG" \
+            dist/ttyd-1.7.7-macos-universal.tar.gz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'ttyd 1.7.7 for macOS (universal)' \
+            --notes "$notes" --prerelease --latest=false
