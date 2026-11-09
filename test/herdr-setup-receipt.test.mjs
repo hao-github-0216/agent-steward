@@ -34,7 +34,7 @@ test("herdr setup records its shortcut, respects removal, and supports --readd",
 	writeFileSync(config, original);
 	run();
 	assert.match(readFileSync(config, "utf8"), /key = "prefix\+e"/);
-	assert.match(readFileSync(config, "utf8"), /folder_nav\.mjs/);
+	assert.match(readFileSync(config, "utf8"), /folder[_-]nav\.(mjs|cmd)/); // Windows 上指令是 folder-nav.cmd 包裝檔
 	assert.equal(receipt().herdrKeyAdded, true);
 	assert.equal(receipt().backups.length, 1);
 	assert.equal(readFileSync(receipt().backups[0], "utf8"), original);

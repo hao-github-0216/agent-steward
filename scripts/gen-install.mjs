@@ -119,7 +119,8 @@ const outputs = [
 let stale = false;
 for (const [path, render] of outputs) {
 	const content = render();
-	if (read(path) === content) continue;
+	// Windows 取出的檔案可能是 CRLF:比對時統一成 LF
+	if (read(path).replace(/\r\n/g, "\n") === content.replace(/\r\n/g, "\n")) continue;
 	if (check) {
 		console.error(`Out of date: ${path}`);
 		stale = true;

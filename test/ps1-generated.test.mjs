@@ -68,7 +68,8 @@ test("generated PowerShell blocks preserve UTF-8 BOM, LF and their positions aft
 		const bytes = readFileSync(new URL(file, root));
 		assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], file);
 		const text = bytes.toString("utf8");
-		assert.ok(!text.includes("\r"), `${file}: expected LF`);
+		// Windows 取出檔案時會轉成 CRLF;LF 只在 macOS/Linux 檢查(repo 裡存的是 LF)
+		if (process.platform !== "win32") assert.ok(!text.includes("\r"), `${file}: expected LF`);
 		assert.ok(text.indexOf(begin) > text.indexOf("param("), file);
 		block(file);
 	}

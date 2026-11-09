@@ -149,6 +149,8 @@ jobs:
             # PowerShell 換了家目錄後可能自己建立快取;只檢查安裝程式會寫的地方
             Get-ChildItem -LiteralPath $T.FullName -Force -Recurse -Depth 2 | ForEach-Object { "in HOME: $($_.FullName.Substring($T.FullName.Length))" }
             foreach ($d in @(".agent-steward", ".local")) { if (Test-Path (Join-Path $T.FullName $d)) { throw "Refused installation wrote $d to HOME" } }
+            # 子程序照預期以結束碼 1 拒絕;Actions 會拿最後的 $LASTEXITCODE 當這一步的結果,檢查通過就歸零
+            $global:LASTEXITCODE = 0
           } finally {
             $env:USERPROFILE = $oldProfile
             $env:HOME = $oldHome
