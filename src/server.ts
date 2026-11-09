@@ -1364,6 +1364,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	const upstreamHeaders = (req: IncomingMessage, user: string) => {
 		const h: Record<string, string | string[] | undefined> = { ...req.headers };
 		delete h["x-steward-user"];
+		delete h["x-steward-desktop"];
 		delete h.authorization;
 		h["x-steward-user"] = TTYD_USER_TOKEN;
 		void user;
@@ -1409,7 +1410,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			const lines = [`${req.method} ${req.url} HTTP/1.1`];
 			for (let i = 0; i < req.rawHeaders.length; i += 2) {
 				const name = req.rawHeaders[i].toLowerCase();
-				if (name === "x-steward-user" || name === "authorization") continue;
+				if (name === "x-steward-user" || name === "x-steward-desktop" || name === "authorization") continue;
 				lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
 			}
 			lines.push(`x-steward-user: ${TTYD_USER_TOKEN}`);

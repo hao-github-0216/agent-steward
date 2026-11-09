@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "externalBin": ["binaries/node", "binaries/herdr", "binaries/ttyd"],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist",
+      "signingIdentity": null
+    },
+    "targets": ["app", "dmg"]
+  }
+}

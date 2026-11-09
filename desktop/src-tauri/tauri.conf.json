@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Agent Steward",
+  "version": "0.2.0",
+  "identifier": "io.github.haogithub0216.agentsteward.desktop",
+  "app": { "windows": [], "security": { "csp": null } },
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "resources": { "../resources/app/": "app/", "../resources/licenses/": "licenses/" }
+  }
+}

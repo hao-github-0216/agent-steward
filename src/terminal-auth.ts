@@ -20,7 +20,7 @@ const LOCK_MS = 5 * 60_000;
 const SESSION_MS = 30 * 24 * 3600_000;
 export const COOKIE = "steward_session";
 
-export type AuthResult = { ok: true; user: string; how: "tailscale" | "password" | "local" } | { ok: false; status: 401 | 403; reason: string; login?: boolean };
+export type AuthResult = { ok: true; user: string; how: "tailscale" | "password" | "local" | "desktop" } | { ok: false; status: 401 | 403; reason: string; login?: boolean };
 
 // 允許的 Tailscale 帳號:設定頁「存取」填的(第一次執行自動帶入本人帳號)
 const allowedLogins = () => (process.env.STEWARD_TS_USERS ? process.env.STEWARD_TS_USERS.split(",") : settings().access.tailscaleUsers).map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -140,6 +140,13 @@ export function logout(req: IncomingMessage): string {
 
 /** 這個請求是誰、能不能進來 */
 export async function authorize(req: IncomingMessage): Promise<AuthResult> {
+	const desktopToken = process.env.STEWARD_DESKTOP_TOKEN;
+	const desktopHeader = header(req, "x-steward-desktop");
+	if (process.env.STEWARD_DESKTOP === "1" && desktopToken && desktopHeader && fromLoopback(req)) {
+		const got = Buffer.from(desktopHeader);
+		const want = Buffer.from(desktopToken);
+		if (got.length === want.length && timingSafeEqual(got, want)) return { ok: true, user: "desktop", how: "desktop" };
+	}
 	const viaServe = fromLoopback(req) && !!header(req, "tailscale-user-login");
 	// 1. Tailscale serve:它會把自己設的身分標頭加上(用戶端傳來的同名標頭會被它蓋掉)
 	if (viaServe && settings().access.tailscale.enabled) {
