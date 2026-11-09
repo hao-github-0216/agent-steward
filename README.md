@@ -25,40 +25,77 @@
 
 ## 安裝
 
-**macOS / Linux**(終端機):
+**macOS / Linux**（終端機）：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install.sh | sh
+curl -fsSL https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.sh | sh
 ```
 
-**Windows**(PowerShell,不需要系統管理員):
+**Windows**（PowerShell，不需要系統管理員）：
 
 ```powershell
-irm https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install.ps1 | iex
+irm https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.ps1 | iex
 ```
 
-裝完會自動打開瀏覽器(`http://127.0.0.1:8791/`),跟著第一次設定精靈走:
+安裝程式不會一執行就動手。它會先問語言（繁體中文 / English），列出這次會做的事，再讓你選「開始 / 自訂 / 取消」。列出的內容包括：
+
+- 會下載什麼：版本、大小、來源與授權
+- 會放東西的地方
+- 會修改哪些其他程式的設定（例如 herdr 的快捷鍵）
+- 登入時自動啟動的服務名稱
+- 只聽哪些網路位址
+- 怎麼移除
+
+選「自訂」可以關掉不需要的部分：herdr、網頁終端機、herdr 快捷鍵與外掛、登入時自動啟動、裝完打開瀏覽器。Windows 另外可以選要不要加進 PATH。
+
+常用選項。Windows 用 `irm | iex` 時無法帶參數，改用括號裡的環境變數：
+
+| 選項 | 作用 |
+|---|---|
+| `--dry-run`（`STEWARD_DRY_RUN=1`） | 只列出計畫，什麼都不做 |
+| `--yes`（`STEWARD_YES=1`） | 不詢問，照預設安裝。沒有終端機可以詢問時一定要加 |
+| `--without=terminal,autostart`（`STEWARD_WITHOUT`） | 不裝指定的部分 |
+| `--lang en`（`STEWARD_LANG`） | 指定訊息語言 |
+
+例如只想先看計畫：`curl -fsSL …/install.sh | sh -s -- --dry-run`
+
+裝完會打開瀏覽器（`http://127.0.0.1:8791/`），跟著第一次設定精靈走：
 
 1. 管家怎麼稱呼你
-2. 接上至少一個 AI 接口(貼 API 金鑰,或填自架模型的網址)
+2. 接上至少一個 AI 接口（貼 API 金鑰，或填自架模型的網址）
 3. 勾選要接上專案管家的 agent
-4. (選用)設定管理密碼、開啟 Tailscale 或區網存取,用手機連進來
+4. （選用）設定管理密碼、開啟 Tailscale 或區網存取，用手機連進來
 
-安裝程式會準備好:
+安裝程式會準備好：
 
 | 項目 | 位置 |
 |---|---|
 | 程式、設定、資料 | `~/.agent-steward/` |
-| `steward` 指令 | `~/.local/bin/steward`(Windows:`steward.cmd`) |
-| Node.js 22.6+ | 沒有的話自動下載到 `~/.agent-steward/node`(macOS 有 Homebrew 就用 Homebrew) |
-| [herdr](https://github.com/hao-github-0216/herdr)(終端機多工、agent 狀態偵測) | `~/.agent-steward/bin/`;已經自己裝了 herdr 不會覆蓋 |
-| [ttyd](https://github.com/tsl0922/ttyd)(網頁終端機) | Homebrew 或 `~/.agent-steward/bin/` |
-| 開機自動啟動 | macOS launchd、Linux systemd --user、Windows 工作排程器 |
+| `steward` 指令 | `~/.local/bin/steward`（Windows：`steward.cmd`） |
+| Node.js | 電腦上已有 22.6 以上就沿用；沒有就下載 Node.js 24 到 `~/.agent-steward/node`。Mac 可以在「自訂」改用 Homebrew |
+| [herdr](https://github.com/hao-github-0216/herdr)（終端機多工、agent 狀態偵測） | `~/.agent-steward/bin/`；已經自己裝了 herdr 不會覆蓋 |
+| [ttyd](https://github.com/tsl0922/ttyd)（網頁終端機） | macOS 用 Homebrew；Linux、Windows 下載到 `~/.agent-steward/bin/` |
+| 登入時自動啟動 | macOS launchd、Linux systemd --user、Windows 工作排程器 |
+| 安裝收據 | `~/.agent-steward/install.json`：記下你的選擇和每一項改動，更新時沿用、移除時照著還原 |
+
+### 下載的東西怎麼驗證
+
+- 每個下載的檔案都固定版本，使用前比對 SHA-256，不符就停止安裝。版本與檢查碼記在 [`components.json`](components.json)，各元件的授權見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 每個版本的安裝程式和程式壓縮檔都附在 [Releases](https://github.com/hao-github-0216/agent-steward/releases)，並附上 `SHA256SUMS` 和 GitHub 的來源證明（artifact attestation）。想自己核對的話：
+
+  ```sh
+  gh release download vX.Y.Z -R hao-github-0216/agent-steward
+  sha256sum -c SHA256SUMS        # macOS 用 shasum -a 256 -c SHA256SUMS
+  gh attestation verify agent-steward-vX.Y.Z.tar.gz -R hao-github-0216/agent-steward
+  ```
+
+- 要固定裝某一版，把網址裡的 `latest/download` 換成 `download/vX.Y.Z`。
+- 專案管家和安裝程式都不會傳送任何使用資料。
 
 ## 更新與移除
 
-- **更新**:設定 → 關於 → 檢查更新 → 「更新到 vX.Y.Z」。或再跑一次安裝指令。
-- **移除**(資料會保留,加 `--purge` / `-Purge` 連資料一起刪):
+- **更新**：設定 → 關於 → 檢查更新 → 「更新到 vX.Y.Z」。按下去會先跳確認視窗，說明會下載什麼。也可以再跑一次安裝指令。更新時沿用上次的選擇，你自己拿掉的設定不會加回來。
+- **移除**（資料會保留，加 `--purge` / `-Purge` 連資料一起刪）：
 
   ```sh
   sh ~/.agent-steward/app/uninstall.sh
@@ -68,7 +105,12 @@ irm https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install
   powershell -ExecutionPolicy Bypass -File $HOME\.agent-steward\app\uninstall.ps1
   ```
 
-  移除時會先拿掉各 agent 設定檔裡專案管家加的部分。
+  移除時會：
+  - 拿掉各 agent 設定檔裡專案管家加的部分。
+  - 照安裝收據還原安裝時做的改動，例如工作排程、PATH、linger。
+  - 關掉轉到管家的 Tailscale Serve。
+
+  安裝時留下的備份檔會列出來，由你決定要不要刪。
 
 ## AI 接口與路由
 
@@ -108,4 +150,4 @@ sh scripts/deploy.sh
 
 ## 授權
 
-[MIT](LICENSE)
+[MIT](LICENSE)。安裝程式另外下載的元件各自沿用原本的授權，見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

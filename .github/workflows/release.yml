@@ -1,20 +1,188 @@
 name: Release
 
-# 推上 v* 標籤(例如 v0.2.0)就建立 GitHub Release;安裝程式和設定頁的「檢查更新」看的就是它。
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build
+        required: true
+        type: string
+      dry_run:
+        description: Build artifacts without publishing a release
+        type: boolean
+        default: true
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+
+concurrency: release-${{ inputs.tag || github.ref_name }}
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-      - name: Create release
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - name: Resolve release tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          TAG=$RELEASE_TAG
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            git show-ref --verify --quiet "refs/tags/$TAG" || { echo "Tag not found: $TAG" >&2; exit 1; }
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Archive source
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="agent-steward-$TAG/" -o "dist/agent-steward-$TAG.tar.gz" "$TAG"
+          git archive --format=zip --prefix="agent-steward-$TAG/" -o "dist/agent-steward-$TAG.zip" "$TAG"
+      - name: Generate release installers
+        run: node scripts/gen-install.mjs --release "$TAG" --dist dist
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($file in @("dist/install.ps1", "dist/install-windows.ps1")) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $errors; throw "PowerShell syntax errors in $file" }
+            Write-Host "PASS: PowerShell syntax ($file)"
+          }
+      - name: Check installers and archive contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n dist/install.sh
+          echo "PASS: shell syntax"
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { createHash } from "node:crypto";
+          import { readFileSync } from "node:fs";
+          const tag = process.env.TAG;
+          const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+          const shell = readFileSync("dist/install.sh", "utf8");
+          const windowsBytes = readFileSync("dist/install-windows.ps1");
+          const windows = windowsBytes.toString("utf8");
+          const bootstrapBytes = readFileSync("dist/install.ps1");
+          const bootstrap = bootstrapBytes.toString("utf8");
+          assert.ok(bootstrapBytes.every((byte) => byte <= 0x7f));
+          assert.ok(bootstrap.includes("\r\n"));
+          assert.doesNotMatch(bootstrap, /(?<!\r)\n|\r(?!\n)/);
+          console.log("PASS: install.ps1 is ASCII with CRLF throughout");
+          assert.deepEqual([...windowsBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+          assert.ok(!windows.includes("\r"));
+          console.log("PASS: install-windows.ps1 is UTF-8 with BOM and LF");
+          assert.equal(shell.match(/^APP_PIN_VERSION='([^']*)'$/m)?.[1], tag);
+          assert.equal(windows.match(/^\$AppPinVersion = '([^']*)'$/m)?.[1], tag);
+          console.log("PASS: installers pin the release tag");
+          for (const [text, pattern, asset] of [
+            [shell, /^APP_PIN_SHA256='([a-f0-9]{64})'$/m, `dist/agent-steward-${tag}.tar.gz`],
+            [windows, /^\$AppPinZipSha256 = '([a-f0-9]{64})'$/m, `dist/agent-steward-${tag}.zip`],
+            [bootstrap, /^\t\$expectedSha256 = '([a-f0-9]{64})'\r?$/m, "dist/install-windows.ps1"],
+          ]) {
+            assert.equal(text.match(pattern)?.[1], hash(asset), asset);
+            console.log(`PASS: pinned SHA-256 matches ${asset}`);
+          }
+          NODE
+          T=$(mktemp -d)
+          trap 'rm -rf "$T"' EXIT
+          tar -xzf "dist/agent-steward-$TAG.tar.gz" -C "$T"
+          test -f "$T/agent-steward-$TAG/src/main.ts"
+          echo "PASS: archive contains src/main.ts"
+          test -f "$T/agent-steward-$TAG/package.json"
+          echo "PASS: archive contains package.json"
+          test ! -e "$T/agent-steward-$TAG/ios-app"
+          echo "PASS: archive excludes ios-app/"
+          test ! -e "$T/agent-steward-$TAG/ios-native"
+          echo "PASS: archive excludes ios-native/"
+      - name: Generate SHA256SUMS
+        run: cd dist && sha256sum agent-steward-* install.sh install.ps1 install-windows.ps1 > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-steward-${{ steps.tag.outputs.tag }}
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/attest-build-provenance@v2
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        with:
+          subject-path: dist/*
+      - name: Publish release
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --generate-notes
+          fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  verify:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Install and uninstall the published release
+        shell: bash
+        run: |
+          set -euo pipefail
+          T=$(mktemp -d)
+          trap 'rm -rf "$T"' EXIT
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh"
+          env -i HOME="$T" PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=en_US.UTF-8 sh -c 'curl --proto =https --tlsv1.2 -fsSL --retry 4 --retry-delay 10 --retry-all-errors "$0" | sh -s -- --yes --without=autostart,open' "$URL"
+          test "$(cat "$T/.agent-steward/app/REVISION")" = "$TAG"
+          test -f "$T/.agent-steward/install.json"
+          env -i HOME="$T" PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=en_US.UTF-8 sh "$T/.agent-steward/app/uninstall.sh" --purge
+      - name: Verify release provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 4 --retry-delay 10 --retry-all-errors \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/agent-steward-$TAG.tar.gz" \
+            -o "dist/agent-steward-$TAG.tar.gz"
+          gh attestation verify "dist/agent-steward-$TAG.tar.gz" -R "$GITHUB_REPOSITORY"
+
+  verify-windows:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+    needs: build
+    runs-on: windows-latest
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+      STEWARD_YES: "1"
+      STEWARD_NO_SERVICE: "1"
+      STEWARD_NO_OPEN: "1"
+    steps:
+      - name: Install and uninstall with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $global:LASTEXITCODE = 0
+          irm "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/install.ps1" | iex
+          if ($LASTEXITCODE -ne 0) { throw "Installation failed: $LASTEXITCODE" }
+          $revision = (Get-Content "$HOME\.agent-steward\app\REVISION" -Raw -Encoding UTF8).Trim()
+          if ($revision -cne $env:TAG) { throw "Installed revision $revision does not match $env:TAG" }
+          if (-not (Test-Path "$HOME\.agent-steward\install.json" -PathType Leaf)) { throw "Missing installation receipt" }
+          & "$HOME\.agent-steward\app\uninstall.ps1" -Purge
+          if ($LASTEXITCODE -ne 0) { throw "Uninstall failed: $LASTEXITCODE" }

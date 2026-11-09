@@ -1,6 +1,6 @@
 # agent-steward installer for Windows (bootstrap).
 #
-#   irm https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install.ps1 | iex
+#   irm https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.ps1 | iex
 #
 # This file is ASCII only on purpose: Windows PowerShell 5.1 does not decode `irm` output as UTF-8,
 # so any non-ASCII text here would be garbled (some garbled bytes even act as line breaks).

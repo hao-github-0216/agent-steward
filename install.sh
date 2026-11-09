@@ -1,6 +1,6 @@
 #!/bin/sh
 # 專案管家安裝／更新程式：macOS、Linux。
-# curl -fsSL https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install.sh | sh
+# curl -fsSL https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.sh | sh
 # 用 --dry-run 先看計畫；無法互動時加 --yes。完整選項：sh install.sh --help。
 
 L=${STEWARD_LANG:-en}
@@ -129,8 +129,8 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:update_keep') printf '%s' 'Keep your previous choices. Settings you removed will not be added back.' ;;
 		'zh-TW:update_choices') printf '%s' '使用這次的選擇，你自己拿掉的設定不會加回來。' ;;
 		'en:update_choices') printf '%s' 'Use the choices shown here. Settings you removed will not be added back.' ;;
-		'zh-TW:no_tty') printf '%s' '沒有可互動的終端機，尚未做任何改動。請加 --yes，例如：curl -fsSL https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install.sh | sh -s -- --yes' ;;
-		'en:no_tty') printf '%s' 'No interactive terminal; nothing has changed. Add --yes, for example: curl -fsSL https://raw.githubusercontent.com/hao-github-0216/agent-steward/main/install.sh | sh -s -- --yes' ;;
+		'zh-TW:no_tty') printf '%s' '沒有可互動的終端機，尚未做任何改動。請加 --yes，例如：curl -fsSL https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.sh | sh -s -- --yes' ;;
+		'en:no_tty') printf '%s' 'No interactive terminal; nothing has changed. Add --yes, for example: curl -fsSL https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.sh | sh -s -- --yes' ;;
 		'zh-TW:install_choices') printf '%s' '  1) 開始安裝   2) 自訂   3) 取消' ;;
 		'en:install_choices') printf '%s' '  1) Install   2) Customize   3) Cancel' ;;
 		'zh-TW:install_prompt') printf '%s' '請選擇 [1]：' ;;
@@ -662,6 +662,7 @@ if [ -n "$FROM" ]; then
 	VERSION=$(git -C "$FROM" rev-parse --short HEAD 2>/dev/null || true)
 	VERSION=${VERSION:-local-$(date +%Y%m%d%H%M)}
 else
+	if [ -z "$VERSION" ] && [ -n "$APP_PIN_VERSION" ]; then VERSION=$APP_PIN_VERSION; fi
 	if [ -z "$VERSION" ]; then VERSION=$(download "https://api.github.com/repos/$REPO/releases/latest" /dev/stdout 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true); fi
 	[ -n "$VERSION" ] || die latest_unavailable
 	if [ "$VERSION" = main ]; then warn main_unverified; fi
