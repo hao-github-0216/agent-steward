@@ -362,7 +362,10 @@ pub fn request(
     body: Option<&str>,
 ) -> io::Result<HttpReply> {
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-    let mut socket = TcpStream::connect_timeout(&address, Duration::from_millis(500))?;
+    // 連線失敗(沒有程式在聽)和連上後回應不對分開回報:連線失敗一律標成 NotConnected。
+    // Windows 連到沒人聽的本機連接埠時會先重試約 2 秒才回「拒絕」,0.5 秒內看到的是逾時。
+    let mut socket = TcpStream::connect_timeout(&address, Duration::from_millis(500))
+        .map_err(|error| io::Error::new(io::ErrorKind::NotConnected, error))?;
     socket.set_read_timeout(Some(Duration::from_secs(1)))?;
     socket.set_write_timeout(Some(Duration::from_secs(1)))?;
     let body = body.unwrap_or("");
@@ -403,7 +406,7 @@ fn health(port: u16) -> Health {
             Health::Desktop
         }
         Ok(_) => Health::Occupied,
-        Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => Health::Absent,
+        Err(error) if error.kind() == io::ErrorKind::NotConnected => Health::Absent,
         Err(_) => Health::Occupied,
     }
 }
@@ -754,6 +757,38 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
+
+    fn serve_once(reply: &'static str) -> u16 {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = socket.read(&mut request);
+            socket.write_all(reply.as_bytes()).unwrap();
+        });
+        port
+    }
+    #[test]
+    fn health_is_absent_when_nothing_listens() {
+        let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        assert_eq!(health(port), Health::Absent);
+    }
+    #[test]
+    fn health_recognizes_the_desktop_service() {
+        let port = serve_once("HTTP/1.0 200 OK\r\n\r\n{\"ok\":true,\"mode\":\"desktop\"}");
+        assert_eq!(health(port), Health::Desktop);
+    }
+    #[test]
+    fn health_is_occupied_when_another_program_answers() {
+        let port = serve_once("HTTP/1.0 200 OK\r\n\r\n{\"ok\":true,\"mode\":\"service\"}");
+        assert_eq!(health(port), Health::Occupied);
+    }
     #[test]
     fn restart_delays_are_capped_at_thirty_seconds() {
         let mut policy = RestartPolicy::default();
