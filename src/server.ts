@@ -502,6 +502,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (req.method === "PUT" && path === "/api/settings") {
 					const before = settings();
 					const incoming = stripMasked((await body(req)).settings ?? {});
+					if (incoming.ui?.lang !== undefined && !["", "zh-TW", "en"].includes(incoming.ui.lang)) return send(res, 400, { error: "語言設定不對" });
 					if (incoming.code) {
 						if (incoming.code.autoFetch !== undefined && !["ask", "on", "off"].includes(incoming.code.autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });
 						if (incoming.code.autoFetchMinutes !== undefined) {

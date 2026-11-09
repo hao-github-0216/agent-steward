@@ -48,6 +48,7 @@ export interface Settings {
 	version: 1;
 	/** 管家怎麼稱呼使用者(空白 = 「使用者」) */
 	user: { name: string };
+	ui: { lang: "" | "zh-TW" | "en" };
 	cards: { defaultAgent: string };
 	code: {
 		/** 自動抓取遠端更新:ask = 先詢問,on = 開啟,off = 關閉 */
@@ -101,6 +102,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
 	version: 1,
 	user: { name: "" },
+	ui: { lang: "" },
 	cards: { defaultAgent: "" },
 	code: { autoFetch: "ask", autoFetchMinutes: 3 },
 	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], tailnetBindReviewed: false, publicUrl: "" },
@@ -283,6 +285,13 @@ export function settings(): Settings {
 		current = detect();
 		write(current);
 		console.error(new Date().toISOString(), "[settings] 第一次執行:已建立", SETTINGS_PATH);
+	}
+	if (current.ui.lang === "") {
+		const lang = readJson(join(DATA_DIR, "install.json"))?.lang;
+		if (lang === "zh-TW" || lang === "en") {
+			current.ui.lang = lang;
+			write(current);
+		}
 	}
 	return current;
 }

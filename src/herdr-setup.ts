@@ -7,6 +7,13 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { herdrConfigDir, IS_WIN } from "./platform.ts";
+import { readReceipt, updateReceipt } from "./install-receipt.ts";
+
+const receipt = readReceipt();
+const lang = process.env.STEWARD_LANG || receipt?.lang || "en";
+const L = /^zh(?:[-_]|$)/i.test(lang) ? "zh-TW" : "en";
+const messages = JSON.parse(readFileSync(new URL("../i18n/installer.json", import.meta.url), "utf8"));
+const t = (key: string, ...values: string[]): string => messages[key][L].replace(/\{(\d+)\}/g, (_: string, n: string) => values[Number(n)] ?? "");
 
 const CONFIG = join(herdrConfigDir(), "config.toml");
 const PLUGIN = join(herdrConfigDir(), "plugins-local", "folder-nav", "folder_nav.mjs");
@@ -50,9 +57,11 @@ function blocks(text: string): string[] {
 
 function save(text: string, before: string): boolean {
 	if (text === before) return false;
-	if (existsSync(CONFIG)) copyFileSync(CONFIG, `${CONFIG}.bak-steward-${STAMP}`);
+	const backup = existsSync(CONFIG) ? `${CONFIG}.bak-steward-${STAMP}` : undefined;
+	if (backup) copyFileSync(CONFIG, backup);
 	mkdirSync(dirname(CONFIG), { recursive: true });
 	writeFileSync(CONFIG, text.endsWith("\n") ? text : `${text}\n`);
+	updateReceipt({ backups: backup ? [backup] : [], changes: [{ type: "modified", path: CONFIG }] });
 	return true;
 }
 
@@ -62,21 +71,27 @@ const isCmdBlock = (b: string) => /^\s*\[\[keys\.command\]\]/m.test(b);
 
 if (process.argv.includes("--remove")) {
 	const kept = parts.filter((b) => !(isCmdBlock(b) && isFolderNav(b)));
-	console.log(save(kept.join("\n"), before) ? "herdr 設定:已拿掉資料夾導覽" : "herdr 設定:沒有資料夾導覽");
+	console.log(t(save(kept.join("\n"), before) ? "herdr_config_removed" : "herdr_config_absent"));
 } else {
-	const cmd = `command = ${tomlStr(command())}`;
 	const i = parts.findIndex((b) => isCmdBlock(b) && isFolderNav(b));
+	if (i < 0 && receipt?.herdrKeyAdded && !process.argv.includes("--readd")) {
+		console.log(t("herdr_key_removed"));
+		process.exit(0);
+	}
+	const cmd = `command = ${tomlStr(command())}`;
 	let next: string;
 	if (i >= 0) {
 		// 已經有:只換指令,沒有說明就補上(說明文字才會出現在選單)
 		let b = parts[i].replace(/^\s*command\s*=.*$/m, cmd).replace(/^\s*type\s*=.*$/m, 'type = "popup"');
-		if (!/^\s*description\s*=/m.test(b)) b = b.replace(cmd, `${cmd}\ndescription = "資料夾導覽"`);
+		if (!/^\s*description\s*=/m.test(b)) b = b.replace(cmd, `${cmd}\ndescription = ${tomlStr(t("herdr_folder_description"))}`);
 		parts[i] = b;
 		next = parts.join("\n");
 	} else {
 		const used = /^\s*key\s*=\s*"prefix\+e"/m.test(before);
-		const block = `${MARK}\n[[keys.command]]\nkey = "${used ? "prefix+shift+e" : "prefix+e"}"\ntype = "popup"\n${cmd}\ndescription = "資料夾導覽"\nwidth = "60%"\nheight = "80%"\n`;
+		const block = `${MARK}\n[[keys.command]]\nkey = "${used ? "prefix+shift+e" : "prefix+e"}"\ntype = "popup"\n${cmd}\ndescription = ${tomlStr(t("herdr_folder_description"))}\nwidth = "60%"\nheight = "80%"\n`;
 		next = `${before.replace(/\s*$/, "")}${before.trim() ? "\n\n" : ""}${block}`;
 	}
-	console.log(save(next, before) ? `herdr 設定:已加上/更新資料夾導覽(${CONFIG})` : "herdr 設定:資料夾導覽已經是最新的");
+	const changed = save(next, before);
+	updateReceipt({ herdrKeyAdded: true });
+	console.log(changed ? t("herdr_config_updated", CONFIG) : t("herdr_config_current"));
 }

@@ -2087,6 +2087,8 @@ function renderSettings() {
 	const pane = {
 		general: `
 			<label class="field">管家怎麼稱呼你<input type="text" data-k="user.name" value="${esc(s.user.name)}" placeholder="例如:小明(空白就叫「使用者」)"></label>
+			<label class="field">語言<select data-k="ui.lang"><option value="zh-TW" ${s.ui.lang === "zh-TW" ? "selected" : ""}>繁體中文</option><option value="en" ${s.ui.lang === "en" ? "selected" : ""}>English</option></select></label>
+			<div class="hint">安裝與更新程式的訊息語言。網頁介面的英文版之後提供。</div>
 			<label class="field">「建立專案」瀏覽資料夾的起點<input type="text" data-k="paths.createRoot" value="${esc(s.paths.createRoot)}" placeholder="~ 代表家目錄,例如 ~/Projects"></label>
 			<h4>隱私路徑</h4>
 			<div class="hint">這些資料夾底下的專案只會用「隱私專案」指定的模型(通常是本地模型),內容不會送到雲端。一行一個,可以用 ~ 開頭。</div>

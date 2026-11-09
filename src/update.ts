@@ -76,10 +76,10 @@ export async function applyUpdate(tag: string): Promise<void> {
 	} else if (process.platform === "linux" && existsSync("/usr/bin/systemd-run")) {
 		// systemd 會把服務底下的程序一起停掉,改由 systemd 另外跑
 		cmd = "systemd-run";
-		args = ["--user", "--collect", "--quiet", "/bin/sh", file, "--version", tag, "--no-open"];
+		args = ["--user", "--collect", "--quiet", "/bin/sh", file, "--version", tag, "--no-open", "--yes"];
 	} else {
 		cmd = "/bin/sh";
-		args = [file, "--version", tag, "--no-open"];
+		args = [file, "--version", tag, "--no-open", "--yes"];
 	}
 	const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], windowsHide: true, env: { ...process.env, STEWARD_REPO: REPO } });
 	child.unref();

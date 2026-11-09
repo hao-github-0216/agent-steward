@@ -1,0 +1,47 @@
+{
+  "components": [
+    {
+      "id": "app",
+      "name": { "zh-TW": "專案管家", "en": "agent-steward" },
+      "license": "MIT",
+      "home": "https://github.com/hao-github-0216/agent-steward",
+      "size": {
+        "download": { "zh-TW": "約 2 MB", "en": "~2 MB" },
+        "deps": { "zh-TW": "約 110 MB", "en": "~110 MB" }
+      }
+    },
+    {
+      "id": "node",
+      "name": { "zh-TW": "Node.js", "en": "Node.js" },
+      "version": "22",
+      "license": "MIT",
+      "home": "https://nodejs.org",
+      "source": "https://nodejs.org/dist/latest-v22.x/",
+      "size": { "zh-TW": "約 45 MB", "en": "~45 MB" }
+    },
+    {
+      "id": "herdr",
+      "name": { "zh-TW": "herdr", "en": "herdr" },
+      "repo": "hao-github-0216/herdr",
+      "tag": "steward-v0.9.5-1",
+      "license": "Apache-2.0",
+      "home": "https://github.com/hao-github-0216/herdr",
+      "note": {
+        "zh-TW": "專案管家用的 herdr 版本(上游 v0.9.5 加上資料夾導覽等修改)。安裝程式從這個 release 下載。",
+        "en": "The herdr build for agent-steward (upstream v0.9.5 with folder navigation and other changes). The installer downloads this release."
+      },
+      "size": { "zh-TW": "約 10 MB", "en": "~10 MB" }
+    },
+    {
+      "id": "ttyd",
+      "name": { "zh-TW": "ttyd（網頁終端機）", "en": "ttyd (web terminal)" },
+      "license": "MIT",
+      "home": "https://github.com/tsl0922/ttyd",
+      "source": {
+        "linux": "https://github.com/tsl0922/ttyd/releases/latest/download/",
+        "macos": "brew"
+      },
+      "size": { "zh-TW": "約 2 MB", "en": "~2 MB" }
+    }
+  ]
+}

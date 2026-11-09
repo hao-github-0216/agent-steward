@@ -27,12 +27,45 @@ jobs:
         run: echo "FRESH_HOME=$RUNNER_TEMP/fresh-home" >> "$GITHUB_ENV"
       - name: Shell syntax
         run: sh -n install.sh && sh -n uninstall.sh
+      - name: Refuse unattended installation without --yes
+        run: |
+          T=$(mktemp -d)
+          trap 'rm -rf "$T"' EXIT
+          if env -i HOME="$T" PATH="$FRESH_PATH" LANG=en_US.UTF-8 sh install.sh --from . </dev/null; then
+            echo "Installation should require --yes without a terminal"; exit 1
+          fi
+          test ! -e "$T/.agent-steward"
+          test ! -e "$T/.local"
+          test -z "$(ls -A "$T")"
+      - name: Dry run is read-only and detects the language
+        run: |
+          for CASE in en zh override; do
+            T=$(mktemp -d)
+            trap 'rm -rf "$T"' EXIT
+            if [ "$CASE" = en ]; then
+              env -i HOME="$T" PATH="$FRESH_PATH" LANG=en_US.UTF-8 sh install.sh --from . --dry-run > "$RUNNER_TEMP/dry-run.log"
+              grep -q 'agent-steward .* installer' "$RUNNER_TEMP/dry-run.log"
+            elif [ "$CASE" = zh ]; then
+              env -i HOME="$T" PATH="$FRESH_PATH" LANG=zh_TW.UTF-8 sh install.sh --from . --dry-run > "$RUNNER_TEMP/dry-run.log"
+              grep -q '安裝程式 — 看完再決定要不要裝' "$RUNNER_TEMP/dry-run.log"
+            else
+              env -i HOME="$T" PATH="$FRESH_PATH" LANG=zh_TW.UTF-8 sh install.sh --from . --dry-run --lang en > "$RUNNER_TEMP/dry-run.log"
+              grep -q 'agent-steward .* installer' "$RUNNER_TEMP/dry-run.log"
+            fi
+            test -z "$(ls -A "$T")"
+            rm -rf "$T"
+          done
       - name: Install on a "fresh machine" (curl | sh, like the README)
         run: |
           mkdir -p "$FRESH_HOME"
           env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 STEWARD_FORCE_NODE_DOWNLOAD=1 \
-            sh -c 'curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.sh" | sh -s -- --from "$0" --no-service' "$PWD" 2>&1 | tee install.log
-          grep -q "已安裝到" install.log
+            sh -c 'curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.sh" | sh -s -- --from "$0" --no-service --yes' "$PWD" 2>&1 | tee install.log
+          grep -q "Installed to" install.log
+      - name: Installation receipt exists
+        run: |
+          test -f "$FRESH_HOME/.agent-steward/install.json"
+          grep -q '"lang"' "$FRESH_HOME/.agent-steward/install.json"
+          grep -q '"version": 1' "$FRESH_HOME/.agent-steward/install.json"
       - name: Check what got installed
         run: |
           set -x
@@ -44,7 +77,7 @@ jobs:
           env -i HOME="$FRESH_HOME" "$FRESH_HOME/.local/bin/herdr" plugin list
           grep -q "folder_nav.mjs" "$FRESH_HOME/.config/herdr/config.toml"
           # macOS 沒有 Homebrew → 要看到補裝網頁終端機的說明;Linux 要下載到 ttyd
-          if [ "$RUNNER_OS" = macOS ]; then grep -q "Homebrew" install.log; else test -x "$FRESH_HOME/.agent-steward/bin/ttyd"; fi
+          if [ "$RUNNER_OS" = macOS ]; then grep -qi "brew" install.log; else test -x "$FRESH_HOME/.agent-steward/bin/ttyd"; fi
       - name: Start and health check
         run: |
           cd "$FRESH_HOME/.agent-steward/app"
@@ -53,7 +86,11 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8791/api/health && kill $PID && exit 0; sleep 1; done
           cat "$RUNNER_TEMP/steward.log"; exit 1
       - name: Install again (update path)
-        run: env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 sh install.sh --from . --no-service
+        run: env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 sh install.sh --from . --no-service --yes
+      - name: One-click update from an older app
+        run: |
+          printf '%s000\n' "$(date +%s)" > "$FRESH_HOME/.agent-steward/update.lock"
+          env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" LANG=en_US.UTF-8 sh install.sh --from . --no-service </dev/null
       - name: Uninstall
         run: |
           env -i HOME="$FRESH_HOME" PATH="$FRESH_PATH" sh "$FRESH_HOME/.agent-steward/app/uninstall.sh" --purge
