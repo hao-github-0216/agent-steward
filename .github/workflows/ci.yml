@@ -146,7 +146,9 @@ jobs:
             if ($text -notlike "*HOME_OK=$($T.FullName)*") { throw "Child HOME was not verified" }
             if ($code -eq 0) { throw "Installation should require -Yes without a terminal" }
             if ($text -notlike "*This window is not interactive*") { throw "Installer did not refuse with the expected message" }
-            if (@(Get-ChildItem -LiteralPath $T.FullName -Force).Count) { throw "Refused installation wrote to HOME" }
+            # PowerShell 換了家目錄後可能自己建立快取;只檢查安裝程式會寫的地方
+            Get-ChildItem -LiteralPath $T.FullName -Force -Recurse -Depth 2 | ForEach-Object { "in HOME: $($_.FullName.Substring($T.FullName.Length))" }
+            foreach ($d in @(".agent-steward", ".local")) { if (Test-Path (Join-Path $T.FullName $d)) { throw "Refused installation wrote $d to HOME" } }
           } finally {
             $env:USERPROFILE = $oldProfile
             $env:HOME = $oldHome
@@ -180,7 +182,8 @@ jobs:
               if ($lang -eq "zh-TW") {
                 if ($text -notmatch "安裝程式 — 看完再決定要不要裝") { throw "Missing Chinese title" }
               } elseif ($text -notmatch "agent-steward .* installer") { throw "Missing English title" }
-              if (@(Get-ChildItem -LiteralPath $T.FullName -Force).Count) { throw "Dry run wrote to HOME" }
+              Get-ChildItem -LiteralPath $T.FullName -Force -Recurse -Depth 2 | ForEach-Object { "in HOME: $($_.FullName.Substring($T.FullName.Length))" }
+              foreach ($d in @(".agent-steward", ".local")) { if (Test-Path (Join-Path $T.FullName $d)) { throw "Dry run wrote $d to HOME" } }
             } finally {
               $env:USERPROFILE = $oldProfile
               $env:HOME = $oldHome

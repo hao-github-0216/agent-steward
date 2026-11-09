@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const html = readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
+const html = readFileSync(new URL("../web/index.html", import.meta.url), "utf8").replace(/\r\n/g, "\n"); // Windows 取出的檔案是 CRLF
 const start = html.indexOf("const ball = { open:");
 const end = html.indexOf("/** 目前專案變了", start);
 assert.ok(start > 0 && end > start, "ball controller source seam");
