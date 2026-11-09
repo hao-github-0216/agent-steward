@@ -40,7 +40,7 @@ msg() {
   --without=a,b    不安裝指定元件（herdr、terminal、herdr-config、autostart、open、brew-node）
   --lang zh-TW|en  指定訊息語言
   --readd-herdr-key  把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  --skip-herdr     等同 --without=herdr
+  --skip-herdr     不下載 herdr，沿用你自己編的版本
   --no-service     等同 --without=autostart,open
   --no-open        等同 --without=open
 範例：sh install.sh --from . --yes --without=autostart,open' ;;
@@ -52,7 +52,7 @@ msg() {
   --without=a,b    Omit components (herdr, terminal, herdr-config, autostart, open, brew-node)
   --lang zh-TW|en  Set the message language
   --readd-herdr-key  Restore the herdr folder-navigation shortcut you removed
-  --skip-herdr     Same as --without=herdr
+  --skip-herdr     Don'\''t download herdr; use your own build
   --no-service     Same as --without=autostart,open
   --no-open        Same as --without=open
 Example: sh install.sh --from . --yes --without=autostart,open' ;;
@@ -76,6 +76,10 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:plan_herdr') printf '%s' '  herdr %s   %s   github.com/hao-github-0216/herdr (Apache-2.0, modified build)' ;;
 		'zh-TW:plan_herdr_current') printf '%s' '  herdr：已是 %s，不下載' ;;
 		'en:plan_herdr_current') printf '%s' '  herdr: already at %s, no download' ;;
+		'zh-TW:plan_herdr_skipped') printf '%s' '  herdr：不下載，沿用你自己的 herdr（--skip-herdr）' ;;
+		'en:plan_herdr_skipped') printf '%s' '  herdr: not downloaded; using your own herdr (--skip-herdr)' ;;
+		'zh-TW:win_plan_herdr_skipped') printf '%s' '  herdr：不下載，沿用你自己的 herdr（-SkipHerdr）' ;;
+		'en:win_plan_herdr_skipped') printf '%s' '  herdr: not downloaded; using your own herdr (-SkipHerdr)' ;;
 		'zh-TW:plan_ttyd') printf '%s' '  ttyd（網頁終端機）   %s   github.com/tsl0922/ttyd（MIT）' ;;
 		'en:plan_ttyd') printf '%s' '  ttyd (web terminal)   %s   github.com/tsl0922/ttyd (MIT)' ;;
 		'zh-TW:plan_ttyd_brew') printf '%s' '  macOS：會執行 brew install ttyd（Homebrew）' ;;
@@ -308,7 +312,7 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
   -Without a,b       不安裝指定元件（herdr、terminal、herdr-config、autostart、open、path）
   -Lang zh-TW|en     指定訊息語言
   -ReaddHerdrKey     把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  -SkipHerdr         等同 -Without herdr
+  -SkipHerdr         不下載 herdr，沿用你自己編的版本
   -NoOpen            等同 -Without open
   -NoService         等同 -Without autostart,open
 用 irm | iex 時改用環境變數 STEWARD_YES、STEWARD_DRY_RUN、STEWARD_WITHOUT、STEWARD_LANG、STEWARD_READD_HERDR_KEY。
@@ -321,7 +325,7 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
   -Without a,b       Omit components (herdr, terminal, herdr-config, autostart, open, path)
   -Lang zh-TW|en     Set the message language
   -ReaddHerdrKey     Restore the herdr folder-navigation shortcut you removed
-  -SkipHerdr         Same as -Without herdr
+  -SkipHerdr         Don'\''t download herdr; use your own build
   -NoOpen            Same as -Without open
   -NoService         Same as -Without autostart,open
 With irm | iex, use environment variables STEWARD_YES, STEWARD_DRY_RUN, STEWARD_WITHOUT, STEWARD_LANG, STEWARD_READD_HERDR_KEY instead.
@@ -430,6 +434,7 @@ tilde() { case "$1" in "$HOME"|"$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) prin
 FROM=""; VERSION=""; LANG_ARG="${STEWARD_LANG:-}"
 YES="${STEWARD_YES:-0}"; DRY_RUN="${STEWARD_DRY_RUN:-0}"
 READD="${STEWARD_READD_HERDR_KEY:-0}"
+SKIP_HERDR_DOWNLOAD=0
 WITHOUT_INPUT="${STEWARD_WITHOUT:-}"; WITHOUT_EXPLICIT=0
 [ -z "$WITHOUT_INPUT" ] || WITHOUT_EXPLICIT=1
 ARG_ERROR=""; ARG_VALUE=""; HELP=0
@@ -450,7 +455,7 @@ while [ $# -gt 0 ]; do
 		--yes|-y) YES=1; shift ;;
 		--dry-run) DRY_RUN=1; shift ;;
 		--readd-herdr-key) READD=1; shift ;;
-		--skip-herdr) WITHOUT_INPUT="${WITHOUT_INPUT:+$WITHOUT_INPUT,}herdr"; WITHOUT_EXPLICIT=1; shift ;;
+		--skip-herdr) SKIP_HERDR_DOWNLOAD=1; shift ;;
 		--no-service) WITHOUT_INPUT="${WITHOUT_INPUT:+$WITHOUT_INPUT,}autostart,open"; WITHOUT_EXPLICIT=1; shift ;;
 		--no-open) WITHOUT_INPUT="${WITHOUT_INPUT:+$WITHOUT_INPUT,}open"; WITHOUT_EXPLICIT=1; shift ;;
 		--update) shift ;;
@@ -575,8 +580,9 @@ print_plan() {
 	if [ "$IS_UPDATE" = 1 ]; then
 		tl plan_update_title "$OLD_VERSION" "$VERSION"
 		extra=""
-		if ! without herdr && [ "$INSTALLED_HERDR_TAG" != "$HERDR_TAG" ]; then extra=$(t update_herdr "$HERDR_TAG"); fi
+		if ! without herdr && [ "$SKIP_HERDR_DOWNLOAD" = 0 ] && [ "$INSTALLED_HERDR_TAG" != "$HERDR_TAG" ]; then extra=$(t update_herdr "$HERDR_TAG"); fi
 		tl update_downloads "$SIZE_APP" "$SIZE_APP_DEPS" "$extra"
+		if ! without herdr && [ "$SKIP_HERDR_DOWNLOAD" = 1 ]; then tl plan_herdr_skipped; fi
 		if ! without autostart; then tl update_restart; fi
 		if [ "$INHERITED" = 1 ]; then tl update_keep; else tl update_choices; fi
 		print_without
@@ -587,7 +593,8 @@ print_plan() {
 		if [ -n "$FROM" ]; then tl plan_local "$(tilde "$FROM")" "$VERSION"; fi
 		if [ -n "$NODE" ]; then tl plan_existing Node.js "$(tilde "$NODE")"; elif [ "$BREW_NODE" = 1 ]; then tl plan_node_brew; else tl plan_node "$NODE_VERSION" "$SIZE_NODE"; fi
 		if ! without herdr; then
-			if [ "$INSTALLED_HERDR_TAG" = "$HERDR_TAG" ]; then tl plan_herdr_current "$HERDR_TAG"; else tl plan_herdr "$HERDR_TAG" "$SIZE_HERDR"; fi
+			if [ "$SKIP_HERDR_DOWNLOAD" = 1 ]; then tl plan_herdr_skipped
+			elif [ "$INSTALLED_HERDR_TAG" = "$HERDR_TAG" ]; then tl plan_herdr_current "$HERDR_TAG"; else tl plan_herdr "$HERDR_TAG" "$SIZE_HERDR"; fi
 		fi
 		if ! without terminal; then
 			if [ -n "$TTYD" ]; then tl plan_existing "$TTYD_NAME" "$(tilde "$TTYD")"; else
@@ -597,7 +604,7 @@ print_plan() {
 		fi
 		printf '\n'; tl plan_places
 		tl plan_root "$(tilde "$ROOT")"; tl plan_steward "$(tilde "$LOCALBIN/steward")"
-		if ! without herdr; then tl plan_herdr_link "$(tilde "$LOCALBIN/herdr")"; fi
+		if ! without herdr && [ "$SKIP_HERDR_DOWNLOAD" = 0 ]; then tl plan_herdr_link "$(tilde "$LOCALBIN/herdr")"; fi
 		if ! without herdr-config; then
 			tl plan_plugins "$(tilde "$PLUG")"; tl plan_config_header; tl plan_config "$(tilde "$(dirname "$PLUG")/config.toml")"
 		fi
@@ -738,7 +745,7 @@ if [ "$NODE_DOWNLOADED" = 1 ]; then receipt change file "$ROOT/node"; fi
 HERDR="$LOCALBIN/herdr"
 HERDR_SYMLINK=false
 if [ -L "$HERDR" ] && [ "$(readlink "$HERDR")" = "$BINDIR/herdr" ]; then HERDR_SYMLINK=true; fi
-if ! without herdr; then
+if ! without herdr && [ "$SKIP_HERDR_DOWNLOAD" = 0 ]; then
 	HREPO=$("$NODE" -e 'console.log(require(process.argv[1]).repo)' "$APP/herdr.json")
 	HTAG=$("$NODE" -e 'console.log(require(process.argv[1]).tag)' "$APP/herdr.json")
 	if [ "$INSTALLED_HERDR_TAG" != "$HTAG" ]; then

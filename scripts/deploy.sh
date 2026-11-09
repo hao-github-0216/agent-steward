@@ -9,4 +9,4 @@ if [ -n "$(git status --porcelain -- src bin web integrations herdr-plugins inst
 	echo "有未 commit 的改動,先 commit 再部署" >&2
 	exit 1
 fi
-exec sh "$SRC/install.sh" --from "$SRC" --skip-herdr --no-open
+exec sh "$SRC/install.sh" --from "$SRC" --skip-herdr --no-open --yes

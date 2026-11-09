@@ -38,7 +38,7 @@ msg() {
   --without=a,b    不安裝指定元件（herdr、terminal、herdr-config、autostart、open、brew-node）
   --lang zh-TW|en  指定訊息語言
   --readd-herdr-key  把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  --skip-herdr     等同 --without=herdr
+  --skip-herdr     不下載 herdr，沿用你自己編的版本
   --no-service     等同 --without=autostart,open
   --no-open        等同 --without=open
 範例：sh install.sh --from . --yes --without=autostart,open' ;;
@@ -50,7 +50,7 @@ msg() {
   --without=a,b    Omit components (herdr, terminal, herdr-config, autostart, open, brew-node)
   --lang zh-TW|en  Set the message language
   --readd-herdr-key  Restore the herdr folder-navigation shortcut you removed
-  --skip-herdr     Same as --without=herdr
+  --skip-herdr     Don'\''t download herdr; use your own build
   --no-service     Same as --without=autostart,open
   --no-open        Same as --without=open
 Example: sh install.sh --from . --yes --without=autostart,open' ;;
@@ -74,6 +74,10 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:plan_herdr') printf '%s' '  herdr %s   %s   github.com/hao-github-0216/herdr (Apache-2.0, modified build)' ;;
 		'zh-TW:plan_herdr_current') printf '%s' '  herdr：已是 %s，不下載' ;;
 		'en:plan_herdr_current') printf '%s' '  herdr: already at %s, no download' ;;
+		'zh-TW:plan_herdr_skipped') printf '%s' '  herdr：不下載，沿用你自己的 herdr（--skip-herdr）' ;;
+		'en:plan_herdr_skipped') printf '%s' '  herdr: not downloaded; using your own herdr (--skip-herdr)' ;;
+		'zh-TW:win_plan_herdr_skipped') printf '%s' '  herdr：不下載，沿用你自己的 herdr（-SkipHerdr）' ;;
+		'en:win_plan_herdr_skipped') printf '%s' '  herdr: not downloaded; using your own herdr (-SkipHerdr)' ;;
 		'zh-TW:plan_ttyd') printf '%s' '  ttyd（網頁終端機）   %s   github.com/tsl0922/ttyd（MIT）' ;;
 		'en:plan_ttyd') printf '%s' '  ttyd (web terminal)   %s   github.com/tsl0922/ttyd (MIT)' ;;
 		'zh-TW:plan_ttyd_brew') printf '%s' '  macOS：會執行 brew install ttyd（Homebrew）' ;;
@@ -306,7 +310,7 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
   -Without a,b       不安裝指定元件（herdr、terminal、herdr-config、autostart、open、path）
   -Lang zh-TW|en     指定訊息語言
   -ReaddHerdrKey     把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  -SkipHerdr         等同 -Without herdr
+  -SkipHerdr         不下載 herdr，沿用你自己編的版本
   -NoOpen            等同 -Without open
   -NoService         等同 -Without autostart,open
 用 irm | iex 時改用環境變數 STEWARD_YES、STEWARD_DRY_RUN、STEWARD_WITHOUT、STEWARD_LANG、STEWARD_READD_HERDR_KEY。
@@ -319,7 +323,7 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
   -Without a,b       Omit components (herdr, terminal, herdr-config, autostart, open, path)
   -Lang zh-TW|en     Set the message language
   -ReaddHerdrKey     Restore the herdr folder-navigation shortcut you removed
-  -SkipHerdr         Same as -Without herdr
+  -SkipHerdr         Don'\''t download herdr; use your own build
   -NoOpen            Same as -Without open
   -NoService         Same as -Without autostart,open
 With irm | iex, use environment variables STEWARD_YES, STEWARD_DRY_RUN, STEWARD_WITHOUT, STEWARD_LANG, STEWARD_READD_HERDR_KEY instead.

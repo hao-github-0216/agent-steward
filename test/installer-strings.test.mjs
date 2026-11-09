@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -47,6 +49,21 @@ test("literal message keys in both PowerShell installers exist", () => {
 		assert.ok(keys.length > 0, file);
 		for (const key of keys) assert.ok(Object.hasOwn(strings, key), `${file}: missing ${key}`);
 	}
+});
+
+test("--skip-herdr only skips the herdr download without omitting components", { skip: process.platform === "win32" }, (t) => {
+	const home = mkdtempSync(join(tmpdir(), "steward-skip-herdr-"));
+	t.after(() => rmSync(home, { recursive: true, force: true }));
+	const result = spawnSync("/usr/bin/env", [
+		"-i", `HOME=${home}`, "PATH=/usr/bin:/bin", "LANG=en_US.UTF-8",
+		"sh", "install.sh", "--from", ".", "--dry-run", "--skip-herdr",
+	], { cwd: ROOT, encoding: "utf8", timeout: 30_000 });
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	assert.ok(result.stdout.includes(strings.plan_herdr_skipped.en), result.stdout);
+	assert.doesNotMatch(result.stdout, /這次不裝|Omitted this time/);
+	assert.ok(result.stdout.includes("Two herdr plugins"), result.stdout);
+	assert.ok(result.stdout.includes(process.platform === "darwin" ? "com.agent-steward.terminal" : "agent-steward-terminal"), result.stdout);
+	assert.deepEqual(readdirSync(home), [], "Dry run must not write to HOME");
 });
 
 test("component sizes are localized", () => {

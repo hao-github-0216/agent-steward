@@ -24,7 +24,7 @@ $Msg = @{
   --without=a,b    不安裝指定元件（herdr、terminal、herdr-config、autostart、open、brew-node）
   --lang zh-TW|en  指定訊息語言
   --readd-herdr-key  把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  --skip-herdr     等同 --without=herdr
+  --skip-herdr     不下載 herdr，沿用你自己編的版本
   --no-service     等同 --without=autostart,open
   --no-open        等同 --without=open
 範例：sh install.sh --from . --yes --without=autostart,open'
@@ -38,6 +38,8 @@ $Msg = @{
 		'plan_node_brew' = '  Node.js：會執行 brew install node（Homebrew）'
 		'plan_herdr' = '  herdr {0}   {1}   github.com/hao-github-0216/herdr（Apache-2.0，修改版）'
 		'plan_herdr_current' = '  herdr：已是 {0}，不下載'
+		'plan_herdr_skipped' = '  herdr：不下載，沿用你自己的 herdr（--skip-herdr）'
+		'win_plan_herdr_skipped' = '  herdr：不下載，沿用你自己的 herdr（-SkipHerdr）'
 		'plan_ttyd' = '  ttyd（網頁終端機）   {0}   github.com/tsl0922/ttyd（MIT）'
 		'plan_ttyd_brew' = '  macOS：會執行 brew install ttyd（Homebrew）'
 		'plan_ttyd_no_brew' = '  macOS：ttyd 需要 Homebrew；沒有 Homebrew 時先略過，不會自動安裝 Homebrew。'
@@ -158,7 +160,7 @@ $Msg = @{
   -Without a,b       不安裝指定元件（herdr、terminal、herdr-config、autostart、open、path）
   -Lang zh-TW|en     指定訊息語言
   -ReaddHerdrKey     把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  -SkipHerdr         等同 -Without herdr
+  -SkipHerdr         不下載 herdr，沿用你自己編的版本
   -NoOpen            等同 -Without open
   -NoService         等同 -Without autostart,open
 用 irm | iex 時改用環境變數 STEWARD_YES、STEWARD_DRY_RUN、STEWARD_WITHOUT、STEWARD_LANG、STEWARD_READD_HERDR_KEY。
@@ -207,7 +209,7 @@ $Msg = @{
   --without=a,b    Omit components (herdr, terminal, herdr-config, autostart, open, brew-node)
   --lang zh-TW|en  Set the message language
   --readd-herdr-key  Restore the herdr folder-navigation shortcut you removed
-  --skip-herdr     Same as --without=herdr
+  --skip-herdr     Don''t download herdr; use your own build
   --no-service     Same as --without=autostart,open
   --no-open        Same as --without=open
 Example: sh install.sh --from . --yes --without=autostart,open'
@@ -221,6 +223,8 @@ Example: sh install.sh --from . --yes --without=autostart,open'
 		'plan_node_brew' = '  Node.js: run brew install node (Homebrew)'
 		'plan_herdr' = '  herdr {0}   {1}   github.com/hao-github-0216/herdr (Apache-2.0, modified build)'
 		'plan_herdr_current' = '  herdr: already at {0}, no download'
+		'plan_herdr_skipped' = '  herdr: not downloaded; using your own herdr (--skip-herdr)'
+		'win_plan_herdr_skipped' = '  herdr: not downloaded; using your own herdr (-SkipHerdr)'
 		'plan_ttyd' = '  ttyd (web terminal)   {0}   github.com/tsl0922/ttyd (MIT)'
 		'plan_ttyd_brew' = '  macOS: run brew install ttyd (Homebrew)'
 		'plan_ttyd_no_brew' = '  macOS: ttyd requires Homebrew; skip it if Homebrew is unavailable. Homebrew will not be installed.'
@@ -341,7 +345,7 @@ Example: sh install.sh --from . --yes --without=autostart,open'
   -Without a,b       Omit components (herdr, terminal, herdr-config, autostart, open, path)
   -Lang zh-TW|en     Set the message language
   -ReaddHerdrKey     Restore the herdr folder-navigation shortcut you removed
-  -SkipHerdr         Same as -Without herdr
+  -SkipHerdr         Don''t download herdr; use your own build
   -NoOpen            Same as -Without open
   -NoService         Same as -Without autostart,open
 With irm | iex, use environment variables STEWARD_YES, STEWARD_DRY_RUN, STEWARD_WITHOUT, STEWARD_LANG, STEWARD_READD_HERDR_KEY instead.
