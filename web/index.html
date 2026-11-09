@@ -1905,6 +1905,9 @@ function aboutPane() {
 		${u?.notes && u.hasUpdate ? `<pre class="upd-notes">${esc(u.notes)}</pre>` : ""}
 		<div><button class="small" id="updCheck">檢查更新</button> ${u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">更新到 ${esc(u.latest)}</button>` : ""}</div>
 		<pre class="upd-log" id="updLog" ${u?.running ? "" : "hidden"}></pre>
+		<h4>第三方元件</h4>
+		<div class="hint">安裝程式會從各元件的官方來源下載這些軟體，並驗證 SHA-256。</div>
+		${u?.components ? u.components.map((c) => `<div>${esc(c.name)} ${esc(c.version)} · ${esc(c.license)} · ${/^https?:\/\//i.test(c.home) ? `<a href="${esc(c.home)}" target="_blank" rel="noopener">首頁連結</a>` : esc(c.home)}</div>`).join("") : `<div class="hint">${u ? "無法載入第三方元件" : "讀取中…"}</div>`}
 		<h4>移除專案管家</h4>
 		<div class="hint">在這台電腦的終端機執行(資料會保留;加 ${win ? "<code>-Purge</code>" : "<code>--purge</code>"} 連資料一起刪除):</div>
 		<pre class="upd-cmd">${win ? "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1" : "sh ~/.agent-steward/app/uninstall.sh"}</pre>`;

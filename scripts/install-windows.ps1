@@ -48,6 +48,7 @@ $Msg = @{
 		'plan_app' = '  專案管家 {0} + 相依套件   {1} + {2}   github.com/hao-github-0216、registry.npmjs.org（MIT）'
 		'plan_local' = '  程式來自本機原始碼：{0}（{1}）'
 		'plan_node' = '  Node.js {0}   {1}   nodejs.org（MIT）'
+		'plan_node_pin' = '  Node.js：需要下載時固定使用 {0}。'
 		'plan_existing' = '  {0}：已有，沿用：{1}'
 		'plan_node_brew' = '  Node.js：會執行 brew install node（Homebrew）'
 		'plan_herdr' = '  herdr {0}   {1}   github.com/hao-github-0216/herdr（Apache-2.0，修改版）'
@@ -105,6 +106,14 @@ $Msg = @{
 		'node_connect_failed' = '連不上 nodejs.org。'
 		'node_file_missing' = '找不到 Node.js 下載檔。'
 		'node_checksum_failed' = 'Node.js 檔案驗證失敗（sha256 不符）。'
+		'no_hash_tool' = '找不到 SHA-256 檢查工具（sha256sum 或 shasum），為了安全不繼續安裝。'
+		'checksum_failed' = '{0} 的檢查碼不符，檔案可能損壞或被竄改，已停止安裝並刪掉這個檔案。'
+		'latest_unavailable' = '查不到最新版本（連不上 GitHub）。請稍後再試，或用 --version 指定版本。'
+		'win_latest_unavailable' = '查不到最新版本（連不上 GitHub）。請稍後再試，或用 -Version 指定版本。'
+		'main_unverified' = 'main 沒有檢查碼，只適合開發用。'
+		'app_no_checksum' = '{0} 沒有檢查碼（較舊的版本沒有）。請改裝最新版，或用該版本自己的安裝程式。'
+		'plan_verify' = '下載的每個檔案都會比對 SHA-256，不符就停止安裝。'
+		'plan_main_unverified' = 'main 沒有檢查碼：專案管家程式本身不驗證，只適合開發用；其他元件照樣驗證。'
 		'npm_missing' = '找不到 npm。'
 		'node_ready' = 'Node.js {0}（{1}）'
 		'app_from_git' = '從本機原始碼安裝（{0} 目前的 commit）'
@@ -233,6 +242,7 @@ Example: sh install.sh --from . --yes --without=autostart,open'
 		'plan_app' = '  agent-steward {0} + dependencies   {1} + {2}   github.com/hao-github-0216, registry.npmjs.org (MIT)'
 		'plan_local' = '  App source: {0} ({1})'
 		'plan_node' = '  Node.js {0}   {1}   nodejs.org (MIT)'
+		'plan_node_pin' = '  Node.js: downloads are pinned to {0}.'
 		'plan_existing' = '  {0}: already installed, reuse: {1}'
 		'plan_node_brew' = '  Node.js: run brew install node (Homebrew)'
 		'plan_herdr' = '  herdr {0}   {1}   github.com/hao-github-0216/herdr (Apache-2.0, modified build)'
@@ -290,6 +300,14 @@ Example: sh install.sh --from . --yes --without=autostart,open'
 		'node_connect_failed' = 'Cannot connect to nodejs.org.'
 		'node_file_missing' = 'Node.js download not found.'
 		'node_checksum_failed' = 'Node.js verification failed (sha256 mismatch).'
+		'no_hash_tool' = 'No SHA-256 tool (sha256sum or shasum) was found, so installation stops for safety.'
+		'checksum_failed' = 'The checksum for {0} does not match. The file may be corrupted or tampered with, so installation stopped and the file was deleted.'
+		'latest_unavailable' = 'Could not find the latest version (GitHub is unreachable). Try again later, or pass --version.'
+		'win_latest_unavailable' = 'Could not find the latest version (GitHub is unreachable). Try again later, or pass -Version.'
+		'main_unverified' = 'main has no checksum and is only meant for development.'
+		'app_no_checksum' = '{0} has no checksum (older versions don''t). Install the latest version instead, or use that version''s own installer.'
+		'plan_verify' = 'Every download is checked against its SHA-256; installation stops on a mismatch.'
+		'plan_main_unverified' = 'main has no checksum: the agent-steward app itself is not verified (development only); other components are still verified.'
 		'npm_missing' = 'npm not found.'
 		'node_ready' = 'Node.js {0} ({1})'
 		'app_from_git' = 'Installing the current commit from local source ({0})'
@@ -389,21 +407,105 @@ Example: powershell -ExecutionPolicy Bypass -File install.ps1 -From . -Yes -With
 	}
 }
 function T([string]$k) { $s = $Msg[$L][$k]; if ($null -eq $s) { $s = $k }; if ($args.Count) { $s -f $args } else { $s -replace '\{\{','{' -replace '\}\}','}' } }
+$AppPinVersion = ''
+$AppPinSha256 = ''
+$AppPinZipSha256 = ''
 $AppLicense = 'MIT'
 $AppHome = 'https://github.com/hao-github-0216/agent-steward'
-$NodeVersion = '22'
+$NodeVersion = '24.22.2'
 $NodeLicense = 'MIT'
 $NodeHome = 'https://nodejs.org'
-$NodeSource = 'https://nodejs.org/dist/latest-v22.x/'
+$NodeMacosAarch64Name = 'node-v24.22.2-darwin-arm64.tar.gz'
+$NodeMacosAarch64Url = 'https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-arm64.tar.gz'
+$NodeMacosAarch64Sha256 = 'aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a'
+$NodeMacosX8664Name = 'node-v24.22.2-darwin-x64.tar.gz'
+$NodeMacosX8664Url = 'https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-x64.tar.gz'
+$NodeMacosX8664Sha256 = 'd5e336d588c45be0c37dbd52cc29895593009ca4997a77a1fd02815131ed0e52'
+$NodeLinuxAarch64Name = 'node-v24.22.2-linux-arm64.tar.gz'
+$NodeLinuxAarch64Url = 'https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.gz'
+$NodeLinuxAarch64Sha256 = '95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2'
+$NodeLinuxX8664Name = 'node-v24.22.2-linux-x64.tar.gz'
+$NodeLinuxX8664Url = 'https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.gz'
+$NodeLinuxX8664Sha256 = '361718c444e49af2ca5a110c83ba6a8901143f23ab285ebbef0341f391f482a9'
+$NodeWindowsX8664Name = 'node-v24.22.2-win-x64.zip'
+$NodeWindowsX8664Url = 'https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-x64.zip'
+$NodeWindowsX8664Sha256 = 'ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2'
+$NodeWindowsAarch64Name = 'node-v24.22.2-win-arm64.zip'
+$NodeWindowsAarch64Url = 'https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-arm64.zip'
+$NodeWindowsAarch64Sha256 = 'f47968c213105077f64c6510f007632c0ca2574802a0b5067c327c49abe1c468'
+$NodeSource = 'https://nodejs.org/dist/v24.22.2/'
 $HerdrRepo = 'hao-github-0216/herdr'
 $HerdrTag = 'steward-v0.9.5-1'
 $HerdrLicense = 'Apache-2.0'
 $HerdrHome = 'https://github.com/hao-github-0216/herdr'
+$HerdrLinuxAarch64Name = 'herdr-linux-aarch64'
+$HerdrLinuxAarch64Url = 'https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-linux-aarch64'
+$HerdrLinuxAarch64Sha256 = '46af1b52e1fbc3c66e8a3aa5e7bc03ce645df153bcd282930ea4a816945727a4'
+$HerdrLinuxX8664Name = 'herdr-linux-x86_64'
+$HerdrLinuxX8664Url = 'https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-linux-x86_64'
+$HerdrLinuxX8664Sha256 = 'df047edd3fa3ef7eaa3a63959f29e6405fb84ce51f9c1b0ebb2a21eefe2c0de9'
+$HerdrMacosAarch64Name = 'herdr-macos-aarch64'
+$HerdrMacosAarch64Url = 'https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-macos-aarch64'
+$HerdrMacosAarch64Sha256 = '22292b826b2267804516ff1eb6f67b06500c90fee4f9ded5c65f28efb79464fe'
+$HerdrMacosX8664Name = 'herdr-macos-x86_64'
+$HerdrMacosX8664Url = 'https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-macos-x86_64'
+$HerdrMacosX8664Sha256 = 'e18df67765830f3dcf2f2be8560703262528d6532bd5dfa04c0a6a85c1ffc9d1'
+$HerdrWindowsX8664Name = 'herdr-windows-x86_64.zip'
+$HerdrWindowsX8664Url = 'https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-windows-x86_64.zip'
+$HerdrWindowsX8664Sha256 = 'aee195ae591ad948a19de640c2879f657fc198eab00c97c8449b61c5492fcc15'
+$TtydRepo = 'tsl0922/ttyd'
+$TtydVersion = '1.7.7'
 $TtydLicense = 'MIT'
 $TtydHome = 'https://github.com/tsl0922/ttyd'
-$TtydSourceLinux = 'https://github.com/tsl0922/ttyd/releases/latest/download/'
+$TtydLinuxX8664Name = 'ttyd.x86_64'
+$TtydLinuxX8664Url = 'https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64'
+$TtydLinuxX8664Sha256 = '8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55'
+$TtydLinuxAarch64Name = 'ttyd.aarch64'
+$TtydLinuxAarch64Url = 'https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.aarch64'
+$TtydLinuxAarch64Sha256 = 'b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165'
+$TtydWindowsX8664Name = 'ttyd.win32.exe'
+$TtydWindowsX8664Url = 'https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe'
+$TtydWindowsX8664Sha256 = 'e33a27501b10b96981335bcba938b1145c7f52551a343e72160f00ab71832b37'
+$TtydSourceLinux = 'https://github.com/tsl0922/ttyd/releases/download/1.7.7/'
 $TtydSourceMacos = 'brew'
-$TtydSourceWindows = 'https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.win32.exe'
+$TtydSourceWindows = 'https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe'
+$UvRepo = 'astral-sh/uv'
+$UvVersion = '0.13.7'
+$UvLicense = 'MIT OR Apache-2.0'
+$UvHome = 'https://github.com/astral-sh/uv'
+$UvMacosAarch64Name = 'uv-aarch64-apple-darwin.tar.gz'
+$UvMacosAarch64Url = 'https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-apple-darwin.tar.gz'
+$UvMacosAarch64Sha256 = '81b811b57e4624df7ed3aac148e0359100d9962f3d9dce00aec533dc2e086731'
+$UvMacosX8664Name = 'uv-x86_64-apple-darwin.tar.gz'
+$UvMacosX8664Url = 'https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-apple-darwin.tar.gz'
+$UvMacosX8664Sha256 = '20c47e4c1f630b8abaff8c291fa9b9aa300fef92c4fbff95adf198b55287cda7'
+$UvLinuxAarch64Name = 'uv-aarch64-unknown-linux-gnu.tar.gz'
+$UvLinuxAarch64Url = 'https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-unknown-linux-gnu.tar.gz'
+$UvLinuxAarch64Sha256 = '71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc'
+$UvLinuxX8664Name = 'uv-x86_64-unknown-linux-gnu.tar.gz'
+$UvLinuxX8664Url = 'https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-unknown-linux-gnu.tar.gz'
+$UvLinuxX8664Sha256 = 'c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83'
+$UvWindowsX8664Name = 'uv-x86_64-pc-windows-msvc.zip'
+$UvWindowsX8664Url = 'https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-pc-windows-msvc.zip'
+$UvWindowsX8664Sha256 = '0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021'
+$TinytexRepo = 'rstudio/tinytex-releases'
+$TinytexTag = 'v2026.11'
+$TinytexLicense = 'MIT (TinyTeX); TeX Live package licenses'
+$TinytexHome = 'https://yihui.org/tinytex/'
+$TinytexDarwinName = 'TinyTeX-1-darwin-v2026.11.tar.xz'
+$TinytexDarwinUrl = 'https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-darwin-v2026.11.tar.xz'
+$TinytexDarwinSha256 = '9416a257c4caea2f82351fa2f89252b8bd75dceeb0ce6e442d25530b1922a02d'
+$TinytexLinuxArm64Name = 'TinyTeX-1-linux-arm64-v2026.11.tar.xz'
+$TinytexLinuxArm64Url = 'https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-linux-arm64-v2026.11.tar.xz'
+$TinytexLinuxArm64Sha256 = 'b351c365e4085a179c8d76fddadff612d4e4fd16a946953fb8b9d331f4f7344a'
+$TinytexLinuxX8664Name = 'TinyTeX-1-linux-x86_64-v2026.11.tar.xz'
+$TinytexLinuxX8664Url = 'https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-linux-x86_64-v2026.11.tar.xz'
+$TinytexLinuxX8664Sha256 = '5b75befa848deae702ae6fa12ff0eef3f110d7e4e2a979ae99f101eba3c9c70d'
+$TinytexWindowsName = 'TinyTeX-1-windows-v2026.11.exe'
+$TinytexWindowsUrl = 'https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-windows-v2026.11.exe'
+$TinytexWindowsSha256 = '375e8adec0177cd9ec6a1f8c76efe0c22b1a0c260e76a00386bcea52d88e5354'
+$PythonPackagesLicense = 'BSD-3-Clause (ipykernel, numpy, pandas); PSF (matplotlib)'
+$PythonPackagesHome = 'https://pypi.org/'
 function Set-ComponentData {
 	switch ($L) {
 		'zh-TW' {
@@ -417,6 +519,12 @@ function Set-ComponentData {
 			$SizeHerdr = '約 10 MB'
 			$TtydName = 'ttyd（網頁終端機）'
 			$SizeTtyd = '約 2 MB'
+			$UvName = 'uv（Python 套件管理工具）'
+			$SizeUv = '約 20 MB'
+			$TinytexName = 'TinyTeX'
+			$SizeTinytex = '約 250 MB'
+			$PythonPackagesName = 'Python 套件'
+			$SizePythonPackages = '約 300 MB（含 Python）'
 		}
 		'en' {
 			$AppName = 'agent-steward'
@@ -429,6 +537,12 @@ function Set-ComponentData {
 			$SizeHerdr = '~10 MB'
 			$TtydName = 'ttyd (web terminal)'
 			$SizeTtyd = '~2 MB'
+			$UvName = 'uv (Python package manager)'
+			$SizeUv = '~20 MB'
+			$TinytexName = 'TinyTeX'
+			$SizeTinytex = '~250 MB'
+			$PythonPackagesName = 'Python packages'
+			$SizePythonPackages = '~300 MB (including Python)'
 		}
 	}
 }
@@ -446,6 +560,7 @@ $LocalBin = Join-Path $HOME ".local\bin"
 $Logs = Join-Path $Root "logs"
 $HerdrDir = Join-Path $Bin "herdr"
 $TtydPath = Join-Path $Bin "ttyd.exe"
+$TtydVersionFile = Join-Path $Bin "ttyd.version"
 $Plug = Join-Path $env:APPDATA "herdr\plugins-local"
 $Runner = Join-Path $Root "run-service.ps1"
 $L = if ((Get-UICulture).Name -like "zh*") { "zh-TW" } else { "en" }
@@ -457,6 +572,16 @@ function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Warn($m) { Write-Host ((T 'warning_prefix') + $m) -ForegroundColor Yellow }
 # irm | iex 時不能 exit，否則會關掉使用者的視窗。
 function Die($m) { throw $m }
+function Verify-Checksum([string]$Path, [string]$Expected) {
+	if ($Expected -notmatch '\A[0-9a-fA-F]{64}\z') {
+		Remove-Item -Force $Path -ErrorAction SilentlyContinue
+		Die (T 'checksum_failed' (Split-Path $Path -Leaf))
+	}
+	if ((Get-FileHash -Algorithm SHA256 $Path).Hash -ne $Expected) {
+		Remove-Item -Force $Path -ErrorAction SilentlyContinue
+		Die (T 'checksum_failed' (Split-Path $Path -Leaf))
+	}
+}
 function Read-Json($Path) {
 	try { Get-Content $Path -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json } catch { $null }
 }
@@ -520,7 +645,6 @@ try {
 	}
 	$env:STEWARD_LANG = $L
 	. Set-ComponentData
-	$NodeDownloadUrl = $NodeSource.TrimEnd("/")
 
 	# 安裝來源、版本與元件的偵測只讀既有檔案。
 	$IsUpdate = Test-Path (Join-Path $App "REVISION") -PathType Leaf
@@ -539,11 +663,15 @@ try {
 	} else {
 		if (-not $Version) {
 			try {
-				$Version = (Invoke-RestMethod -UseBasicParsing -TimeoutSec 20 -Headers @{ "User-Agent" = "agent-steward" } "https://api.github.com/repos/$Repo/releases/latest").tag_name
-			} catch { $Version = "" }
+				$Latest = Invoke-WebRequest -UseBasicParsing -TimeoutSec 20 -Headers @{ "User-Agent" = "agent-steward" } "https://api.github.com/repos/$Repo/releases/latest"
+				$Version = ($Latest.Content | ConvertFrom-Json).tag_name
+			} catch { Die (T 'win_latest_unavailable') }
+			if (-not $Version) { Die (T 'win_latest_unavailable') }
 		}
-		if (-not $Version) { $Version = "main" }
+		if ($Version -eq "main") { Warn (T 'main_unverified') }
 	}
+	$Verification = if ($Version -eq "main") { T 'plan_main_unverified' } else { T 'plan_verify' }
+	$PlanVersion = $Version
 	$Node = $null
 	$NodeSource = "existing"
 	$NodeDownloaded = $false
@@ -554,7 +682,8 @@ try {
 	}
 	$TagFile = Join-Path $Bin "herdr.tag"
 	$InstalledHerdrTag = if (Test-Path $TagFile) { (Get-Content $TagFile -Raw -Encoding UTF8).Trim() } else { "" }
-	$Ttyd = if (Test-Path $TtydPath -PathType Leaf) { $TtydPath } else { "" }
+	$InstalledTtydVersion = if (Test-Path $TtydVersionFile -PathType Leaf) { (Get-Content $TtydVersionFile -Raw -Encoding UTF8).Trim() } else { "" }
+	$Ttyd = if ((Test-Path $TtydPath -PathType Leaf) -and $InstalledTtydVersion -eq $TtydVersion) { $TtydPath } else { "" }
 	$TtydSource = "existing"
 	$UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 	$PathParts = @($UserPath -split ";" | Where-Object { $_ })
@@ -605,7 +734,8 @@ try {
 	function Print-Plan {
 		Write-Host ""
 		if ($IsUpdate) {
-			Write-Host (T 'plan_update_title' $OldVersion $Version)
+			Write-Host (T 'plan_update_title' $OldVersion $PlanVersion)
+			Write-Host $Verification
 			$Extra = ""
 			if (-not (Omitted 'herdr') -and -not $SkipHerdr -and $InstalledHerdrTag -ne $HerdrTag) { $Extra = T 'update_herdr' $HerdrTag }
 			Write-Host (T 'update_downloads' $SizeApp $SizeAppDeps $Extra)
@@ -614,12 +744,13 @@ try {
 			if ($Choice.Inherited) { Write-Host (T 'update_keep') } else { Write-Host (T 'update_choices') }
 			Print-Without
 		} else {
-			Write-Host (T 'plan_title' $Version)
+			Write-Host (T 'plan_title' $PlanVersion)
+			Write-Host $Verification
 			Write-Host ""
 			Write-Host (T 'plan_downloads')
-			Write-Host (T 'plan_app' $Version $SizeApp $SizeAppDeps)
+			Write-Host (T 'plan_app' $PlanVersion $SizeApp $SizeAppDeps)
 			if ($From) { Write-Host (T 'plan_local' (Display-Path $From) $Version) }
-			if ($Node) { Write-Host (T 'plan_existing' "Node.js" (Display-Path $Node)) } else { Write-Host (T 'plan_node' $NodeVersion $SizeNode) }
+			if ($Node) { Write-Host (T 'plan_existing' "Node.js" (Display-Path $Node)); Write-Host (T 'plan_node_pin' $NodeVersion) } else { Write-Host (T 'plan_node' $NodeVersion $SizeNode) }
 			if (-not (Omitted 'herdr')) {
 				if ($SkipHerdr) { Write-Host (T 'win_plan_herdr_skipped') }
 				elseif ($InstalledHerdrTag -eq $HerdrTag) { Write-Host (T 'plan_herdr_current' $HerdrTag) } else { Write-Host (T 'win_plan_herdr' $HerdrTag $SizeHerdr) }
@@ -721,13 +852,15 @@ try {
 	# ---------- 1. Node.js（22.6 以上） ----------
 	if (-not $Node) {
 		Say (T 'win_node_download' (Display-Path $Root))
-		$NodeArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "win-arm64" } else { "win-x64" }
-		try { $Sums = (Invoke-WebRequest -UseBasicParsing "$NodeDownloadUrl/SHASUMS256.txt").Content } catch { Die (T 'node_connect_failed') }
-		$Line = $Sums -split "\r?\n" | Where-Object { ($_ -split "\s+")[1] -like "node-v*-$NodeArch.zip" } | Select-Object -First 1
-		if (-not $Line) { Die (T 'node_file_missing') }
-		$Want, $File = $Line.Trim() -split "\s+"
-		Invoke-WebRequest -UseBasicParsing "$NodeDownloadUrl/$File" -OutFile "$Tmp\node.zip"
-		if ((Get-FileHash -Algorithm SHA256 "$Tmp\node.zip").Hash.ToLower() -ne $Want.ToLower()) { Die (T 'node_checksum_failed') }
+		if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+			$NodeDownloadUrl = $NodeWindowsAarch64Url
+			$NodeSha256 = $NodeWindowsAarch64Sha256
+		} else {
+			$NodeDownloadUrl = $NodeWindowsX8664Url
+			$NodeSha256 = $NodeWindowsX8664Sha256
+		}
+		try { Invoke-WebRequest -UseBasicParsing $NodeDownloadUrl -OutFile "$Tmp\node.zip" } catch { Die (T 'node_connect_failed') }
+		Verify-Checksum "$Tmp\node.zip" $NodeSha256
 		Expand-Archive "$Tmp\node.zip" "$Tmp\node"
 		Remove-Item -Recurse -Force (Join-Path $Root "node") -ErrorAction SilentlyContinue
 		Move-Item (Get-ChildItem "$Tmp\node" | Select-Object -First 1).FullName (Join-Path $Root "node")
@@ -757,11 +890,31 @@ try {
 			Get-ChildItem $From -Force | Where-Object { $_.Name -notin @("node_modules", ".git") } | Copy-Item -Destination $New -Recurse -Force
 		}
 	} else {
-		$Url = if ($Version -eq "main") { "https://codeload.github.com/$Repo/zip/refs/heads/main" } else { "https://codeload.github.com/$Repo/zip/refs/tags/$Version" }
+		$Asset = "agent-steward-$Version.zip"
+		$ReleaseUrl = "https://github.com/$Repo/releases/download/$Version"
+		$Url = if ($Version -eq "main") { "https://codeload.github.com/$Repo/zip/refs/heads/main" } else { "$ReleaseUrl/$Asset" }
+		$AppSha256 = ""
+		if ($Version -ne "main") {
+			if ($AppPinVersion -ceq $Version) {
+				$AppSha256 = $AppPinZipSha256
+			} else {
+				try {
+					Invoke-WebRequest -UseBasicParsing "$ReleaseUrl/SHA256SUMS" -OutFile "$Tmp\SHA256SUMS"
+					$Sums = Get-Content "$Tmp\SHA256SUMS" -Encoding UTF8
+				} catch { Die (T 'app_no_checksum' $Version) }
+				foreach ($Line in $Sums) {
+					if ($Line -match '\A([0-9a-fA-F]{64})[ \t]+\*?(.+)\z') {
+						if ($Matches[2] -ceq $Asset) { $AppSha256 = $Matches[1]; break }
+					}
+				}
+			}
+			if ($AppSha256 -notmatch '\A[0-9a-fA-F]{64}\z') { Die (T 'app_no_checksum' $Version) }
+		}
 		Say (T 'app_download' $Version)
 		try { Invoke-WebRequest -UseBasicParsing $Url -OutFile "$Tmp\app.zip" } catch { Die (T 'download_failed' $Url) }
+		if ($Version -ne "main") { Verify-Checksum "$Tmp\app.zip" $AppSha256 }
 		Expand-Archive "$Tmp\app.zip" "$Tmp\app"
-		Move-Item (Get-ChildItem "$Tmp\app" | Select-Object -First 1).FullName $New
+		Move-Item (Join-Path "$Tmp\app" "agent-steward-$Version") $New
 	}
 	$Version | Set-Content -Encoding ascii (Join-Path $New "REVISION")
 	Say (T 'deps_install')
@@ -805,26 +958,28 @@ try {
 
 	# ---------- 4. herdr ----------
 	if (-not (Omitted 'herdr') -and -not $SkipHerdr) {
-		$HerdrInfo = Get-Content (Join-Path $App "herdr.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-		if ($InstalledHerdrTag -ne $HerdrInfo.tag) {
-			$Asset = "herdr-windows-x86_64.zip"
-			Say (T 'herdr_download' $HerdrInfo.tag $Asset)
+		if ($InstalledHerdrTag -ne $HerdrTag) {
+			$Asset = $HerdrWindowsX8664Name
+			Say (T 'herdr_download' $HerdrTag $Asset)
 			$HerdrChanged = $false
+			$HerdrDownloaded = $false
 			try {
-				$Base = "https://github.com/$($HerdrInfo.repo)/releases/download/$($HerdrInfo.tag)"
-				Invoke-WebRequest -UseBasicParsing "$Base/$Asset" -OutFile "$Tmp\$Asset"
-				Invoke-WebRequest -UseBasicParsing "$Base/$Asset.sha256" -OutFile "$Tmp\$Asset.sha256"
-				$Want = ((Get-Content "$Tmp\$Asset.sha256" -Raw -Encoding UTF8).Trim() -split "\s+")[0].ToLower()
-				if ((Get-FileHash -Algorithm SHA256 "$Tmp\$Asset").Hash.ToLower() -ne $Want) { Die (T 'herdr_checksum_failed') }
-				Expand-Archive "$Tmp\$Asset" "$Tmp\herdr"
-				try {
-					Remove-Item -Recurse -Force $HerdrDir -ErrorAction SilentlyContinue
-					$Inner = Get-ChildItem "$Tmp\herdr" -Recurse -Filter herdr.exe | Select-Object -First 1
-					Move-Item $Inner.Directory.FullName $HerdrDir
-					$HerdrInfo.tag | Set-Content -Encoding ascii $TagFile
-					$HerdrChanged = $true
-				} catch { Warn (T 'win_herdr_busy') }
+				Invoke-WebRequest -UseBasicParsing $HerdrWindowsX8664Url -OutFile "$Tmp\$Asset"
+				$HerdrDownloaded = $true
 			} catch { Warn (T 'herdr_download_failed') }
+			if ($HerdrDownloaded) {
+				Verify-Checksum "$Tmp\$Asset" $HerdrWindowsX8664Sha256
+				try {
+					Expand-Archive "$Tmp\$Asset" "$Tmp\herdr"
+					try {
+						Remove-Item -Recurse -Force $HerdrDir -ErrorAction SilentlyContinue
+						$Inner = Get-ChildItem "$Tmp\herdr" -Recurse -Filter herdr.exe | Select-Object -First 1
+						Move-Item $Inner.Directory.FullName $HerdrDir
+						$HerdrTag | Set-Content -Encoding ascii $TagFile
+						$HerdrChanged = $true
+					} catch { Warn (T 'win_herdr_busy') }
+				} catch { Warn (T 'herdr_download_failed') }
+			}
 			if ($HerdrChanged) { Receipt change file $HerdrDir; Receipt change file $TagFile }
 		}
 	}
@@ -834,13 +989,21 @@ try {
 	# ---------- 5. ttyd ----------
 	if (-not (Omitted 'terminal') -and -not $Ttyd) {
 		Say (T 'ttyd_download')
+		$TtydDownloaded = $false
 		try {
-			Invoke-WebRequest -UseBasicParsing $TtydSourceWindows -OutFile "$Tmp\ttyd.exe"
-			Move-Item "$Tmp\ttyd.exe" $TtydPath -Force
-			$Ttyd = $TtydPath
-			$TtydSource = "download"
+			Invoke-WebRequest -UseBasicParsing $TtydWindowsX8664Url -OutFile "$Tmp\ttyd.exe"
+			$TtydDownloaded = $true
 		} catch { Warn (T 'ttyd_missing') }
-		if ($Ttyd) { Receipt change file $Ttyd }
+		if ($TtydDownloaded) {
+			Verify-Checksum "$Tmp\ttyd.exe" $TtydWindowsX8664Sha256
+			try {
+				Move-Item "$Tmp\ttyd.exe" $TtydPath -Force
+				$TtydVersion | Set-Content -Encoding ascii $TtydVersionFile
+				$Ttyd = $TtydPath
+				$TtydSource = "download"
+			} catch { Warn (T 'ttyd_missing') }
+		}
+		if ($Ttyd) { Receipt change file $Ttyd; Receipt change file $TtydVersionFile }
 	}
 
 	# ---------- 6. steward 指令與使用者 PATH ----------

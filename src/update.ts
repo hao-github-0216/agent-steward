@@ -1,6 +1,7 @@
 // 檢查更新 / 一鍵更新:看 GitHub 上最新的 release,更新時在背景重跑安裝程式(install.sh / scripts/install-windows.ps1)。
 // 安裝程式會換掉 ~/.agent-steward/app 並重啟服務,所以要用獨立的程序跑(不能是管家的子程序)。
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { APP_DIR } from "./agents.ts";
@@ -53,6 +54,30 @@ function updating(): boolean {
 	try { return Date.now() - Number(readFileSync(LOCK, "utf8")) < 10 * 60_000; } catch { return false; }
 }
 
+const MISSING_SUMS = "這個版本沒有檢查碼,請手動更新";
+
+export function checkSums(content: Buffer, sumsText: string, name: string): string | undefined {
+	for (const line of sumsText.split(/\r?\n/)) {
+		const match = /^([a-fA-F0-9]{64})[ \t]+\*?(.+)$/.exec(line);
+		if (match?.[2] !== name) continue;
+		return createHash("sha256").update(content).digest("hex") === match[1].toLowerCase()
+			? undefined : "下載的安裝程式檢查碼不符,沒有更新";
+	}
+	return MISSING_SUMS;
+}
+
+async function downloadHTTPS(url: string): Promise<Response> {
+	for (let redirects = 0; redirects <= 10; redirects++) {
+		if (new URL(url).protocol !== "https:") throw new Error("下載網址必須使用 HTTPS");
+		const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
+		if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+		const location = response.headers.get("location");
+		if (!location) throw new Error("下載重新導向沒有網址");
+		url = new URL(location, url).href;
+	}
+	throw new Error("下載重新導向次數過多");
+}
+
 /** 下載安裝程式、在背景執行;回傳後管家大約十幾秒內會被重啟 */
 export async function applyUpdate(tag: string): Promise<void> {
 	if (!/^v[\w.-]+$/.test(tag)) throw new Error("版本格式不對");
@@ -60,11 +85,24 @@ export async function applyUpdate(tag: string): Promise<void> {
 	const dir = join(DATA_DIR, "update");
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(join(DATA_DIR, "logs"), { recursive: true });
-	const file = join(dir, IS_WIN ? "install-windows.ps1" : "install.sh");
-	const r = await fetch(`https://raw.githubusercontent.com/${REPO}/${tag}/${IS_WIN ? "scripts/install-windows.ps1" : "install.sh"}`, { signal: AbortSignal.timeout(30_000) });
+	const name = IS_WIN ? "install-windows.ps1" : "install.sh";
+	const file = join(dir, name);
+	const release = `https://github.com/${REPO}/releases/download/${tag}`;
+	const r = await downloadHTTPS(`${release}/${name}`);
 	if (!r.ok) throw new Error(`下載安裝程式失敗(${r.status})`);
+	const content = Buffer.from(await r.arrayBuffer());
+	let sumsText: string;
+	try {
+		const sums = await downloadHTTPS(`${release}/SHA256SUMS`);
+		if (!sums.ok) throw new Error(MISSING_SUMS);
+		sumsText = await sums.text();
+	} catch {
+		throw new Error(MISSING_SUMS);
+	}
+	const error = checkSums(content, sumsText, name);
+	if (error) throw new Error(error);
 	// Windows PowerShell 5.1 讀沒有 BOM 的 .ps1 會把中文當成亂碼
-	const text = await r.text();
+	const text = content.toString("utf8");
 	writeFileSync(file, IS_WIN && !text.startsWith("\uFEFF") ? `\uFEFF${text}` : text);
 	writeFileSync(LOCK, String(Date.now()));
 	const out = openSync(LOG, "a");

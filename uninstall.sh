@@ -66,6 +66,8 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:plan_local') printf '%s' '  App source: %s (%s)' ;;
 		'zh-TW:plan_node') printf '%s' '  Node.js %s   %s   nodejs.org（MIT）' ;;
 		'en:plan_node') printf '%s' '  Node.js %s   %s   nodejs.org (MIT)' ;;
+		'zh-TW:plan_node_pin') printf '%s' '  Node.js：需要下載時固定使用 %s。' ;;
+		'en:plan_node_pin') printf '%s' '  Node.js: downloads are pinned to %s.' ;;
 		'zh-TW:plan_existing') printf '%s' '  %s：已有，沿用：%s' ;;
 		'en:plan_existing') printf '%s' '  %s: already installed, reuse: %s' ;;
 		'zh-TW:plan_node_brew') printf '%s' '  Node.js：會執行 brew install node（Homebrew）' ;;
@@ -180,6 +182,22 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:node_file_missing') printf '%s' 'Node.js download not found.' ;;
 		'zh-TW:node_checksum_failed') printf '%s' 'Node.js 檔案驗證失敗（sha256 不符）。' ;;
 		'en:node_checksum_failed') printf '%s' 'Node.js verification failed (sha256 mismatch).' ;;
+		'zh-TW:no_hash_tool') printf '%s' '找不到 SHA-256 檢查工具（sha256sum 或 shasum），為了安全不繼續安裝。' ;;
+		'en:no_hash_tool') printf '%s' 'No SHA-256 tool (sha256sum or shasum) was found, so installation stops for safety.' ;;
+		'zh-TW:checksum_failed') printf '%s' '%s 的檢查碼不符，檔案可能損壞或被竄改，已停止安裝並刪掉這個檔案。' ;;
+		'en:checksum_failed') printf '%s' 'The checksum for %s does not match. The file may be corrupted or tampered with, so installation stopped and the file was deleted.' ;;
+		'zh-TW:latest_unavailable') printf '%s' '查不到最新版本（連不上 GitHub）。請稍後再試，或用 --version 指定版本。' ;;
+		'en:latest_unavailable') printf '%s' 'Could not find the latest version (GitHub is unreachable). Try again later, or pass --version.' ;;
+		'zh-TW:win_latest_unavailable') printf '%s' '查不到最新版本（連不上 GitHub）。請稍後再試，或用 -Version 指定版本。' ;;
+		'en:win_latest_unavailable') printf '%s' 'Could not find the latest version (GitHub is unreachable). Try again later, or pass -Version.' ;;
+		'zh-TW:main_unverified') printf '%s' 'main 沒有檢查碼，只適合開發用。' ;;
+		'en:main_unverified') printf '%s' 'main has no checksum and is only meant for development.' ;;
+		'zh-TW:app_no_checksum') printf '%s' '%s 沒有檢查碼（較舊的版本沒有）。請改裝最新版，或用該版本自己的安裝程式。' ;;
+		'en:app_no_checksum') printf '%s' '%s has no checksum (older versions don'\''t). Install the latest version instead, or use that version'\''s own installer.' ;;
+		'zh-TW:plan_verify') printf '%s' '下載的每個檔案都會比對 SHA-256，不符就停止安裝。' ;;
+		'en:plan_verify') printf '%s' 'Every download is checked against its SHA-256; installation stops on a mismatch.' ;;
+		'zh-TW:plan_main_unverified') printf '%s' 'main 沒有檢查碼：專案管家程式本身不驗證，只適合開發用；其他元件照樣驗證。' ;;
+		'en:plan_main_unverified') printf '%s' 'main has no checksum: the agent-steward app itself is not verified (development only); other components are still verified.' ;;
 		'zh-TW:npm_missing') printf '%s' '找不到 npm。' ;;
 		'en:npm_missing') printf '%s' 'npm not found.' ;;
 		'zh-TW:node_ready') printf '%s' 'Node.js %s（%s）' ;;
@@ -377,21 +395,104 @@ Example: powershell -ExecutionPolicy Bypass -File install.ps1 -From . -Yes -With
 }
 t() { _key=$1; shift; printf "$(msg "$_key")" "$@"; }
 tl() { t "$@"; printf '\n'; }
+APP_PIN_VERSION=''
+APP_PIN_SHA256=''
 APP_LICENSE='MIT'
 APP_HOME='https://github.com/hao-github-0216/agent-steward'
-NODE_VERSION='22'
+NODE_VERSION='24.22.2'
 NODE_LICENSE='MIT'
 NODE_HOME='https://nodejs.org'
-NODE_SOURCE='https://nodejs.org/dist/latest-v22.x/'
+NODE_MACOS_AARCH64_NAME='node-v24.22.2-darwin-arm64.tar.gz'
+NODE_MACOS_AARCH64_URL='https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-arm64.tar.gz'
+NODE_MACOS_AARCH64_SHA256='aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a'
+NODE_MACOS_X86_64_NAME='node-v24.22.2-darwin-x64.tar.gz'
+NODE_MACOS_X86_64_URL='https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-x64.tar.gz'
+NODE_MACOS_X86_64_SHA256='d5e336d588c45be0c37dbd52cc29895593009ca4997a77a1fd02815131ed0e52'
+NODE_LINUX_AARCH64_NAME='node-v24.22.2-linux-arm64.tar.gz'
+NODE_LINUX_AARCH64_URL='https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.gz'
+NODE_LINUX_AARCH64_SHA256='95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2'
+NODE_LINUX_X86_64_NAME='node-v24.22.2-linux-x64.tar.gz'
+NODE_LINUX_X86_64_URL='https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.gz'
+NODE_LINUX_X86_64_SHA256='361718c444e49af2ca5a110c83ba6a8901143f23ab285ebbef0341f391f482a9'
+NODE_WINDOWS_X86_64_NAME='node-v24.22.2-win-x64.zip'
+NODE_WINDOWS_X86_64_URL='https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-x64.zip'
+NODE_WINDOWS_X86_64_SHA256='ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2'
+NODE_WINDOWS_AARCH64_NAME='node-v24.22.2-win-arm64.zip'
+NODE_WINDOWS_AARCH64_URL='https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-arm64.zip'
+NODE_WINDOWS_AARCH64_SHA256='f47968c213105077f64c6510f007632c0ca2574802a0b5067c327c49abe1c468'
+NODE_SOURCE='https://nodejs.org/dist/v24.22.2/'
 HERDR_REPO='hao-github-0216/herdr'
 HERDR_TAG='steward-v0.9.5-1'
 HERDR_LICENSE='Apache-2.0'
 HERDR_HOME='https://github.com/hao-github-0216/herdr'
+HERDR_LINUX_AARCH64_NAME='herdr-linux-aarch64'
+HERDR_LINUX_AARCH64_URL='https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-linux-aarch64'
+HERDR_LINUX_AARCH64_SHA256='46af1b52e1fbc3c66e8a3aa5e7bc03ce645df153bcd282930ea4a816945727a4'
+HERDR_LINUX_X86_64_NAME='herdr-linux-x86_64'
+HERDR_LINUX_X86_64_URL='https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-linux-x86_64'
+HERDR_LINUX_X86_64_SHA256='df047edd3fa3ef7eaa3a63959f29e6405fb84ce51f9c1b0ebb2a21eefe2c0de9'
+HERDR_MACOS_AARCH64_NAME='herdr-macos-aarch64'
+HERDR_MACOS_AARCH64_URL='https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-macos-aarch64'
+HERDR_MACOS_AARCH64_SHA256='22292b826b2267804516ff1eb6f67b06500c90fee4f9ded5c65f28efb79464fe'
+HERDR_MACOS_X86_64_NAME='herdr-macos-x86_64'
+HERDR_MACOS_X86_64_URL='https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-macos-x86_64'
+HERDR_MACOS_X86_64_SHA256='e18df67765830f3dcf2f2be8560703262528d6532bd5dfa04c0a6a85c1ffc9d1'
+HERDR_WINDOWS_X86_64_NAME='herdr-windows-x86_64.zip'
+HERDR_WINDOWS_X86_64_URL='https://github.com/hao-github-0216/herdr/releases/download/steward-v0.9.5-1/herdr-windows-x86_64.zip'
+HERDR_WINDOWS_X86_64_SHA256='aee195ae591ad948a19de640c2879f657fc198eab00c97c8449b61c5492fcc15'
+TTYD_REPO='tsl0922/ttyd'
+TTYD_VERSION='1.7.7'
 TTYD_LICENSE='MIT'
 TTYD_HOME='https://github.com/tsl0922/ttyd'
-TTYD_SOURCE_LINUX='https://github.com/tsl0922/ttyd/releases/latest/download/'
+TTYD_LINUX_X86_64_NAME='ttyd.x86_64'
+TTYD_LINUX_X86_64_URL='https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64'
+TTYD_LINUX_X86_64_SHA256='8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55'
+TTYD_LINUX_AARCH64_NAME='ttyd.aarch64'
+TTYD_LINUX_AARCH64_URL='https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.aarch64'
+TTYD_LINUX_AARCH64_SHA256='b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165'
+TTYD_WINDOWS_X86_64_NAME='ttyd.win32.exe'
+TTYD_WINDOWS_X86_64_URL='https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe'
+TTYD_WINDOWS_X86_64_SHA256='e33a27501b10b96981335bcba938b1145c7f52551a343e72160f00ab71832b37'
+TTYD_SOURCE_LINUX='https://github.com/tsl0922/ttyd/releases/download/1.7.7/'
 TTYD_SOURCE_MACOS='brew'
-TTYD_SOURCE_WINDOWS='https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.win32.exe'
+TTYD_SOURCE_WINDOWS='https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe'
+UV_REPO='astral-sh/uv'
+UV_VERSION='0.13.7'
+UV_LICENSE='MIT OR Apache-2.0'
+UV_HOME='https://github.com/astral-sh/uv'
+UV_MACOS_AARCH64_NAME='uv-aarch64-apple-darwin.tar.gz'
+UV_MACOS_AARCH64_URL='https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-apple-darwin.tar.gz'
+UV_MACOS_AARCH64_SHA256='81b811b57e4624df7ed3aac148e0359100d9962f3d9dce00aec533dc2e086731'
+UV_MACOS_X86_64_NAME='uv-x86_64-apple-darwin.tar.gz'
+UV_MACOS_X86_64_URL='https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-apple-darwin.tar.gz'
+UV_MACOS_X86_64_SHA256='20c47e4c1f630b8abaff8c291fa9b9aa300fef92c4fbff95adf198b55287cda7'
+UV_LINUX_AARCH64_NAME='uv-aarch64-unknown-linux-gnu.tar.gz'
+UV_LINUX_AARCH64_URL='https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-unknown-linux-gnu.tar.gz'
+UV_LINUX_AARCH64_SHA256='71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc'
+UV_LINUX_X86_64_NAME='uv-x86_64-unknown-linux-gnu.tar.gz'
+UV_LINUX_X86_64_URL='https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-unknown-linux-gnu.tar.gz'
+UV_LINUX_X86_64_SHA256='c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83'
+UV_WINDOWS_X86_64_NAME='uv-x86_64-pc-windows-msvc.zip'
+UV_WINDOWS_X86_64_URL='https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-pc-windows-msvc.zip'
+UV_WINDOWS_X86_64_SHA256='0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021'
+TINYTEX_REPO='rstudio/tinytex-releases'
+TINYTEX_TAG='v2026.11'
+TINYTEX_LICENSE='MIT (TinyTeX); TeX Live package licenses'
+TINYTEX_HOME='https://yihui.org/tinytex/'
+TINYTEX_DARWIN_NAME='TinyTeX-1-darwin-v2026.11.tar.xz'
+TINYTEX_DARWIN_URL='https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-darwin-v2026.11.tar.xz'
+TINYTEX_DARWIN_SHA256='9416a257c4caea2f82351fa2f89252b8bd75dceeb0ce6e442d25530b1922a02d'
+TINYTEX_LINUX_ARM64_NAME='TinyTeX-1-linux-arm64-v2026.11.tar.xz'
+TINYTEX_LINUX_ARM64_URL='https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-linux-arm64-v2026.11.tar.xz'
+TINYTEX_LINUX_ARM64_SHA256='b351c365e4085a179c8d76fddadff612d4e4fd16a946953fb8b9d331f4f7344a'
+TINYTEX_LINUX_X86_64_NAME='TinyTeX-1-linux-x86_64-v2026.11.tar.xz'
+TINYTEX_LINUX_X86_64_URL='https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-linux-x86_64-v2026.11.tar.xz'
+TINYTEX_LINUX_X86_64_SHA256='5b75befa848deae702ae6fa12ff0eef3f110d7e4e2a979ae99f101eba3c9c70d'
+TINYTEX_WINDOWS_NAME='TinyTeX-1-windows-v2026.11.exe'
+TINYTEX_WINDOWS_URL='https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-windows-v2026.11.exe'
+TINYTEX_WINDOWS_SHA256='375e8adec0177cd9ec6a1f8c76efe0c22b1a0c260e76a00386bcea52d88e5354'
+PYTHON_PACKAGES_LICENSE='BSD-3-Clause (ipykernel, numpy, pandas); PSF (matplotlib)'
+PYTHON_PACKAGES_HOME='https://pypi.org/'
 component_data() {
 	case "$L" in
 		'zh-TW')
@@ -405,6 +506,12 @@ component_data() {
 			SIZE_HERDR='約 10 MB'
 			TTYD_NAME='ttyd（網頁終端機）'
 			SIZE_TTYD='約 2 MB'
+			UV_NAME='uv（Python 套件管理工具）'
+			SIZE_UV='約 20 MB'
+			TINYTEX_NAME='TinyTeX'
+			SIZE_TINYTEX='約 250 MB'
+			PYTHON_PACKAGES_NAME='Python 套件'
+			SIZE_PYTHON_PACKAGES='約 300 MB（含 Python）'
 			;;
 		'en')
 			APP_NAME='agent-steward'
@@ -417,6 +524,12 @@ component_data() {
 			SIZE_HERDR='~10 MB'
 			TTYD_NAME='ttyd (web terminal)'
 			SIZE_TTYD='~2 MB'
+			UV_NAME='uv (Python package manager)'
+			SIZE_UV='~20 MB'
+			TINYTEX_NAME='TinyTeX'
+			SIZE_TINYTEX='~250 MB'
+			PYTHON_PACKAGES_NAME='Python packages'
+			SIZE_PYTHON_PACKAGES='~300 MB (including Python)'
 			;;
 	esac
 }

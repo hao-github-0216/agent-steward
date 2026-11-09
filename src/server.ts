@@ -595,7 +595,18 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					return send(res, 200, { ok: true });
 				}
 				// 更新:檢查 GitHub 最新版、一鍵更新、看進度
-				if (req.method === "GET" && path === "/api/settings/update") return send(res, 200, await checkUpdate(url.searchParams.has("force")));
+				if (req.method === "GET" && path === "/api/settings/update") {
+					const manifest = JSON.parse(readFileSync(new URL("../components.json", import.meta.url), "utf8")) as { components: { id: string; name: Record<string, string>; version?: string; tag?: string; packages?: Record<string, string>; license: string; home: string }[] };
+					const lang = settings().ui.lang || "zh-TW";
+					const components = manifest.components.filter((c) => c.id !== "app").map((c) => ({
+						id: c.id,
+						name: c.name[lang] ?? c.name["zh-TW"],
+						version: c.version ?? c.tag ?? Object.entries(c.packages ?? {}).map(([pkg, version]) => `${pkg} ${version}`).join(", "),
+						license: c.license,
+						home: c.home,
+					}));
+					return send(res, 200, { ...await checkUpdate(url.searchParams.has("force")), components });
+				}
 				if (req.method === "GET" && path === "/api/settings/update/log") return send(res, 200, { log: updateLog() });
 				if (req.method === "POST" && path === "/api/settings/update") {
 					const tag = (await body(req)).tag;

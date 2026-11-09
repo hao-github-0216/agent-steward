@@ -33,11 +33,15 @@ function renderShell() {
 		for (const lang of languages) lines.push(`\t\t${shellQuote(`${lang}:${key}`)}) printf '%s' ${shellQuote(format(values[lang]))} ;;`);
 	}
 	lines.push('\t\t*) printf \'%s\' "$1" ;;', "\tesac", "}", 't() { _key=$1; shift; printf "$(msg "$_key")" "$@"; }', 'tl() { t "$@"; printf \'\\n\'; }');
+	lines.push("APP_PIN_VERSION=''", "APP_PIN_SHA256=''");
 	const localized = [];
 	for (const component of components) {
 		const id = shellName(component.id);
 		for (const field of ["repo", "tag", "version", "license", "home"]) {
 			if (component[field] !== undefined) lines.push(`${id}_${shellName(field)}=${shellQuote(component[field])}`);
+		}
+		for (const [platform, file] of Object.entries(component.files ?? {})) {
+			for (const [field, value] of Object.entries(file)) lines.push(`${id}_${shellName(platform)}_${shellName(field)}=${shellQuote(value)}`);
 		}
 		if (typeof component.source === "string") lines.push(`${id}_SOURCE=${shellQuote(component.source)}`);
 		else if (component.source) for (const [platform, source] of Object.entries(component.source)) lines.push(`${id}_SOURCE_${shellName(platform)}=${shellQuote(source)}`);
@@ -73,11 +77,15 @@ function renderPowerShell() {
 		lines.push("\t}");
 	}
 	lines.push("}", "function T([string]$k) { $s = $Msg[$L][$k]; if ($null -eq $s) { $s = $k }; if ($args.Count) { $s -f $args } else { $s -replace '\\{\\{','{' -replace '\\}\\}','}' } }");
+	lines.push("$AppPinVersion = ''", "$AppPinSha256 = ''", "$AppPinZipSha256 = ''");
 	const localized = [];
 	for (const component of components) {
 		const id = powerShellName(component.id);
 		for (const field of ["repo", "tag", "version", "license", "home"]) {
 			if (component[field] !== undefined) lines.push(`$${id}${powerShellName(field)} = ${powerShellQuote(component[field])}`);
+		}
+		for (const [platform, file] of Object.entries(component.files ?? {})) {
+			for (const [field, value] of Object.entries(file)) lines.push(`$${id}${powerShellName(platform)}${powerShellName(field)} = ${powerShellQuote(value)}`);
 		}
 		if (typeof component.source === "string") lines.push(`$${id}Source = ${powerShellQuote(component.source)}`);
 		else if (component.source) for (const [platform, source] of Object.entries(component.source)) lines.push(`$${id}Source${powerShellName(platform)} = ${powerShellQuote(source)}`);

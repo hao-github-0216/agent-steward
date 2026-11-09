@@ -12,6 +12,43 @@ permissions:
   contents: read
 
 jobs:
+  pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - name: Check component pins against official sources
+        run: node scripts/pin-components.mjs --check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Verify the Node.js checksum signature and pinned hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync("components.json", "utf8")).components.find(c => c.id === "node").version)')
+          T=$(mktemp -d)
+          trap 'rm -rf "$T"' EXIT
+          git clone --depth 1 https://github.com/nodejs/release-keys "$T/release-keys"
+          curl --proto '=https' --tlsv1.2 -fsSL "https://nodejs.org/dist/v$VERSION/SHASUMS256.txt" -o "$T/SHASUMS256.txt"
+          curl --proto '=https' --tlsv1.2 -fsSL "https://nodejs.org/dist/v$VERSION/SHASUMS256.txt.sig" -o "$T/SHASUMS256.txt.sig"
+          mkdir "$T/gnupg"
+          GNUPGHOME="$T/gnupg" gpgv --keyring "$T/release-keys/gpg-only-active-keys/pubring.kbx" "$T/SHASUMS256.txt.sig" "$T/SHASUMS256.txt"
+          node --input-type=module - "$T/SHASUMS256.txt" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const manifest = JSON.parse(readFileSync("components.json", "utf8"));
+          const sums = new Map(readFileSync(process.argv[2], "utf8").trim().split(/\r?\n/).map(line => {
+            const match = line.match(/^([a-f0-9]{64})[ \t]+\*?(.+)$/);
+            if (!match) throw new Error(`Invalid checksum line: ${line}`);
+            return [match[2], match[1]];
+          }));
+          for (const file of Object.values(manifest.components.find(c => c.id === "node").files)) {
+            if (sums.get(file.name) !== file.sha256) throw new Error(`Node checksum mismatch: ${file.name}`);
+            console.log(`Verified signed checksum: ${file.name}`);
+          }
+          NODE
+
   unix:
     strategy:
       fail-fast: false

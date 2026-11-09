@@ -2,9 +2,11 @@
 // 設定 → 外掛 打開時,需要的軟體自動下載到 ~/.agent-steward/tools(不需要管理員權限);
 // 電腦上已經有的(MacTeX、裝了 ipykernel 的 Python)直接沿用。「移除」只刪專案管家自己下載的東西。
 import { execFile } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { which } from "./agents.ts";
 import { batSafe, IS_WIN } from "./platform.ts";
 import { DATA_DIR, hasSystemJupyter, hasSystemTex, type PluginId, settings, updateSettings } from "./settings.ts";
@@ -16,25 +18,60 @@ const cached = (k: string, fn: () => boolean) => { const c = cache.get(k); if (c
 const sysTex = () => cached("tex", hasSystemTex);
 const sysJupyter = () => cached("jupyter", hasSystemJupyter);
 const ARCH = process.arch === "arm64" ? "arm64" : "x64";
+interface ManifestFile { name: string; url: string; sha256: string }
+interface ManifestComponent { id: string; files?: Record<string, ManifestFile>; packages?: Record<string, string> }
+const manifest = JSON.parse(readFileSync(new URL("../components.json", import.meta.url), "utf8")) as { components: ManifestComponent[] };
+function manifestFile(id: string, platform: string): ManifestFile {
+	const file = manifest.components.find((c) => c.id === id)?.files?.[platform];
+	if (!file?.name || !file.url) throw new Error(`缺少 ${id} (${platform}) 的 manifest 下載項目`);
+	return file;
+}
 
 // ---------- 下載與執行 ----------
 type Log = (msg: string, progress?: number) => void;
-async function download(url: string, to: string, log: Log, label: string): Promise<void> {
-	const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30 * 60_000) });
-	if (!r.ok || !r.body) throw new Error(`下載失敗(${r.status}):${url}`);
+async function download(url: string, to: string, sha256: string, log: Log, label: string): Promise<void> {
+	if (typeof sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(sha256)) throw new Error(`缺少或無效的 SHA-256:${url}`);
+	const signal = AbortSignal.timeout(30 * 60_000);
+	let current = new URL(url);
+	let r: Response;
+	for (let redirects = 0; ; redirects++) {
+		if (current.protocol !== "https:") throw new Error(`下載只允許 HTTPS:${current.href}`);
+		r = await fetch(current, { redirect: "manual", signal });
+		if (![301, 302, 303, 307, 308].includes(r.status)) break;
+		const location = r.headers.get("location");
+		await r.body?.cancel();
+		if (!location || redirects >= 20) throw new Error(`下載重新導向失敗:${current.href}`);
+		current = new URL(location, current);
+	}
+	if (!r.ok || !r.body) {
+		await r.body?.cancel();
+		throw new Error(`下載失敗(${r.status}):${current.href}`);
+	}
 	const total = Number(r.headers.get("content-length")) || 0;
 	mkdirSync(dirname(to), { recursive: true });
 	const tmp = `${to}.part`;
-	const out = createWriteStream(tmp);
+	const hash = createHash("sha256");
 	let got = 0, lastPct = -1;
-	for await (const chunk of Readable.fromWeb(r.body as never)) {
-		got += (chunk as Buffer).length;
-		if (!out.write(chunk)) await new Promise((ok) => out.once("drain", ok));
-		const pct = total ? Math.floor((got / total) * 100) : -1;
-		if (pct !== lastPct && pct % 5 === 0) { lastPct = pct; log(`下載${label}… ${pct}%(${Math.round(got / 1048576)} / ${Math.round(total / 1048576)} MB)`, pct); }
+	try {
+		await pipeline(Readable.fromWeb(r.body as never), new Transform({
+			transform(chunk: Buffer, _encoding, done) {
+				hash.update(chunk);
+				got += chunk.length;
+				const pct = total ? Math.floor((got / total) * 100) : -1;
+				if (pct !== lastPct && pct % 5 === 0) { lastPct = pct; log(`下載${label}… ${pct}%(${Math.round(got / 1048576)} / ${Math.round(total / 1048576)} MB)`, pct); }
+				done(null, chunk);
+			},
+		}), createWriteStream(tmp));
+		const actual = hash.digest("hex");
+		if (actual !== sha256.toLowerCase()) {
+			rmSync(to, { force: true });
+			throw new Error(`SHA-256 校驗失敗:${url} (expected ${sha256}, got ${actual})`);
+		}
+		renameSync(tmp, to);
+	} catch (e) {
+		rmSync(tmp, { force: true });
+		throw e;
 	}
-	await new Promise<void>((ok, fail) => out.end((e?: Error) => (e ? fail(e) : ok())));
-	renameSync(tmp, to);
 }
 function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<string> {
 	const b = batSafe(cmd, args);
@@ -47,15 +84,6 @@ function tarExe(): string {
 	if (!IS_WIN) return "tar";
 	const sys = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
 	return existsSync(sys) ? sys : "tar";
-}
-async function latestTag(repo: string): Promise<string> {
-	const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { "user-agent": "agent-steward", accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(20_000) }).catch(() => undefined);
-	if (r?.ok) return ((await r.json()) as { tag_name: string }).tag_name;
-	// GitHub API 沒登入每小時只能查 60 次(同一個網路的人共用):改看網頁版「最新版」會轉到哪個版本,不算次數
-	const page = await fetch(`https://github.com/${repo}/releases/latest`, { redirect: "manual", headers: { "user-agent": "agent-steward" }, signal: AbortSignal.timeout(20_000) }).catch(() => undefined);
-	const tag = page?.headers.get("location")?.match(/\/releases\/tag\/([^/?#]+)/)?.[1];
-	if (tag) return decodeURIComponent(tag);
-	throw new Error(`查不到 ${repo} 的最新版本(${r?.status ?? "連不上 GitHub"})`);
 }
 
 // ---------- LaTeX:TinyTeX ----------
@@ -71,11 +99,10 @@ export function tinytexBin(): string | undefined {
 	return undefined;
 }
 async function installLatex(log: Log): Promise<void> {
-	const tag = await latestTag("rstudio/tinytex-releases");
 	const os = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : `linux-${ARCH === "arm64" ? "arm64" : "x86_64"}`;
-	const name = process.platform === "win32" ? `TinyTeX-1-windows-${tag}.exe` : `TinyTeX-1-${os}-${tag}.tar.xz`;
-	const file = join(TOOLS, ".downloads", name);
-	await download(`https://github.com/rstudio/tinytex-releases/releases/download/${tag}/${name}`, file, log, " TinyTeX");
+	const asset = manifestFile("tinytex", os);
+	const file = join(TOOLS, ".downloads", asset.name);
+	await download(asset.url, file, asset.sha256, log, " TinyTeX");
 	log("解壓縮 TinyTeX…");
 	rmSync(TINYTEX, { recursive: true, force: true });
 	mkdirSync(TOOLS, { recursive: true });
@@ -115,12 +142,19 @@ export function uvPath(): string | undefined {
 	return which("uv") ?? (existsSync(own) ? own : undefined);
 }
 async function installNotebook(log: Log): Promise<void> {
+	const packages = manifest.components.find((c) => c.id === "python-packages")?.packages;
+	const targets = ["ipykernel", "numpy", "pandas", "matplotlib"].map((pkg) => {
+		const version = packages?.[pkg];
+		if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`缺少或無效的 Python 套件版本:${pkg}`);
+		return `${pkg}==${version}`;
+	});
 	let uv = uvPath();
 	if (!uv) {
-		const triple = process.platform === "darwin" ? `${ARCH === "arm64" ? "aarch64" : "x86_64"}-apple-darwin` : process.platform === "win32" ? "x86_64-pc-windows-msvc" : `${ARCH === "arm64" ? "aarch64" : "x86_64"}-unknown-linux-gnu`;
-		const name = `uv-${triple}${IS_WIN ? ".zip" : ".tar.gz"}`;
-		const file = join(TOOLS, ".downloads", name);
-		await download(`https://github.com/astral-sh/uv/releases/latest/download/${name}`, file, log, " uv");
+		const platform = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux";
+		const arch = process.platform === "win32" ? "x86_64" : ARCH === "arm64" ? "aarch64" : "x86_64";
+		const asset = manifestFile("uv", `${platform}-${arch}`);
+		const file = join(TOOLS, ".downloads", asset.name);
+		await download(asset.url, file, asset.sha256, log, " uv");
 		log("解壓縮 uv…");
 		rmSync(UV_DIR, { recursive: true, force: true });
 		mkdirSync(UV_DIR, { recursive: true });
@@ -135,7 +169,7 @@ async function installNotebook(log: Log): Promise<void> {
 	log("建立 Python 3.12 環境…");
 	if (!existsSync(ownJupyterPython())) await run(uv, ["venv", "--python", "3.12", "--seed", OWN_JUPYTER], { env });
 	log("安裝 Jupyter kernel 與常用套件(numpy、pandas、matplotlib)…");
-	await run(uv, ["pip", "install", "--python", ownJupyterPython(), "ipykernel", "jupyter_client", "numpy", "pandas", "matplotlib"], { env });
+	await run(uv, ["pip", "install", "--python", ownJupyterPython(), ...targets], { env });
 }
 
 /** 測試用:直接執行安裝 */
