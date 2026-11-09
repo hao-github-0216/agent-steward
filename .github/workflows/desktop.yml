@@ -1,0 +1,327 @@
+name: Desktop App
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to build
+        type: string
+        default: main
+      sign:
+        description: Sign and notarize the Mac app when signing secrets are set
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths: ["desktop/**", "components.json", ".github/workflows/desktop.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      label: ${{ steps.version.outputs.label }}
+      macos-file: ${{ steps.version.outputs.macos-file }}
+      windows-file: ${{ steps.version.outputs.windows-file }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || inputs.ref || github.sha }}
+      - name: Resolve version and artifact names
+        id: version
+        shell: bash
+        env:
+          CALL_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CALL_TAG" ]; then
+            [[ "$CALL_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::The release tag must have the form vMAJOR.MINOR.PATCH.'; exit 1; }
+            VERSION=${CALL_TAG#v}
+            LABEL=$CALL_TAG
+          else
+            TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || true)
+            if [ -n "$TAG" ]; then
+              VERSION=${TAG#v}
+            else
+              VERSION=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("desktop/src-tauri/tauri.conf.json", "utf8")).version)')
+            fi
+            LABEL=$(git rev-parse --short=7 HEAD)
+          fi
+          {
+            echo "version=$VERSION"
+            echo "label=$LABEL"
+            echo "macos-file=agent-steward-desktop-$LABEL-macos-universal.dmg"
+            echo "windows-file=agent-steward-desktop-$LABEL-windows-x64-setup.exe"
+          } >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 120
+    outputs:
+      signing-mode: ${{ steps.mode.outputs.mode }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DMG_NAME: ${{ needs.version.outputs.macos-file }}
+      HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+      HAS_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
+      HAS_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
+      HAS_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+    steps:
+      - name: Decide signing mode
+        id: mode
+        shell: bash
+        env:
+          CALL_TAG: ${{ inputs.tag }}
+          REQUEST_SIGN: ${{ inputs.sign }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_CERT" = true ] || missing+=(APPLE_CERTIFICATE)
+          [ "$HAS_CERT_PASSWORD" = true ] || missing+=(APPLE_CERTIFICATE_PASSWORD)
+          [ "$HAS_API_ISSUER" = true ] || missing+=(APPLE_API_ISSUER)
+          [ "$HAS_API_KEY" = true ] || missing+=(APPLE_API_KEY)
+          [ "$HAS_API_KEY_P8" = true ] || missing+=(APPLE_API_KEY_P8)
+          if [ "${#missing[@]}" -gt 0 ] && [ "${#missing[@]}" -lt 5 ]; then
+            printf '::error::Missing signing secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+          MODE=adhoc
+          # Reusable workflows retain the caller's event name; tag identifies this call.
+          if [ -n "$CALL_TAG" ]; then
+            [ "${#missing[@]}" -eq 0 ] || { echo '::error::Release builds require all five Mac signing secrets.'; exit 1; }
+            MODE=signed
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$REQUEST_SIGN" = true ] && [ "${#missing[@]}" -eq 0 ]; then
+            MODE=signed
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo 'SIGNING_IDENTITY=-' >> "$GITHUB_ENV"
+          echo "Mac signing mode: $MODE"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - name: Install Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: npm ci --prefix desktop
+      - run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
+      - name: Stage universal executables and licenses
+        run: node desktop/scripts/stage.mjs --target universal-apple-darwin
+      - name: Import Developer ID certificate and API key
+        if: steps.mode.outputs.mode == 'signed'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/steward-signing.keychain-db"
+          CERTIFICATE="$RUNNER_TEMP/steward-signing.p12"
+          trap 'rm -f "$CERTIFICATE"' EXIT
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          node -e 'require("fs").writeFileSync(process.env.RUNNER_TEMP + "/steward-signing.p12", Buffer.from(process.env.APPLE_CERTIFICATE, "base64"), {mode:0o600})'
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN"
+          # Split the quoted keychain list into arguments; runner keychain paths contain no spaces.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security import "$CERTIFICATE" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$CERTIFICATE"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security find-identity -v -p codesigning "$KEYCHAIN" | node -e '
+            const fs = require("fs");
+            const identities = [...fs.readFileSync(0, "utf8").matchAll(/"(Developer ID Application:[^"\r\n]+)"/g)].map(m => m[1]);
+            if (identities.length !== 1) throw new Error("Expected exactly one Developer ID Application identity");
+            fs.appendFileSync(process.env.GITHUB_ENV, `SIGNING_IDENTITY=${identities[0]}\n`);
+          '
+          node -e '
+            const fs = require("fs"), path = require("path");
+            if (!/^[A-Za-z0-9]+$/.test(process.env.APPLE_API_KEY)) throw new Error("Invalid API key ID format");
+            const dir = path.join(process.env.RUNNER_TEMP, "private_keys");
+            fs.mkdirSync(dir, {recursive:true, mode:0o700});
+            const file = path.join(dir, `AuthKey_${process.env.APPLE_API_KEY}.p8`);
+            fs.writeFileSync(file, process.env.APPLE_API_KEY_P8, {mode:0o600});
+            fs.appendFileSync(process.env.GITHUB_ENV, `APPLE_API_KEY_PATH=${file}\n`);
+          '
+      - name: Build the ad-hoc App bundle
+        if: steps.mode.outputs.mode != 'signed'
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'require("fs").writeFileSync(require("path").join(process.env.RUNNER_TEMP,"tauri-version.json"),JSON.stringify({version:process.env.VERSION,bundle:{macOS:{signingIdentity:"-"}}}))'
+          npx tauri build --target universal-apple-darwin --bundles app --config "$RUNNER_TEMP/tauri-version.json"
+      - name: Build, sign, and notarize the App bundle
+        if: steps.mode.outputs.mode == 'signed'
+        working-directory: desktop
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.SIGNING_IDENTITY }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          node -e 'require("fs").writeFileSync(require("path").join(process.env.RUNNER_TEMP,"tauri-version.json"),JSON.stringify({version:process.env.VERSION,bundle:{macOS:{signingIdentity:process.env.SIGNING_IDENTITY}}}))'
+          npx tauri build --target universal-apple-darwin --bundles app --config "$RUNNER_TEMP/tauri-version.json"
+      - name: Create and verify the ad-hoc DMG
+        if: steps.mode.outputs.mode != 'signed'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          desktop/scripts/macos-package.sh --app 'desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Agent Steward.app' --out "dist/$DMG_NAME"
+      - name: Create, sign, and notarize the DMG
+        if: steps.mode.outputs.mode == 'signed'
+        shell: bash
+        env:
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          desktop/scripts/macos-package.sh --app 'desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Agent Steward.app' --out "dist/$DMG_NAME" --identity "$SIGNING_IDENTITY" --notarize
+      - name: Install the DMG and smoke-test on Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          T=$(mktemp -d "$RUNNER_TEMP/desktop-install.XXXXXX")
+          mkdir "$T/mount" "$T/installed"
+          cleanup() { hdiutil detach "$T/mount" >/dev/null 2>&1 || true; rm -rf "$T"; }
+          trap cleanup EXIT
+          hdiutil attach -nobrowse -readonly -mountpoint "$T/mount" "dist/$DMG_NAME"
+          ditto "$T/mount/Agent Steward.app" "$T/installed/Agent Steward.app"
+          hdiutil detach "$T/mount"
+          node desktop/scripts/smoke.mjs --exe "$T/installed/Agent Steward.app/Contents/MacOS/agent-steward-desktop"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: dist/${{ needs.version.outputs.macos-file }}
+          if-no-files-found: error
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          if [ -n "${SIGNING_KEYCHAIN:-}" ]; then security delete-keychain "$SIGNING_KEYCHAIN" || status=$?; fi
+          rm -f "$RUNNER_TEMP/steward-signing.p12"
+          rm -rf "$RUNNER_TEMP/private_keys"
+          exit "$status"
+
+  macos-intel:
+    needs: [version, macos]
+    runs-on: macos-15-intel
+    env:
+      DMG_NAME: ${{ needs.version.outputs.macos-file }}
+      SIGNING_MODE: ${{ needs.macos.outputs.signing-mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-macos
+          path: dist
+      - name: Install and smoke-test natively on Intel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          T=$(mktemp -d "$RUNNER_TEMP/desktop-install.XXXXXX")
+          mkdir "$T/mount" "$T/installed"
+          cleanup() { hdiutil detach "$T/mount" >/dev/null 2>&1 || true; rm -rf "$T"; }
+          trap cleanup EXIT
+          hdiutil attach -nobrowse -readonly -mountpoint "$T/mount" "dist/$DMG_NAME"
+          ditto "$T/mount/Agent Steward.app" "$T/installed/Agent Steward.app"
+          hdiutil detach "$T/mount"
+          if [ "$SIGNING_MODE" = signed ]; then spctl -a -vv -t exec "$T/installed/Agent Steward.app"; fi
+          node desktop/scripts/smoke.mjs --exe "$T/installed/Agent Steward.app/Contents/MacOS/agent-steward-desktop"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SETUP_NAME: ${{ needs.version.outputs.windows-file }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - run: npm ci --prefix desktop
+      - run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
+      - name: Stage Windows executables and licenses
+        run: node desktop/scripts/stage.mjs --target x86_64-pc-windows-msvc
+      - name: Build the unsigned NSIS installer
+        working-directory: desktop
+        run: |
+          node -e 'require("fs").writeFileSync(require("path").join(process.env.RUNNER_TEMP,"tauri-version.json"),JSON.stringify({version:process.env.VERSION}))'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not generate Tauri config' }
+          npx tauri build --target x86_64-pc-windows-msvc --bundles nsis --config "$env:RUNNER_TEMP\tauri-version.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
+      - name: Name the installer
+        run: |
+          $installers = @(Get-ChildItem 'desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $installers[0].FullName (Join-Path dist $env:SETUP_NAME)
+      - name: Install, smoke-test, and uninstall
+        run: |
+          $installer = (Resolve-Path (Join-Path dist $env:SETUP_NAME)).Path
+          $installed = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
+          if ($installed.ExitCode -ne 0) { throw "Installer failed: $($installed.ExitCode)" }
+          $expected = Join-Path $env:LOCALAPPDATA 'Agent Steward'
+          $executables = @(Get-ChildItem $expected -Filter 'agent-steward-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue)
+          if ($executables.Count -ne 1) {
+            Get-ChildItem $env:LOCALAPPDATA -Force | Format-Table -AutoSize
+            throw 'Cannot find the installed agent-steward-desktop.exe under LOCALAPPDATA/Agent Steward'
+          }
+          $installDir = $executables[0].Directory.FullName
+          try {
+            node desktop/scripts/smoke.mjs --exe $executables[0].FullName
+            if ($LASTEXITCODE -ne 0) { throw 'Desktop smoke test failed' }
+          } finally {
+            $uninstaller = Join-Path $installDir 'uninstall.exe'
+            if (-not (Test-Path $uninstaller -PathType Leaf)) { throw 'Missing NSIS uninstaller' }
+            $removed = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru -Wait
+            if ($removed.ExitCode -ne 0) { throw "Uninstaller failed: $($removed.ExitCode)" }
+            $deadline = (Get-Date).AddSeconds(20)
+            while ((Test-Path $installDir) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+            if (Test-Path $installDir) { throw "Installation directory remains: $installDir" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: dist/${{ needs.version.outputs.windows-file }}
+          if-no-files-found: error

@@ -15,9 +15,7 @@ on:
         default: true
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 concurrency: release-${{ inputs.tag || github.ref_name }}
 
@@ -109,21 +107,104 @@ jobs:
           echo "PASS: archive excludes ios-app/"
           test ! -e "$T/agent-steward-$TAG/ios-native"
           echo "PASS: archive excludes ios-native/"
-      - name: Generate SHA256SUMS
-        run: cd dist && sha256sum agent-steward-* install.sh install.ps1 install-windows.ps1 > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: agent-steward-${{ steps.tag.outputs.tag }}
+          name: release-core
           path: dist/
           if-no-files-found: error
+
+  signing:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.signing.outputs.ready }}
+    env:
+      HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+      HAS_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
+      HAS_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
+      HAS_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+    steps:
+      - name: Check Mac signing configuration
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_CERT" = true ] || missing+=(APPLE_CERTIFICATE)
+          [ "$HAS_CERT_PASSWORD" = true ] || missing+=(APPLE_CERTIFICATE_PASSWORD)
+          [ "$HAS_API_ISSUER" = true ] || missing+=(APPLE_API_ISSUER)
+          [ "$HAS_API_KEY" = true ] || missing+=(APPLE_API_KEY)
+          [ "$HAS_API_KEY_P8" = true ] || missing+=(APPLE_API_KEY_P8)
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          elif [ "${#missing[@]}" -eq 5 ]; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Mac signing secrets are not set; the desktop App is not included in this release.'
+          else
+            printf '::error::Missing signing secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+  desktop:
+    needs: [build, signing]
+    if: needs.signing.outputs.ready == 'true'
+    uses: ./.github/workflows/desktop.yml
+    with:
+      tag: ${{ needs.build.outputs.tag }}
+    secrets: inherit
+    permissions:
+      contents: read
+
+  publish:
+    needs: [build, signing, desktop]
+    if: always() && needs.build.result == 'success' && needs.signing.result == 'success' && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+      HAS_DESKTOP: ${{ needs.desktop.result == 'success' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-core
+          path: dist/
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: needs.desktop.result == 'success'
+        with:
+          name: desktop-macos
+          path: dist/
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: needs.desktop.result == 'success'
+        with:
+          name: desktop-windows
+          path: dist/
+          merge-multiple: true
+      - name: Check the exact release asset list
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readdirSync } from 'node:fs';
+          const tag = process.env.TAG;
+          const expected = [`agent-steward-${tag}.tar.gz`, `agent-steward-${tag}.zip`, 'install.sh', 'install.ps1', 'install-windows.ps1'];
+          if (process.env.HAS_DESKTOP === 'true') expected.push(`agent-steward-desktop-${tag}-macos-universal.dmg`, `agent-steward-desktop-${tag}-windows-x64-setup.exe`);
+          const entries = readdirSync('dist', {withFileTypes:true});
+          assert.ok(entries.every(entry => entry.isFile()), 'dist must contain only regular files');
+          assert.deepEqual(entries.map(entry => entry.name).sort(), expected.sort(), 'Unexpected release assets');
+          NODE
+      - name: Generate SHA256SUMS
+        run: cd dist && sha256sum agent-steward-* install.sh install.ps1 install-windows.ps1 > SHA256SUMS
       - uses: actions/attest-build-provenance@v2
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         with:
           subject-path: dist/*
       - name: Publish release
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
@@ -134,7 +215,10 @@ jobs:
 
   verify:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
-    needs: build
+    needs: [build, publish]
+    permissions:
+      contents: read
+      attestations: read
     strategy:
       fail-fast: false
       matrix:
@@ -164,13 +248,41 @@ jobs:
             "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/agent-steward-$TAG.tar.gz" \
             -o "dist/agent-steward-$TAG.tar.gz"
           gh attestation verify "dist/agent-steward-$TAG.tar.gz" -R "$GITHUB_REPOSITORY"
+      - name: Verify the published Mac desktop App when present
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSET="agent-steward-desktop-$TAG-macos-universal.dmg"
+          ASSETS=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if ! grep -Fxq "$ASSET" <<< "$ASSETS"; then echo 'No desktop DMG in this release; skipping.'; exit 0; fi
+          T=$(mktemp -d "$RUNNER_TEMP/desktop-verify.XXXXXX")
+          cleanup() { hdiutil detach "$T/mount" >/dev/null 2>&1 || true; rm -rf "$T"; }
+          trap cleanup EXIT
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$ASSET" -p SHA256SUMS -D "$T"
+          (
+            cd "$T"
+            awk -v name="$ASSET" '$2 == name {print; found++} END {if (found != 1) exit 1}' SHA256SUMS > desktop.sha256
+            shasum -a 256 -c desktop.sha256
+          )
+          gh attestation verify "$T/$ASSET" -R "$GITHUB_REPOSITORY"
+          mkdir "$T/mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$T/mount" "$T/$ASSET"
+          codesign --verify --deep --strict "$T/mount/Agent Steward.app"
+          spctl -a -vv -t exec "$T/mount/Agent Steward.app"
+          xcrun stapler validate "$T/$ASSET"
+          hdiutil detach "$T/mount"
 
   verify-windows:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
-    needs: build
+    needs: [build, publish]
+    permissions:
+      contents: read
+      attestations: read
     runs-on: windows-latest
     env:
       TAG: ${{ needs.build.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
       STEWARD_YES: "1"
       STEWARD_NO_SERVICE: "1"
       STEWARD_NO_OPEN: "1"
@@ -186,3 +298,27 @@ jobs:
           if (-not (Test-Path "$HOME\.agent-steward\install.json" -PathType Leaf)) { throw "Missing installation receipt" }
           & "$HOME\.agent-steward\app\uninstall.ps1" -Purge
           if ($LASTEXITCODE -ne 0) { throw "Uninstall failed: $LASTEXITCODE" }
+      - name: Verify the published Windows desktop installer when present
+        shell: pwsh
+        run: |
+          $asset = "agent-steward-desktop-$env:TAG-windows-x64-setup.exe"
+          $json = gh release view $env:TAG -R $env:GITHUB_REPOSITORY --json assets
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read release assets' }
+          $release = $json | ConvertFrom-Json
+          if (@($release.assets.name) -notcontains $asset) {
+            Write-Host 'No desktop Windows installer in this release; skipping.'
+          } else {
+            $temp = Join-Path $env:RUNNER_TEMP ('desktop-verify-' + [guid]::NewGuid())
+            New-Item -ItemType Directory $temp | Out-Null
+            try {
+              gh release download $env:TAG -R $env:GITHUB_REPOSITORY -p $asset -p SHA256SUMS -D $temp
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot download release assets' }
+              $lines = @(Get-Content (Join-Path $temp 'SHA256SUMS') | Where-Object { $_ -match ('^[a-f0-9]{64}\s+\*?' + [regex]::Escape($asset) + '$') })
+              if ($lines.Count -ne 1) { throw 'Expected exactly one desktop installer checksum' }
+              $expected = ($lines[0] -split '\s+')[0]
+              $file = Join-Path $temp $asset
+              if ((Get-FileHash $file -Algorithm SHA256).Hash -ine $expected) { throw 'Desktop installer checksum mismatch' }
+              gh attestation verify $file -R $env:GITHUB_REPOSITORY
+              if ($LASTEXITCODE -ne 0) { throw 'Desktop installer attestation verification failed' }
+            } finally { Remove-Item $temp -Recurse -Force }
+          }

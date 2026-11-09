@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { writeRustNotices } from "./rust-notices.mjs";
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(desktop, "..");
@@ -157,6 +158,7 @@ async function stage(target) {
 			await executable(executablePath, ttydDestination);
 			await cp(join(dirname(executablePath), "LICENSES"), join(licenses, "ttyd", "LICENSES"), { recursive: true });
 		}
+		await writeRustNotices({ targets: target === "universal-apple-darwin" ? ["aarch64-apple-darwin", "x86_64-apple-darwin"] : [target], out: licenses });
 		console.log(`Staged ${target}; app revision ${revision}`);
 	} finally { await rm(work, { recursive: true, force: true }); }
 }
