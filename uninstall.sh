@@ -19,6 +19,10 @@ if [ -n "$NODE" ] && [ -f "$APP/src/refresh-agents.ts" ]; then
 	STEWARD_APP_DIR="$APP" "$NODE" --experimental-strip-types --no-warnings "$APP/src/refresh-agents.ts" --remove-all || true
 fi
 
+if [ -n "$NODE" ] && [ -f "$APP/src/tailscale.ts" ]; then
+	"$NODE" --experimental-strip-types --no-warnings "$APP/src/tailscale.ts" --serve-off || true
+fi
+
 # 拿掉 herdr 設定裡的資料夾導覽
 if [ -n "$NODE" ] && [ -f "$APP/src/herdr-setup.ts" ]; then
 	"$NODE" --experimental-strip-types --no-warnings "$APP/src/herdr-setup.ts" --remove || true

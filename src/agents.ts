@@ -103,10 +103,12 @@ interface AgentDef {
 	/** 能自動接上的部分 */
 	can: Parts;
 	status?: () => Parts;
-	apply?: (on: boolean, changed: string[]) => void;
+	apply?: (want: Parts, changed: string[]) => void;
 	/** 不能自動接的:給使用者手動設定的說明 */
 	manual?: string;
 }
+
+const allParts = (def: AgentDef, on: boolean): Parts => Object.fromEntries(Object.keys(def.can).filter((k) => def.can[k as keyof Parts]).map((k) => [k, on]));
 
 const claudeSettings = join(HOME, ".claude", "settings.json");
 const hookCmd = (agent: string) => cmdLine("hook", agent);
@@ -127,19 +129,20 @@ export const AGENTS: AgentDef[] = [
 			brief: !!readJson(claudeSettings)?.hooks?.SessionStart?.some((h: any) => h.hooks?.some((x: any) => /steward/.test(x.command ?? "") && /hook claude/.test(x.command ?? ""))),
 			mcp: !!readJson(join(HOME, ".claude.json"))?.mcpServers?.steward,
 		}),
-		apply: (on, changed) => {
-			claudeHook(on, changed);
+		apply: (want, changed) => {
+			if (want.brief !== undefined) claudeHook(want.brief, changed);
+			if (want.mcp === undefined) return;
 			const claude = which("claude");
 			if (!claude) return;
 			const has = !!readJson(join(HOME, ".claude.json"))?.mcpServers?.steward;
 			try {
-				if (on && !has) {
+				if (want.mcp && !has) {
 					const c = stewardCommand();
 					// -e 會吃掉後面所有 KEY=VALUE 以外的參數,所以名稱要放在 -e 前面
 					execFileSync(claude, ["mcp", "add", "-s", "user", "steward", "-e", "STEWARD_AGENT=claude", "--", c.command, ...c.args, "mcp"], { stdio: "ignore", timeout: 20_000 });
 					changed.push("claude mcp add steward");
 				}
-				if (!on && has) {
+				if (!want.mcp && has) {
 					execFileSync(claude, ["mcp", "remove", "-s", "user", "steward"], { stdio: "ignore", timeout: 20_000 });
 					changed.push("claude mcp remove steward");
 				}
@@ -157,26 +160,30 @@ export const AGENTS: AgentDef[] = [
 				instructions: hasInstructions(join(HOME, ".codex", "AGENTS.md")),
 			};
 		},
-		apply: (on, changed) => {
-			const hp = join(HOME, ".codex", "hooks.json");
-			const s = readJson(hp) ?? { hooks: {} };
-			const list = ((s.hooks ??= {}).SessionStart ??= []) as any[];
-			const kept = list.filter((h) => !h.hooks?.some((x: any) => /hook codex/.test(x.command ?? "")));
-			if (on) kept.push({ matcher: "startup|resume|clear|compact", hooks: [{ type: "command", command: hookCmd("codex"), timeout: 5 }] });
-			s.hooks.SessionStart = kept;
-			writeJson(hp, s, changed);
-			const tp = join(HOME, ".codex", "config.toml");
-			let text = existsSync(tp) ? readFileSync(tp, "utf8") : "";
-			text = text.replace(/\n?\[mcp_servers\.steward\]\n(?:(?!\[)[^\n]*\n?)*/g, "\n");
-			if (on) {
-				const c = mcpStdio("codex");
-				const block = `[mcp_servers.steward]\ncommand = ${JSON.stringify(c.command)}\nargs = ${JSON.stringify(c.args)}\nenv = { STEWARD_AGENT = "codex" }\n`;
-				// 插在第一個 [mcp_servers.*] 之前,避免落進別的表格
-				const i = text.indexOf("[mcp_servers.");
-				text = i >= 0 ? `${text.slice(0, i)}${block}\n${text.slice(i)}` : `${text.replace(/\s+$/, "")}\n\n${block}`;
+		apply: (want, changed) => {
+			if (want.brief !== undefined) {
+				const hp = join(HOME, ".codex", "hooks.json");
+				const s = readJson(hp) ?? { hooks: {} };
+				const list = ((s.hooks ??= {}).SessionStart ??= []) as any[];
+				const kept = list.filter((h) => !h.hooks?.some((x: any) => /hook codex/.test(x.command ?? "")));
+				if (want.brief) kept.push({ matcher: "startup|resume|clear|compact", hooks: [{ type: "command", command: hookCmd("codex"), timeout: 5 }] });
+				s.hooks.SessionStart = kept;
+				writeJson(hp, s, changed);
 			}
-			writeText(tp, text.replace(/\n{3,}/g, "\n\n"), changed);
-			instructions(join(HOME, ".codex", "AGENTS.md"), on, changed);
+			if (want.mcp !== undefined) {
+				const tp = join(HOME, ".codex", "config.toml");
+				let text = existsSync(tp) ? readFileSync(tp, "utf8") : "";
+				text = text.replace(/\n?\[mcp_servers\.steward\]\n(?:(?!\[)[^\n]*\n?)*/g, "\n");
+				if (want.mcp) {
+					const c = mcpStdio("codex");
+					const block = `[mcp_servers.steward]\ncommand = ${JSON.stringify(c.command)}\nargs = ${JSON.stringify(c.args)}\nenv = { STEWARD_AGENT = "codex" }\n`;
+					// 插在第一個 [mcp_servers.*] 之前,避免落進別的表格
+					const i = text.indexOf("[mcp_servers.");
+					text = i >= 0 ? `${text.slice(0, i)}${block}\n${text.slice(i)}` : `${text.replace(/\s+$/, "")}\n\n${block}`;
+				}
+				writeText(tp, text.replace(/\n{3,}/g, "\n\n"), changed);
+			}
+			if (want.instructions !== undefined) instructions(join(HOME, ".codex", "AGENTS.md"), want.instructions, changed);
 		},
 	},
 	{
@@ -187,70 +194,79 @@ export const AGENTS: AgentDef[] = [
 			mcp: hasJsonEntry(join(HOME, ".pi", "agent", "mcp.json"), ["mcpServers"]),
 			instructions: hasInstructions(join(HOME, ".pi", "agent", "AGENTS.md")),
 		}),
-		apply: (on, changed) => {
-			const link = join(HOME, ".pi", "agent", "extensions", "steward-brief.ts");
-			const target = join(APP_DIR, "integrations", "pi", "steward-brief.ts");
-			const exists = existsSync(link) || (() => { try { return !!lstatSync(link); } catch { return false; } })();
-			if (on) {
-				let same = false;
-				try { same = readlinkSync(link) === target; } catch { /* 不是連結 */ }
-				if (!same) {
-					if (exists) unlinkSync(link);
-					mkdirSync(dirname(link), { recursive: true });
-					// Windows 建連結要管理員權限:改用複製
-					if (WIN) copyFileSync(target, link); else symlinkSync(target, link);
-					changed.push(link);
-				}
-			} else if (exists) { unlinkSync(link); changed.push(`移除 ${link}`); }
-			jsonEntry(join(HOME, ".pi", "agent", "mcp.json"), ["mcpServers"], on ? { ...mcpStdio("pi"), exposure: "deferred", toolExposure: { steward_brief: "direct", steward_ask: "direct" } } : null, changed);
-			instructions(join(HOME, ".pi", "agent", "AGENTS.md"), on, changed);
+		apply: (want, changed) => {
+			if (want.brief !== undefined) {
+				const link = join(HOME, ".pi", "agent", "extensions", "steward-brief.ts");
+				const target = join(APP_DIR, "integrations", "pi", "steward-brief.ts");
+				const exists = existsSync(link) || (() => { try { return !!lstatSync(link); } catch { return false; } })();
+				if (want.brief) {
+					let same = false;
+					try { same = readlinkSync(link) === target; } catch { /* 不是連結 */ }
+					if (!same) {
+						if (exists) unlinkSync(link);
+						mkdirSync(dirname(link), { recursive: true });
+						// Windows 建連結要管理員權限:改用複製
+						if (WIN) copyFileSync(target, link); else symlinkSync(target, link);
+						changed.push(link);
+					}
+				} else if (exists) { unlinkSync(link); changed.push(`移除 ${link}`); }
+			}
+			if (want.mcp !== undefined) jsonEntry(join(HOME, ".pi", "agent", "mcp.json"), ["mcpServers"], want.mcp ? { ...mcpStdio("pi"), exposure: "deferred", toolExposure: { steward_brief: "direct", steward_ask: "direct" } } : null, changed);
+			if (want.instructions !== undefined) instructions(join(HOME, ".pi", "agent", "AGENTS.md"), want.instructions, changed);
 		},
 	},
 	{
 		id: "opencode", name: "opencode", exe: ["opencode"], herdrKind: "opencode",
 		can: { mcp: true, instructions: true },
 		status: () => ({ mcp: hasJsonEntry(join(HOME, ".config", "opencode", "opencode.json"), ["mcp"]), instructions: hasInstructions(join(HOME, ".config", "opencode", "AGENTS.md")) }),
-		apply: (on, changed) => {
-			const c = mcpStdio("opencode");
-			jsonEntry(join(HOME, ".config", "opencode", "opencode.json"), ["mcp"], on ? { enabled: true, type: "local", command: [c.command, ...c.args], environment: c.env } : null, changed);
-			instructions(join(HOME, ".config", "opencode", "AGENTS.md"), on, changed);
+		apply: (want, changed) => {
+			if (want.mcp !== undefined) {
+				const c = mcpStdio("opencode");
+				jsonEntry(join(HOME, ".config", "opencode", "opencode.json"), ["mcp"], want.mcp ? { enabled: true, type: "local", command: [c.command, ...c.args], environment: c.env } : null, changed);
+			}
+			if (want.instructions !== undefined) instructions(join(HOME, ".config", "opencode", "AGENTS.md"), want.instructions, changed);
 		},
 	},
 	{
 		id: "gemini", name: "Gemini CLI", exe: ["gemini"], herdrKind: "gemini",
 		can: { mcp: true, instructions: true },
 		status: () => ({ mcp: hasJsonEntry(join(HOME, ".gemini", "settings.json"), ["mcpServers"]), instructions: hasInstructions(join(HOME, ".gemini", "GEMINI.md")) }),
-		apply: (on, changed) => {
-			jsonEntry(join(HOME, ".gemini", "settings.json"), ["mcpServers"], on ? mcpStdio("gemini") : null, changed);
-			instructions(join(HOME, ".gemini", "GEMINI.md"), on, changed);
+		apply: (want, changed) => {
+			if (want.mcp !== undefined) jsonEntry(join(HOME, ".gemini", "settings.json"), ["mcpServers"], want.mcp ? mcpStdio("gemini") : null, changed);
+			if (want.instructions !== undefined) instructions(join(HOME, ".gemini", "GEMINI.md"), want.instructions, changed);
 		},
 	},
 	{
 		id: "qwen", name: "Qwen Code", exe: ["qwen"], herdrKind: "qwen",
 		can: { mcp: true, instructions: true },
 		status: () => ({ mcp: hasJsonEntry(join(HOME, ".qwen", "settings.json"), ["mcpServers"]), instructions: hasInstructions(join(HOME, ".qwen", "QWEN.md")) }),
-		apply: (on, changed) => {
-			jsonEntry(join(HOME, ".qwen", "settings.json"), ["mcpServers"], on ? mcpStdio("qwen") : null, changed);
-			instructions(join(HOME, ".qwen", "QWEN.md"), on, changed);
+		apply: (want, changed) => {
+			if (want.mcp !== undefined) jsonEntry(join(HOME, ".qwen", "settings.json"), ["mcpServers"], want.mcp ? mcpStdio("qwen") : null, changed);
+			if (want.instructions !== undefined) instructions(join(HOME, ".qwen", "QWEN.md"), want.instructions, changed);
 		},
 	},
 	{
 		id: "cursor", name: "Cursor CLI", exe: ["cursor-agent"], herdrKind: "cursor",
 		can: { mcp: true },
 		status: () => ({ mcp: hasJsonEntry(join(HOME, ".cursor", "mcp.json"), ["mcpServers"]) }),
-		apply: (on, changed) => jsonEntry(join(HOME, ".cursor", "mcp.json"), ["mcpServers"], on ? mcpStdio("cursor") : null, changed),
+		apply: (want, changed) => { if (want.mcp !== undefined) jsonEntry(join(HOME, ".cursor", "mcp.json"), ["mcpServers"], want.mcp ? mcpStdio("cursor") : null, changed); },
 	},
 	{
 		id: "copilot", name: "GitHub Copilot CLI", exe: ["copilot"], herdrKind: "copilot",
 		can: { mcp: true },
 		status: () => ({ mcp: hasJsonEntry(join(HOME, ".copilot", "mcp-config.json"), ["mcpServers"]) }),
-		apply: (on, changed) => { const c = mcpStdio("copilot"); jsonEntry(join(HOME, ".copilot", "mcp-config.json"), ["mcpServers"], on ? { type: "local", ...c, tools: ["*"] } : null, changed); },
+		apply: (want, changed) => {
+			if (want.mcp !== undefined) {
+				const c = mcpStdio("copilot");
+				jsonEntry(join(HOME, ".copilot", "mcp-config.json"), ["mcpServers"], want.mcp ? { type: "local", ...c, tools: ["*"] } : null, changed);
+			}
+		},
 	},
 	{
 		id: "amp", name: "Amp", exe: ["amp"], herdrKind: "amp",
 		can: { mcp: true },
 		status: () => ({ mcp: hasJsonEntry(join(HOME, ".config", "amp", "settings.json"), ["amp.mcpServers"]) }),
-		apply: (on, changed) => jsonEntry(join(HOME, ".config", "amp", "settings.json"), ["amp.mcpServers"], on ? mcpStdio("amp") : null, changed),
+		apply: (want, changed) => { if (want.mcp !== undefined) jsonEntry(join(HOME, ".config", "amp", "settings.json"), ["amp.mcpServers"], want.mcp ? mcpStdio("amp") : null, changed); },
 	},
 	// 只偵測、可以派工;MCP 請照說明手動加
 	...(
@@ -304,19 +320,23 @@ export function setAgent(id: string, on: boolean): { changed: string[]; status: 
 	const def = AGENTS.find((a) => a.id === id);
 	if (!def?.apply) throw new Error("這個 agent 不能自動設定");
 	const changed: string[] = [];
-	def.apply(on, changed);
+	def.apply(allParts(def, on), changed);
 	return { changed, status: agentStatus(def) };
 }
 /** 部署更新時:已經接上的 agent 重新套一次(路徑變了會跟著更新) */
 export function refreshIntegrated(): string[] {
 	const changed: string[] = [];
-	for (const def of AGENTS) if (def.apply && agentStatus(def).integrated) def.apply(true, changed);
+	for (const def of AGENTS) if (def.apply && agentStatus(def).integrated) {
+		const on = def.status?.() ?? {};
+		const want: Parts = Object.fromEntries(Object.entries(on).filter(([, value]) => value === true));
+		def.apply(want, changed);
+	}
 	return changed;
 }
 /** 移除專案管家時:拿掉所有 agent 的整合 */
 export function removeAll(): string[] {
 	const changed: string[] = [];
-	for (const def of AGENTS) if (def.apply && agentStatus(def).integrated) def.apply(false, changed);
+	for (const def of AGENTS) if (def.apply && agentStatus(def).integrated) def.apply(allParts(def, false), changed);
 	return changed;
 }
 /** 工作卡用:接受 id 或顯示名稱,一律回傳能派工的 canonical id。 */

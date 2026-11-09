@@ -1,5 +1,5 @@
 // HTTP API + 看板網頁 + SSE 即時更新。只綁本機與 tailnet IP。
-import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathInside, serviceHint } from "./platform.ts";
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
@@ -9,10 +9,11 @@ import { execFileSync } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { getCurrent, getSession, putCurrent, putSession } from "./code-session.ts";
 import { listDevices, pushAll, pushConfigured, registerDevice, unregisterDevice } from "./apns.ts";
-import { expandHome, findTailscale, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
+import { expandHome, findTailscale, onSettingsChange, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
 import { agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
-import { applyUpdate, checkUpdate, updateLog } from "./update.ts";
+import { applyUpdate, checkUpdate, updateLog, updateRequestError } from "./update.ts";
+import { serveOff, serveOn } from "./tailscale.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
 import { buildLatex } from "./latex.ts";
@@ -500,7 +501,6 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				if (req.method === "PUT" && path === "/api/settings") {
 					const before = settings();
-					const prevServer = JSON.stringify({ port: before.server.port, terminalPort: before.server.terminalPort, hosts: before.server.hosts, lan: before.access.lan.enabled });
 					const incoming = stripMasked((await body(req)).settings ?? {});
 					if (incoming.code) {
 						if (incoming.code.autoFetch !== undefined && !["ask", "on", "off"].includes(incoming.code.autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });
@@ -545,7 +545,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					await syncProviders();
 					if (fillEmptyRouting()) next = settings();
 					steward.resetModels();
-					const restart = JSON.stringify({ port: next.server.port, terminalPort: next.server.terminalPort, hosts: next.server.hosts, lan: next.access.lan.enabled }) !== prevServer;
+					const restart = next.server.port !== before.server.port || next.server.terminalPort !== before.server.terminalPort || next.access.lan.enabled !== before.access.lan.enabled || next.server.hosts.some((host) => !before.server.hosts.includes(host));
 					return send(res, 200, { settings: publicSettings(next), restartNeeded: restart });
 				}
 				// 內建外掛:列表、開關(還沒裝就在背景安裝)、移除下載的檔案
@@ -597,9 +597,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				if (req.method === "GET" && path === "/api/settings/update") return send(res, 200, await checkUpdate(url.searchParams.has("force")));
 				if (req.method === "GET" && path === "/api/settings/update/log") return send(res, 200, { log: updateLog() });
 				if (req.method === "POST" && path === "/api/settings/update") {
+					const tag = (await body(req)).tag;
 					const info = await checkUpdate(true);
-					if (!info.hasUpdate || !info.latest) return send(res, 400, { error: info.error ?? (info.dev ? "開發版不能自動更新" : "已經是最新版") });
-					try { await applyUpdate(info.latest); } catch (e) { return send(res, 400, { error: (e as Error).message }); }
+					const err = updateRequestError(info, tag);
+					if (err) return send(res, 400, { error: err });
+					try { await applyUpdate(info.latest!); } catch (e) { return send(res, 400, { error: (e as Error).message }); }
 					return send(res, 200, { ok: true, tag: info.latest });
 				}
 				// Agent:偵測與接上 / 拿掉專案管家
@@ -668,31 +670,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				// Tailscale 遠端存取:開啟時自動設定 https 網址(tailscale serve),關閉時移除
 				if (req.method === "POST" && path === "/api/settings/tailscale") {
-					const bin = findTailscale();
-					if (!bin) return send(res, 400, { error: "這台電腦沒有 Tailscale" });
+					if (!findTailscale()) return send(res, 400, { error: "這台電腦沒有 Tailscale" });
 					const { enable } = await body(req);
-					const run = (args: string[]) => execFileSync(bin, args, { encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
 					try {
-						const st = JSON.parse(run(["status", "--json"]));
-						const dns = String(st.Self?.DNSName ?? "").replace(/\.$/, "");
-						let serve: any = {};
-						try { serve = JSON.parse(run(["serve", "status", "--json"])); } catch { /* 還沒設定 */ }
-						const web = Object.entries<any>(serve?.Web ?? {});
-						const mine = web.find(([, w]) => JSON.stringify(w?.Handlers ?? {}).includes(`127.0.0.1:${PORT}`));
 						if (enable) {
-							let port = mine?.[0].split(":").pop();
-							if (!port) {
-								const used = new Set(web.map(([hp]) => hp.split(":").pop()));
-								port = ["443", "8443", "8793", "9443"].find((p) => !used.has(p)) ?? "10443";
-								run(["serve", "--bg", `--https=${port}`, `http://127.0.0.1:${PORT}`]);
-							}
-							const url = `https://${dns}${port === "443" ? "" : `:${port}`}/`;
-							const login = String(st.User?.[String(st.Self?.UserID)]?.LoginName ?? "").toLowerCase();
+							const { url, login } = serveOn(PORT);
 							const users = settings().access.tailscaleUsers;
 							updateSettings({ server: { publicUrl: url }, access: { tailscale: { enabled: true }, tailscaleUsers: users.length ? users : login ? [login] : [] } });
 							return send(res, 200, { ok: true, url, settings: publicSettings() });
 						}
-						if (mine) run(["serve", `--https=${mine[0].split(":").pop()}`, "off"]);
+						serveOff(PORT);
 						updateSettings({ access: { tailscale: { enabled: false } }, server: { publicUrl: "" } });
 						return send(res, 200, { ok: true, settings: publicSettings() });
 					} catch (e) {
@@ -1401,11 +1388,24 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 	};
 
 	// 區網存取開啟:聽所有網路介面(區網的人要用密碼登入);否則只聽設定的位址(本機 + tailnet IP)
-	const hosts = settings().access.lan.enabled && !process.env.STEWARD_HOSTS ? ["0.0.0.0"] : HOSTS;
+	const lan = settings().access.lan.enabled;
+	const hosts = lan && !process.env.STEWARD_HOSTS ? ["0.0.0.0"] : HOSTS;
+	const listening = new Map<string, Server>();
 	for (const host of hosts) {
 		const server = createServer((req, res) => (req.url === "/terminal" || req.url?.startsWith("/terminal/") ? proxyHttp(req, res) : handler(req, res)));
+		listening.set(host, server);
 		server.on("upgrade", proxyUpgrade);
 		server.on("error", (e) => console.error(`[server] 綁定 ${host}:${PORT} 失敗:${e.message}`));
 		server.listen(PORT, host, () => console.log(`[server] http://${host}:${PORT}`));
 	}
+	if (!lan && !process.env.STEWARD_HOSTS) onSettingsChange((s) => {
+		if (s.access.lan.enabled) return;
+		for (const [host, server] of listening) {
+			if (host !== "127.0.0.1" && !s.server.hosts.includes(host)) {
+				server.close();
+				listening.delete(host);
+				console.log(`[server] 不再聽 ${host}:${PORT}`);
+			}
+		}
+	});
 }

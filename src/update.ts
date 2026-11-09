@@ -25,6 +25,12 @@ function newer(a: string, b: string): boolean {
 let cache: { at: number; latest: string; url: string; notes: string } | undefined;
 export interface UpdateInfo { current: string; latest?: string; hasUpdate: boolean; dev: boolean; url?: string; notes?: string; error?: string; running: boolean }
 
+export function updateRequestError(info: UpdateInfo, tag: unknown): string | undefined {
+	if (!info.hasUpdate || !info.latest) return info.error ?? (info.dev ? "開發版不能自動更新" : "已經是最新版");
+	if (typeof tag !== "string" || tag !== info.latest) return "有更新的版本了,請重新檢查更新後再按一次";
+	return undefined;
+}
+
 export async function checkUpdate(force = false): Promise<UpdateInfo> {
 	const current = currentVersion();
 	const dev = !isRelease(current);

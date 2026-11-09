@@ -21,6 +21,10 @@ if ($Node -and (Test-Path (Join-Path $App "src\refresh-agents.ts"))) {
 	& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\refresh-agents.ts") --remove-all
 }
 
+if ($Node -and (Test-Path (Join-Path $App "src\tailscale.ts"))) {
+	& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\tailscale.ts") --serve-off
+}
+
 # 拿掉 herdr 設定裡的資料夾導覽
 if ($Node -and (Test-Path (Join-Path $App "src\herdr-setup.ts"))) {
 	& $Node --experimental-strip-types --no-warnings (Join-Path $App "src\herdr-setup.ts") --remove

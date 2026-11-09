@@ -60,6 +60,7 @@ export interface Settings {
 		terminalPort: number;
 		/** 伺服器要聽哪些位址(本機永遠包含 127.0.0.1) */
 		hosts: string[];
+		tailnetBindReviewed: boolean;
 		/** 給人點的網址(推播訊息、從 http 轉到 https 用);空白 = http://127.0.0.1:port/ */
 		publicUrl: string;
 	};
@@ -102,7 +103,7 @@ export const DEFAULTS: Settings = {
 	user: { name: "" },
 	cards: { defaultAgent: "" },
 	code: { autoFetch: "ask", autoFetchMinutes: 3 },
-	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], publicUrl: "" },
+	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], tailnetBindReviewed: false, publicUrl: "" },
 	access: { passwordHash: "", tailscale: { enabled: false }, tailscaleUsers: [], lan: { enabled: false } },
 	paths: { createRoot: "~", privacy: [], usePiPrivacy: false },
 	aiDetected: false,
@@ -168,24 +169,22 @@ function tailscaleJson(args: string[]): any {
 	}
 }
 
-function detect(): Settings {
+export function detect(ts: (args: string[]) => any = tailscaleJson): Settings {
 	const s: Settings = structuredClone(DEFAULTS);
-	// Tailscale:本人帳號、本機 tailnet IP、已經設好的 https 轉接網址
-	const st = tailscaleJson(["status"]);
+	// Tailscale:本人帳號、已經設好的 https 轉接網址
+	const st = ts(["status"]);
 	if (st?.Self) {
 		const login = st.User?.[String(st.Self.UserID)]?.LoginName;
 		if (login) s.access.tailscaleUsers = [String(login).toLowerCase()];
-		s.access.tailscale.enabled = true;
-		const ipv4 = (st.Self.TailscaleIPs ?? []).find((ip: string) => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
-		if (ipv4) s.server.hosts = ["127.0.0.1", ipv4];
 		const dns = String(st.Self.DNSName ?? "").replace(/\.$/, "");
-		const serve = tailscaleJson(["serve", "status"]);
+		const serve = ts(["serve", "status"]);
 		// 找出「轉到本機管家埠」的那個 https 入口
 		for (const [hostPort, web] of Object.entries<any>(serve?.Web ?? {})) {
 			const target = JSON.stringify(web?.Handlers ?? {});
 			if (target.includes(`127.0.0.1:${s.server.port}`) || target.includes(`localhost:${s.server.port}`)) {
 				const port = hostPort.split(":").pop();
 				s.server.publicUrl = `https://${dns || hostPort.split(":")[0]}${port && port !== "443" ? `:${port}` : ""}/`;
+				s.access.tailscale.enabled = true;
 				break;
 			}
 		}

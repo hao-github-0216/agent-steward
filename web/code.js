@@ -73,11 +73,15 @@
 	}
 	function confirmBox(title, text, okLabel = "確定") {
 		return new Promise((resolve) => {
-			const d = dialog({ title, html: `<p>${esc(text)}</p>`, buttons: [{ label: okLabel, primary: true, onClick: () => resolve(true) }] });
+			const d = dialog({ title, html: `<p style="white-space:pre-line">${esc(text)}</p>`, buttons: [{ label: okLabel, primary: true, onClick: () => resolve(true) }] });
 			d.querySelector("[data-x]").addEventListener("click", () => resolve(false));
 		});
 	}
 	window.confirmBox = confirmBox; // 看板頁(浮動球)也用同一個確認對話框
+	window.choiceBox = (title, text, labels) => new Promise((resolve) => {
+		const d = dialog({ title, html: `<p style="white-space:pre-line">${esc(text)}</p>`, buttons: labels.map((label, i) => ({ label, onClick: () => resolve(i) })) });
+		d.querySelector("[data-x]").addEventListener("click", () => resolve(null));
+	});
 	function menu(x, y, items) {
 		document.querySelector(".cv-menu")?.remove();
 		const m = el("div", "cv-menu");

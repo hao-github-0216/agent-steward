@@ -2255,8 +2255,9 @@ function renderSettings() {
 	if (tab === "about" && setUpdate?.running) pollUpdateLog();
 	$("updCheck")?.addEventListener("click", () => { setUpdate = null; renderSettings(); loadSetUpdate(true).then(() => setState && renderSettings()); });
 	$("updApply")?.addEventListener("click", async () => {
+		if (!(await window.confirmBox("更新專案管家", `從 ${setUpdate.current} 更新到 ${setUpdate.latest}。\n會從 GitHub 下載 ${setUpdate.latest} 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。`, "更新"))) return;
 		$("updApply").disabled = true;
-		const r = await post("/api/settings/update", {}).catch(() => ({ error: "連不上管家" }));
+		const r = await post("/api/settings/update", { tag: setUpdate.latest }).catch(() => ({ error: "連不上管家" }));
 		if (r.error) return toast(r.error);
 		setUpdate = { ...setUpdate, running: true }; renderSettings();
 	});
@@ -2341,7 +2342,23 @@ function syncSetupBanner(setup) {
 }
 syncPwBanner();
 // 第一次使用:自動打開設定精靈(只有能改設定的人才會看到)
-fetch("/api/settings").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d && !d.settings.setupDone) openSettings("general", true); }).catch(() => {});
+fetch("/api/settings").then((r) => (r.ok ? r.json() : null)).then(async (d) => {
+	if (!d) return;
+	if (!d.settings.setupDone) { openSettings("general", true); return; }
+	const tsIps = d.settings.server.hosts.filter((h) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h));
+	if (tsIps.length && !d.settings.server.tailnetBindReviewed && !d.settings.access.lan.enabled) {
+		// choiceBox 在頁尾的 code.js 裡:設定可能比它先讀回來,等頁面的 script 都跑完
+		if (document.readyState === "loading") await new Promise((r) => document.addEventListener("DOMContentLoaded", r, { once: true }));
+		if (!window.choiceBox) return;
+		const choice = await window.choiceBox("Tailscale 位址", `管家目前也直接開放在 Tailscale 位址 ${tsIps.join("、")} 的 ${d.settings.server.port} 埠(明碼 http)。\n透過 Tailscale Serve 的 https 網址連線用不到它。其他裝置的 agent 或指令如果是直接連這個位址,拿掉後會連不上。`, ["拿掉", "保留"]);
+		if (choice === null) return;
+		const server = { tailnetBindReviewed: true };
+		if (choice === 0) server.hosts = d.settings.server.hosts.filter((h) => !tsIps.includes(h));
+		const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: { server } }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
+		if (r.error) return toast(r.error);
+		toast(choice === 0 ? "已拿掉:管家不再直接聽 Tailscale 位址" : "保留了,之後可以在 設定 → 存取 的「聽哪些位址」修改");
+	}
+}).catch(() => {});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("setModal")) closeSettings(); });
 
 function toast(text) {
