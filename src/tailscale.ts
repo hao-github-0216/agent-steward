@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findTailscale, settings } from "./settings.ts";
@@ -47,7 +48,9 @@ export function serveOff(port: number): boolean {
 	return true;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv.includes("--serve-off")) {
+// 比對實際路徑:macOS 的 /var、/tmp 是捷徑,直接比字串會以為不是被直接執行
+const isMain = (() => { try { return !!process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
+if (isMain && process.argv.includes("--serve-off")) {
 	if (!findTailscale()) console.log("這台電腦沒有 Tailscale");
 	else {
 		try {
