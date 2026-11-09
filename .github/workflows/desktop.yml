@@ -117,9 +117,20 @@ jobs:
       - name: Install Rust targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - run: npm ci --prefix desktop
-      - run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
       - name: Stage universal executables and licenses
         run: node desktop/scripts/stage.mjs --target universal-apple-darwin
+      # tauri-build checks that the bundled executables exist for the target being compiled.
+      # cargo test compiles for this runner's own architecture, so point those names at the universal files.
+      - name: Run desktop unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in node herdr ttyd; do
+            for arch in aarch64-apple-darwin x86_64-apple-darwin; do
+              ln -sf "$name-universal-apple-darwin" "desktop/src-tauri/binaries/$name-$arch"
+            done
+          done
+          cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
       - name: Import Developer ID certificate and API key
         if: steps.mode.outputs.mode == 'signed'
         shell: bash
@@ -280,9 +291,13 @@ jobs:
         with:
           node-version: 22.x
       - run: npm ci --prefix desktop
-      - run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
       - name: Stage Windows executables and licenses
         run: node desktop/scripts/stage.mjs --target x86_64-pc-windows-msvc
+      # tauri-build checks that the bundled executables and resources exist, so test after staging.
+      - name: Run desktop unit tests
+        run: |
+          cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'cargo test failed' }
       - name: Build the unsigned NSIS installer
         working-directory: desktop
         run: |
