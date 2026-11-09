@@ -854,12 +854,12 @@ if without autostart; then say service_skipped; else
 EOF
 			if ! cmp -s "$TMP/$1.plist" "$plist" 2>/dev/null; then
 				mkdir -p "$(dirname "$plist")"; mv "$TMP/$1.plist" "$plist"
-				receipt change launchd "$plist"
 				launchctl bootout "gui/$UID_/$1" 2>/dev/null || true
 				launchctl bootstrap "gui/$UID_" "$plist"
 			elif ! launchctl print "gui/$UID_/$1" >/dev/null 2>&1; then launchctl bootstrap "gui/$UID_" "$plist"
 			elif [ "$4" = 1 ]; then launchctl kickstart -k "gui/$UID_/$1" >/dev/null 2>&1
 			fi
+			receipt change launchd "$plist"
 		}
 		service com.agent-steward "$APP/src/main.ts" steward 1
 		TCH=0; cmp -s "$APP/src/terminal-runner.ts" "$APP.prev/src/terminal-runner.ts" 2>/dev/null || TCH=1
