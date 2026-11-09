@@ -72,7 +72,7 @@ export async function applyUpdate(tag: string): Promise<void> {
 	let cmd: string, args: string[];
 	if (IS_WIN) {
 		cmd = "powershell.exe";
-		args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file, "-Version", tag, "-NoOpen"];
+		args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file, "-Version", tag, "-NoOpen", "-Yes"];
 	} else if (process.platform === "linux" && existsSync("/usr/bin/systemd-run")) {
 		// systemd 會把服務底下的程序一起停掉,改由 systemd 另外跑
 		cmd = "systemd-run";

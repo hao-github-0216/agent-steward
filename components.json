@@ -39,7 +39,8 @@
       "home": "https://github.com/tsl0922/ttyd",
       "source": {
         "linux": "https://github.com/tsl0922/ttyd/releases/latest/download/",
-        "macos": "brew"
+        "macos": "brew",
+        "windows": "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.win32.exe"
       },
       "size": { "zh-TW": "約 2 MB", "en": "~2 MB" }
     }

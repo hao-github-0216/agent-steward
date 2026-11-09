@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 export type ReceiptLanguage = "zh-TW" | "en";
 export type ReceiptSource = "existing" | "download" | "brew";
-export type ReceiptChangeType = "file" | "modified" | "symlink" | "launchd" | "systemd" | "linger" | "herdr-plugin";
+export type ReceiptChangeType = "file" | "modified" | "symlink" | "launchd" | "systemd" | "linger" | "herdr-plugin" | "scheduled-task";
 
 export interface ReceiptChange {
 	type: ReceiptChangeType;
@@ -25,6 +25,7 @@ export interface InstallReceipt {
 	ttyd?: { path: string; source: ReceiptSource };
 	herdrKeyAdded?: boolean;
 	lingerByInstaller?: boolean;
+	pathAdded?: string[];
 	backups: string[];
 	changes: ReceiptChange[];
 }
@@ -55,6 +56,7 @@ export function updateReceipt(patch: Partial<InstallReceipt>): InstallReceipt {
 		version: 1,
 		installedAt: previous?.installedAt ?? now,
 		updatedAt: now,
+		...(previous?.pathAdded || patch.pathAdded ? { pathAdded: [...new Set([...(previous?.pathAdded ?? []), ...(patch.pathAdded ?? [])])] } : {}),
 		backups: [...new Set([...(previous?.backups ?? []), ...(patch.backups ?? [])])],
 		changes: [...changes.values()],
 	};
@@ -99,16 +101,18 @@ function runCli(): void {
 	};
 	try {
 		switch (command) {
-			case "set": {
+			case "set":
+			case "set-file": {
 				if (args.length !== 1) return usage();
-				const patch = JSON.parse(args[0]);
+				const json = command === "set-file" ? readFileSync(args[0], "utf8").replace(/^\uFEFF/, "") : args[0];
+				const patch = JSON.parse(json);
 				if (!patch || typeof patch !== "object" || Array.isArray(patch)) return usage();
 				updateReceipt(patch);
 				return;
 			}
 			case "change": {
 				const [type, path, note] = args;
-				const types: ReceiptChangeType[] = ["file", "modified", "symlink", "launchd", "systemd", "linger", "herdr-plugin"];
+				const types: ReceiptChangeType[] = ["file", "modified", "symlink", "launchd", "systemd", "linger", "herdr-plugin", "scheduled-task"];
 				if (args.length < 2 || args.length > 3 || !types.includes(type as ReceiptChangeType)) return usage();
 				updateReceipt({ changes: [{ type: type as ReceiptChangeType, path, ...(note === undefined ? {} : { note }) }] });
 				return;

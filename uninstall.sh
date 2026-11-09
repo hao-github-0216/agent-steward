@@ -260,6 +260,8 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:uninstall_kept') printf '%s' 'App removed; data remains in %s. To delete everything: rm -rf %s' ;;
 		'zh-TW:herdr_key_removed') printf '%s' '你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。要加回來：再跑一次安裝並加上 --readd-herdr-key。' ;;
 		'en:herdr_key_removed') printf '%s' 'You removed the herdr folder-navigation shortcut, so it was not added back. To restore it, run the installer again with --readd-herdr-key.' ;;
+		'zh-TW:win_herdr_key_removed') printf '%s' '你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。要加回來：再跑一次安裝並加上 -ReaddHerdrKey（用 irm | iex 時先執行 $env:STEWARD_READD_HERDR_KEY=1）。' ;;
+		'en:win_herdr_key_removed') printf '%s' 'You removed the herdr folder-navigation shortcut, so it was not added back. To restore it, run the installer again with -ReaddHerdrKey (with irm | iex, run $env:STEWARD_READD_HERDR_KEY=1 first).' ;;
 		'zh-TW:herdr_folder_description') printf '%s' '資料夾導覽' ;;
 		'en:herdr_folder_description') printf '%s' 'Folder navigation' ;;
 		'zh-TW:herdr_config_removed') printf '%s' 'herdr 設定：已拿掉資料夾導覽' ;;
@@ -292,8 +294,80 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:receipt_backup') printf '%s' '  Backup: %s' ;;
 		'zh-TW:receipt_error') printf '%s' '收據錯誤：%s' ;;
 		'en:receipt_error') printf '%s' 'Receipt error: %s' ;;
-		'zh-TW:receipt_usage') printf '%s' '用法：install-receipt.ts set '\''<json>'\'' | change <type> <path> [note] | backup <path> | get <key> | summary <lang> [header-key]' ;;
-		'en:receipt_usage') printf '%s' 'Usage: install-receipt.ts set '\''<json>'\'' | change <type> <path> [note] | backup <path> | get <key> | summary <lang> [header-key]' ;;
+		'zh-TW:receipt_usage') printf '%s' '用法：install-receipt.ts set '\''<json>'\'' | set-file <path> | change <type> <path> [note] | backup <path> | get <key> | summary <lang> [header-key]' ;;
+		'en:receipt_usage') printf '%s' 'Usage: install-receipt.ts set '\''<json>'\'' | set-file <path> | change <type> <path> [note] | backup <path> | get <key> | summary <lang> [header-key]' ;;
+		'zh-TW:receipt_change_scheduled-task') printf '%s' '  工作排程器：%s%s' ;;
+		'en:receipt_change_scheduled-task') printf '%s' '  Scheduled task: %s%s' ;;
+		'zh-TW:win_installer_help') printf '%s' '用法：powershell -ExecutionPolicy Bypass -File install.ps1 [選項]
+  -From DIR          從本機原始碼安裝
+  -Version TAG       安裝指定版本
+  -Yes               不再詢問是否開始安裝
+  -DryRun            只列出計畫，不做改動
+  -Without a,b       不安裝指定元件（herdr、terminal、herdr-config、autostart、open、path）
+  -Lang zh-TW|en     指定訊息語言
+  -ReaddHerdrKey     把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
+  -SkipHerdr         等同 -Without herdr
+  -NoOpen            等同 -Without open
+  -NoService         等同 -Without autostart,open
+用 irm | iex 時改用環境變數 STEWARD_YES、STEWARD_DRY_RUN、STEWARD_WITHOUT、STEWARD_LANG、STEWARD_READD_HERDR_KEY。
+範例：powershell -ExecutionPolicy Bypass -File install.ps1 -From . -Yes -Without autostart,open' ;;
+		'en:win_installer_help') printf '%s' 'Usage: powershell -ExecutionPolicy Bypass -File install.ps1 [options]
+  -From DIR          Install local source
+  -Version TAG       Install a specific version
+  -Yes               Skip installation confirmation
+  -DryRun            Show the plan without making changes
+  -Without a,b       Omit components (herdr, terminal, herdr-config, autostart, open, path)
+  -Lang zh-TW|en     Set the message language
+  -ReaddHerdrKey     Restore the herdr folder-navigation shortcut you removed
+  -SkipHerdr         Same as -Without herdr
+  -NoOpen            Same as -Without open
+  -NoService         Same as -Without autostart,open
+With irm | iex, use environment variables STEWARD_YES, STEWARD_DRY_RUN, STEWARD_WITHOUT, STEWARD_LANG, STEWARD_READD_HERDR_KEY instead.
+Example: powershell -ExecutionPolicy Bypass -File install.ps1 -From . -Yes -Without autostart,open' ;;
+		'zh-TW:win_plan_path') printf '%s' '  使用者 PATH：加入 %s，並把專案管家的 herdr 資料夾 %s 排在最前面' ;;
+		'en:win_plan_path') printf '%s' '  User PATH: add %s, and put agent-steward'\''s herdr folder %s first' ;;
+		'zh-TW:win_plan_autostart') printf '%s' '登入時自動在背景執行（掛掉會自動重開，不開視窗）：' ;;
+		'en:win_plan_autostart') printf '%s' 'Run in the background at login (restarts on failure, no window):' ;;
+		'zh-TW:win_plan_task') printf '%s' '  工作排程器：%s' ;;
+		'en:win_plan_task') printf '%s' '  Task Scheduler: %s' ;;
+		'zh-TW:win_plan_wont') printf '%s' '不會做：不改 AI agent 的設定（之後在「設定 → Agent」自己選）、不傳送任何使用資料、不需要系統管理員。' ;;
+		'en:win_plan_wont') printf '%s' 'Will not change AI agent settings (choose integrations later in Settings → Agent), send usage data, or require administrator rights.' ;;
+		'zh-TW:win_plan_remove') printf '%s' '移除：powershell -ExecutionPolicy Bypass -File %s\uninstall.ps1' ;;
+		'en:win_plan_remove') printf '%s' 'Uninstall: powershell -ExecutionPolicy Bypass -File %s\uninstall.ps1' ;;
+		'zh-TW:win_component_path') printf '%s' '把 steward 和 herdr 加進 PATH' ;;
+		'en:win_component_path') printf '%s' 'Add steward and herdr to PATH' ;;
+		'zh-TW:win_consequence_path') printf '%s' '關掉後，在終端機打 steward、herdr 找不到專案管家的版本。' ;;
+		'en:win_consequence_path') printf '%s' 'Without it, typing steward or herdr in a terminal won'\''t find agent-steward'\''s versions.' ;;
+		'zh-TW:win_no_tty') printf '%s' '這個視窗不能互動，尚未做任何改動。要直接安裝：先執行 $env:STEWARD_YES=1 再跑一次安裝指令，或用 -Yes 參數。' ;;
+		'en:win_no_tty') printf '%s' 'This window is not interactive; nothing has changed. To install anyway, run $env:STEWARD_YES=1 and then the install command again, or pass -Yes.' ;;
+		'zh-TW:win_summary_service') printf '%s' '  背景服務：工作排程器 %s；停止：Stop-ScheduledTask -TaskName %s' ;;
+		'en:win_summary_service') printf '%s' '  Background service: Task Scheduler %s; stop: Stop-ScheduledTask -TaskName %s' ;;
+		'zh-TW:win_path_removed') printf '%s' '已從使用者 PATH 拿掉：%s' ;;
+		'en:win_path_removed') printf '%s' 'Removed from the user PATH: %s' ;;
+		'zh-TW:win_plan_root') printf '%s' '  %s\   程式、Node、設定與資料' ;;
+		'en:win_plan_root') printf '%s' '  %s\   App, Node, settings, and data' ;;
+		'zh-TW:win_plan_plugins') printf '%s' '  %s\   兩個 herdr 外掛' ;;
+		'en:win_plan_plugins') printf '%s' '  %s\   Two herdr plugins' ;;
+		'zh-TW:win_plan_herdr') printf '%s' '  herdr %s（Windows 版 zip）   %s   github.com/hao-github-0216/herdr（Apache-2.0，修改版）' ;;
+		'en:win_plan_herdr') printf '%s' '  herdr %s (Windows zip)   %s   github.com/hao-github-0216/herdr (Apache-2.0, modified build)' ;;
+		'zh-TW:win_plan_ttyd') printf '%s' '  ttyd（網頁終端機，ttyd.win32.exe）   %s   github.com/tsl0922/ttyd（MIT）' ;;
+		'en:win_plan_ttyd') printf '%s' '  ttyd (web terminal, ttyd.win32.exe)   %s   github.com/tsl0922/ttyd (MIT)' ;;
+		'zh-TW:win_node_download') printf '%s' '下載 Node.js（放在 %s\node，不需要管理員權限）' ;;
+		'en:win_node_download') printf '%s' 'Downloading Node.js (to %s\node, no administrator privileges needed)' ;;
+		'zh-TW:win_git_archive_failed') printf '%s' '無法從本機原始碼建立安裝檔。' ;;
+		'en:win_git_archive_failed') printf '%s' 'Could not archive the local source.' ;;
+		'zh-TW:win_herdr_busy') printf '%s' 'herdr 正在執行，沒辦法換新版；關掉所有 herdr 視窗後再跑一次安裝。' ;;
+		'en:win_herdr_busy') printf '%s' 'herdr is running and could not be replaced. Close all herdr windows and rerun the installer.' ;;
+		'zh-TW:win_path_added') printf '%s' '已把 steward 和專案管家的 herdr 資料夾加進使用者 PATH（新開的終端機才會生效）。' ;;
+		'en:win_path_added') printf '%s' 'Added steward and agent-steward'\''s herdr folder to the user PATH (takes effect in new terminals).' ;;
+		'zh-TW:win_service_failed') printf '%s' '專案管家沒有啟動起來，請看 %s\steward.log。' ;;
+		'en:win_service_failed') printf '%s' 'agent-steward did not start. See %s\steward.log.' ;;
+		'zh-TW:win_summary_manual') printf '%s' '  手動啟動：Set-Location "%s"; & "%s" --experimental-strip-types --no-warnings src/main.ts' ;;
+		'en:win_summary_manual') printf '%s' '  Start manually: Set-Location "%s"; & "%s" --experimental-strip-types --no-warnings src/main.ts' ;;
+		'zh-TW:win_summary_receipt') printf '%s' '  這次的改動記在 %s\install.json' ;;
+		'en:win_summary_receipt') printf '%s' '  Changes are recorded in %s\install.json' ;;
+		'zh-TW:win_uninstall_kept') printf '%s' '已移除程式；資料留在 %s。要全部刪掉：Remove-Item -Recurse -Force "%s"' ;;
+		'en:win_uninstall_kept') printf '%s' 'App removed; data remains in %s. To delete everything: Remove-Item -Recurse -Force "%s"' ;;
 		*) printf '%s' "$1" ;;
 	esac
 }
@@ -313,6 +387,7 @@ TTYD_LICENSE='MIT'
 TTYD_HOME='https://github.com/tsl0922/ttyd'
 TTYD_SOURCE_LINUX='https://github.com/tsl0922/ttyd/releases/latest/download/'
 TTYD_SOURCE_MACOS='brew'
+TTYD_SOURCE_WINDOWS='https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.win32.exe'
 component_data() {
 	case "$L" in
 		'zh-TW')

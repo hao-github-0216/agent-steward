@@ -75,7 +75,7 @@ if (process.argv.includes("--remove")) {
 } else {
 	const i = parts.findIndex((b) => isCmdBlock(b) && isFolderNav(b));
 	if (i < 0 && receipt?.herdrKeyAdded && !process.argv.includes("--readd")) {
-		console.log(t("herdr_key_removed"));
+		console.log(t(IS_WIN ? "win_herdr_key_removed" : "herdr_key_removed"));
 		process.exit(0);
 	}
 	const cmd = `command = ${tomlStr(command())}`;

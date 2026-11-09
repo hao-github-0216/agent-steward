@@ -5,8 +5,10 @@
 # This file is ASCII only on purpose: Windows PowerShell 5.1 does not decode `irm` output as UTF-8,
 # so any non-ASCII text here would be garbled (some garbled bytes even act as line breaks).
 # It downloads the real installer (scripts/install-windows.ps1, UTF-8) as bytes, decodes it as UTF-8 and runs it.
-# Options when running this file directly: -From DIR -Version TAG -SkipHerdr -NoOpen -NoService
-# With irm | iex use environment variables instead: STEWARD_FROM, STEWARD_VERSION, STEWARD_SKIP_HERDR,
+# Options when running this file directly: -From DIR -Version TAG -Yes -DryRun -Without a,b
+# -Lang zh-TW|en -ReaddHerdrKey -SkipHerdr -NoOpen -NoService (use -Help for details).
+# With irm | iex use environment variables instead: STEWARD_FROM, STEWARD_VERSION, STEWARD_YES,
+# STEWARD_DRY_RUN, STEWARD_WITHOUT, STEWARD_LANG, STEWARD_READD_HERDR_KEY, STEWARD_SKIP_HERDR,
 # STEWARD_NO_OPEN, STEWARD_NO_SERVICE (and STEWARD_REF to pick the branch/tag the installer comes from).
 & {
 	$ErrorActionPreference = "Stop"

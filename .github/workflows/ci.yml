@@ -109,16 +109,104 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs) | Out-Null
             if ($errs) { $errs; exit 1 }
           }
+      - name: Refuse unattended installation without -Yes
+        shell: powershell
+        run: |
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
+          $OutputEncoding = [Console]::OutputEncoding
+          $probe = Join-Path $env:RUNNER_TEMP "steward-installer-probe.ps1"
+          @'
+          param([switch]$DryRun, [string]$Lang)
+          $ErrorActionPreference = "Stop"
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
+          $OutputEncoding = [Console]::OutputEncoding
+          if ($HOME -ne $env:STEWARD_TEST_HOME) { throw "Child HOME is not isolated: $HOME" }
+          Write-Output "HOME_OK=$HOME"
+          $global:LASTEXITCODE = 0
+          $options = @{ From = $env:STEWARD_TEST_REPO }
+          if ($DryRun) { $options.DryRun = $true }
+          if ($Lang) { $options.Lang = $Lang }
+          & (Join-Path $env:STEWARD_TEST_REPO "install.ps1") @options
+          exit $LASTEXITCODE
+          '@ | Set-Content -Encoding UTF8 $probe
+          $T = New-Item -ItemType Directory (Join-Path $env:RUNNER_TEMP ("h-" + [guid]::NewGuid()))
+          $oldProfile = $env:USERPROFILE
+          $oldHome = $env:HOME
+          try {
+            $env:STEWARD_TEST_HOME = $T.FullName
+            $env:STEWARD_TEST_REPO = (Get-Location).Path
+            $env:USERPROFILE = $T.FullName
+            $env:HOME = $T.FullName
+            $output = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $probe
+            $code = $LASTEXITCODE
+            $log = Join-Path $env:RUNNER_TEMP "refuse-install.log"
+            $output | Out-File -Encoding UTF8 $log
+            $text = Get-Content $log -Raw -Encoding UTF8
+            Write-Host $text
+            if ($text -notlike "*HOME_OK=$($T.FullName)*") { throw "Child HOME was not verified" }
+            if ($code -eq 0) { throw "Installation should require -Yes without a terminal" }
+            if ($text -notlike "*This window is not interactive*") { throw "Installer did not refuse with the expected message" }
+            if (@(Get-ChildItem -LiteralPath $T.FullName -Force).Count) { throw "Refused installation wrote to HOME" }
+          } finally {
+            $env:USERPROFILE = $oldProfile
+            $env:HOME = $oldHome
+            Remove-Item -Recurse -Force $T.FullName
+          }
+      - name: Dry run is read-only and supports both languages
+        shell: powershell
+        run: |
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
+          $OutputEncoding = [Console]::OutputEncoding
+          $probe = Join-Path $env:RUNNER_TEMP "steward-installer-probe.ps1"
+          $oldProfile = $env:USERPROFILE
+          $oldHome = $env:HOME
+          foreach ($lang in @("", "zh-TW")) {
+            $T = New-Item -ItemType Directory (Join-Path $env:RUNNER_TEMP ("h-" + [guid]::NewGuid()))
+            try {
+              $env:STEWARD_TEST_HOME = $T.FullName
+              $env:STEWARD_TEST_REPO = (Get-Location).Path
+              $env:USERPROFILE = $T.FullName
+              $env:HOME = $T.FullName
+              $options = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", $probe, "-DryRun")
+              if ($lang) { $options += @("-Lang", $lang) }
+              $output = & powershell @options
+              $code = $LASTEXITCODE
+              $log = Join-Path $env:RUNNER_TEMP "dry-run.log"
+              $output | Out-File -Encoding UTF8 $log
+              $text = Get-Content $log -Raw -Encoding UTF8
+              Write-Host $text
+              if ($text -notlike "*HOME_OK=$($T.FullName)*") { throw "Child HOME was not verified" }
+              if ($code -ne 0) { throw "Dry run failed: $code" }
+              if ($lang -eq "zh-TW") {
+                if ($text -notmatch "安裝程式 — 看完再決定要不要裝") { throw "Missing Chinese title" }
+              } elseif ($text -notmatch "agent-steward .* installer") { throw "Missing English title" }
+              if (@(Get-ChildItem -LiteralPath $T.FullName -Force).Count) { throw "Dry run wrote to HOME" }
+            } finally {
+              $env:USERPROFILE = $oldProfile
+              $env:HOME = $oldHome
+              Remove-Item -Recurse -Force $T.FullName
+            }
+          }
       - name: Install with Windows PowerShell 5.1 on a "fresh machine" (irm | iex, like the README)
         shell: powershell
         env:
           STEWARD_FORCE_NODE_DOWNLOAD: "1"
           STEWARD_NO_SERVICE: "1"
+          STEWARD_YES: "1"
         run: |
           $env:STEWARD_FROM = (Get-Location).Path
           $env:STEWARD_REF = "${{ github.sha }}"
           irm "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.ps1" | iex
           if (-not (Test-Path "$HOME\.agent-steward\app\src\main.ts")) { throw "安裝沒有完成" }
+      - name: Installation receipt exists
+        shell: powershell
+        run: |
+          $receipt = Join-Path $HOME ".agent-steward\install.json"
+          if (-not (Test-Path $receipt)) { throw "Missing installation receipt" }
+          $text = Get-Content $receipt -Raw -Encoding UTF8
+          if ($text -notmatch '"lang"') { throw "Receipt has no language" }
+          $data = $text | ConvertFrom-Json
+          if ($data.lang -notin @("zh-TW", "en")) { throw "Invalid receipt language" }
       - name: Check what got installed
         shell: pwsh
         run: |
@@ -146,7 +234,13 @@ jobs:
       - name: Install again with -File (update path, start-on-login is best effort; CI has no interactive logon)
         continue-on-error: true
         shell: cmd
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoOpen
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -From . -NoOpen -Yes
+      - name: One-click update from an older app
+        shell: powershell
+        run: |
+          [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() | Set-Content -Encoding ascii "$HOME\.agent-steward\update.lock"
+          & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 -From . -NoOpen
+          if ($LASTEXITCODE -ne 0) { throw "One-click update from an older app failed: $LASTEXITCODE" }
       - name: Options reach the real installer (-From . installs this commit)
         shell: pwsh
         run: |
