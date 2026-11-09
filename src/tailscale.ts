@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findTailscale, settings } from "./settings.ts";
+import { findTailscale, SETTINGS_PATH } from "./settings.ts";
 
 function run(bin: string, args: string[]): string {
 	return execFileSync(bin, args, { encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
@@ -39,6 +39,23 @@ export function serveOn(port: number): { url: string; login: string } {
 	return { url, login };
 }
 
+/**
+ * 移除程式用:找出「確定是這份安裝設定的」那條 Serve。
+ * Tailscale Serve 是整台電腦共用的,所以要這份安裝的設定檔裡 Tailscale 存取是開著的,
+ * 而且記的網址跟那條 Serve 的位址、port 一致才算;同一台電腦上另一份安裝(例如測試用的)不會誤關。
+ */
+export function ownedServe(saved: any, serve: any): { port: number; https: string } | undefined {
+	const port = Number(saved?.server?.port ?? 8791);
+	if (!saved?.access?.tailscale?.enabled || !saved?.server?.publicUrl) return undefined;
+	const mine = findSteward(serve, port);
+	if (!mine) return undefined;
+	let url: URL;
+	try { url = new URL(saved.server.publicUrl); } catch { return undefined; }
+	const [host, https = "443"] = [mine.slice(0, mine.lastIndexOf(":")), mine.split(":").pop()];
+	if (url.hostname !== host || (url.port || "443") !== https) return undefined;
+	return { port, https };
+}
+
 export function serveOff(port: number): boolean {
 	const bin = findTailscale();
 	if (!bin) return false;
@@ -54,7 +71,12 @@ if (isMain && process.argv.includes("--serve-off")) {
 	if (!findTailscale()) console.log("這台電腦沒有 Tailscale");
 	else {
 		try {
-			console.log(serveOff(settings().server.port) ? "已關掉轉到專案管家的 Tailscale Serve" : "沒有轉到專案管家的 Tailscale Serve");
+			// 直接讀設定檔,不呼叫 settings():沒有設定檔時 settings() 會偵測並新建一份
+			const saved = existsSync(SETTINGS_PATH) ? JSON.parse(readFileSync(SETTINGS_PATH, "utf8")) : undefined;
+			const bin = findTailscale()!;
+			const owned = ownedServe(saved, serveStatus(bin));
+			if (owned) run(bin, ["serve", `--https=${owned.https}`, "off"]);
+			console.log(owned ? "已關掉轉到專案管家的 Tailscale Serve" : "沒有這份專案管家設定的 Tailscale Serve,不動");
 		} catch (e) {
 			console.error(`Tailscale 設定失敗:${String((e as { stderr?: string }).stderr || (e as Error).message).slice(0, 300)}`);
 			process.exitCode = 1;
