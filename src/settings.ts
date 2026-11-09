@@ -10,6 +10,11 @@ const HOME = homedir();
 export const DATA_DIR = process.env.STEWARD_DATA_DIR ?? join(HOME, ".agent-steward");
 export const SETTINGS_PATH = join(DATA_DIR, "settings.json");
 
+/** 傳給桌面 App 的單行 JSON 訊息;服務模式不輸出。 */
+export function desktopSignal(obj: { cmd: string; [key: string]: unknown }): void {
+	if (process.env.STEWARD_DESKTOP === "1") process.stdout.write(`@@desktop ${JSON.stringify(obj)}\n`);
+}
+
 export type NotifyKind = "none" | "hermes" | "telegram" | "webhook";
 
 /** pi-ai 內建的雲端服務(provider id 固定等於這個名字) */
@@ -49,6 +54,7 @@ export interface Settings {
 	/** 管家怎麼稱呼使用者(空白 = 「使用者」) */
 	user: { name: string };
 	ui: { lang: "" | "zh-TW" | "en" };
+	desktop: { herdrCli: boolean; herdrConfig: boolean; autostart: boolean };
 	cards: { defaultAgent: string };
 	code: {
 		/** 自動抓取遠端更新:ask = 先詢問,on = 開啟,off = 關閉 */
@@ -103,6 +109,7 @@ export const DEFAULTS: Settings = {
 	version: 1,
 	user: { name: "" },
 	ui: { lang: "" },
+	desktop: { herdrCli: true, herdrConfig: true, autostart: true },
 	cards: { defaultAgent: "" },
 	code: { autoFetch: "ask", autoFetchMinutes: 3 },
 	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], tailnetBindReviewed: false, publicUrl: "" },

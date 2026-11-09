@@ -10,7 +10,7 @@ const component = (id) => components.find((c) => c.id === id);
 const platforms = {
 	node: ["macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64", "windows-aarch64"],
 	herdr: ["linux-aarch64", "linux-x86_64", "macos-aarch64", "macos-x86_64", "windows-x86_64"],
-	ttyd: ["linux-x86_64", "linux-aarch64", "windows-x86_64"],
+	ttyd: ["linux-x86_64", "linux-aarch64", "windows-x86_64", "macos-universal"],
 	uv: ["macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64"],
 	tinytex: ["darwin", "linux-arm64", "linux-x86_64", "windows"],
 };
@@ -41,7 +41,10 @@ test("Node and GitHub assets use their pinned release versions", () => {
 	}
 	for (const id of ["herdr", "ttyd", "uv", "tinytex"]) {
 		const c = component(id);
-		for (const file of Object.values(c.files)) assert.ok(file.url.includes("/releases/download/" + (c.tag ?? c.version) + "/"), id);
+		for (const [platform, file] of Object.entries(c.files)) {
+			const tag = id === "ttyd" && platform === "macos-universal" ? "deps-ttyd-1.7.7-1" : (c.tag ?? c.version);
+			assert.ok(file.url.includes("/releases/download/" + tag + "/"), id + "/" + platform);
+		}
 	}
 	assert.equal(component("ttyd").version, "1.7.7");
 	assert.equal(component("ttyd").source.macos, "brew");

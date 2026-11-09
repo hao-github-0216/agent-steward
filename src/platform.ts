@@ -85,6 +85,8 @@ export function herdrSocket(): string {
 
 /** ttyd(網頁終端機) */
 export function ttydBin(): string {
+	const override = process.env.STEWARD_TTYD_BIN;
+	if (override && existsSync(override)) return override;
 	const candidates = IS_WIN
 		? [join(HOME, ".agent-steward", "bin", "ttyd.exe")]
 		: ["/opt/homebrew/bin/ttyd", "/usr/local/bin/ttyd", join(HOME, ".agent-steward", "bin", "ttyd"), "/usr/bin/ttyd"];

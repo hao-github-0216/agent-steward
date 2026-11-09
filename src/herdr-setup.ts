@@ -4,8 +4,8 @@
 //   node --experimental-strip-types src/herdr-setup.ts            加上 / 更新
 //   node --experimental-strip-types src/herdr-setup.ts --remove   拿掉(移除專案管家時)
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { herdrConfigDir, IS_WIN } from "./platform.ts";
 import { readReceipt, updateReceipt } from "./install-receipt.ts";
 
@@ -27,7 +27,7 @@ const isFolderNav = (block: string) => /folder[_-]nav/.test(block);
 function command(): string {
 	if (IS_WIN) {
 		// cmd.exe 的引號規則很麻煩:寫一個 .cmd 包起來,設定檔裡只放這個路徑
-		const wrapper = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "folder-nav.cmd");
+		const wrapper = join(process.env.STEWARD_DATA_DIR ?? join(homedir(), ".agent-steward"), "bin", "folder-nav.cmd");
 		mkdirSync(dirname(wrapper), { recursive: true });
 		writeFileSync(wrapper, `@"${NODE}" "${PLUGIN}" %*\r\n`);
 		return /\s/.test(wrapper) ? `"${wrapper}"` : wrapper;

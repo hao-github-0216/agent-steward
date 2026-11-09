@@ -105,12 +105,22 @@ setTimeout(digest, 60_000);
 
 const watcher = new Watcher(store, steward);
 watcher.start();
-startServer(store, steward, watcher);
+const stopServer = startServer(store, steward, watcher);
 
+const desktop = process.env.STEWARD_DESKTOP === "1";
+let shuttingDown = false;
 const shutdown = async () => {
+	if (shuttingDown) return;
+	shuttingDown = true;
+	if (desktop) setTimeout(() => process.exit(0), 3000);
 	watcher.stop();
-	await steward.close().catch(() => undefined);
+	await Promise.all([desktop ? stopServer() : undefined, steward.close().catch(() => undefined)]);
 	process.exit(0);
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+if (desktop) {
+	process.stdin.once("end", shutdown);
+	process.stdin.once("close", shutdown);
+	process.stdin.resume();
+}

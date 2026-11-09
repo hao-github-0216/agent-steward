@@ -2,8 +2,10 @@
 // 登入由管家轉接層負責,ttyd 只認管家加上的 X-Steward-User 標頭(外面連不到 ttyd)。
 // macOS 和 Windows 共用(開機自動啟動的服務執行這支)。
 import { spawn } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { herdrBin, ttydBin } from "./platform.ts";
-import { settings } from "./settings.ts";
+import { DATA_DIR, settings } from "./settings.ts";
 
 const port = String(process.env.STEWARD_TERMINAL_PORT ?? settings().server.terminalPort);
 const env: NodeJS.ProcessEnv = { ...process.env, COLORTERM: "truecolor" };
@@ -25,6 +27,32 @@ const args = [
 	"--client-option", 'theme={"background":"#1d2021","foreground":"#ebdbb2","cursor":"#ebdbb2"}',
 	herdrBin(),
 ];
-const child = spawn(ttydBin(), args, { env, stdio: "inherit" });
-child.on("exit", (code) => process.exit(code ?? 1));
+const exe = ttydBin();
+const runDir = join(DATA_DIR, "run");
+const pidFile = join(runDir, "ttyd.pid");
+mkdirSync(runDir, { recursive: true });
+const child = spawn(exe, args, { env, stdio: "inherit" });
+let desktopShutdown = false;
+let killTimer: ReturnType<typeof setTimeout> | undefined;
+process.on("exit", () => { try { rmSync(pidFile, { force: true }); } catch { /* 已經移除或無法存取 */ } });
+child.once("spawn", () => {
+	try { writeFileSync(pidFile, JSON.stringify({ pid: child.pid, exe }) + "\n"); }
+	catch (error) { console.error("[terminal] 無法寫入 ttyd.pid", error); child.kill("SIGTERM"); process.exit(1); }
+});
+child.on("error", (error) => { console.error("[terminal] ttyd 啟動失敗", error); process.exit(1); });
+child.on("exit", (code) => {
+	clearTimeout(killTimer);
+	process.exit(desktopShutdown ? 0 : (code ?? 1));
+});
 for (const sig of ["SIGTERM", "SIGINT"] as const) process.on(sig, () => child.kill(sig));
+if (process.env.STEWARD_DESKTOP === "1") {
+	const shutdown = () => {
+		if (desktopShutdown) return;
+		desktopShutdown = true;
+		child.kill("SIGTERM");
+		killTimer = setTimeout(() => child.kill("SIGKILL"), 3000);
+	};
+	process.stdin.once("end", shutdown);
+	process.stdin.once("close", shutdown);
+	process.stdin.resume();
+}

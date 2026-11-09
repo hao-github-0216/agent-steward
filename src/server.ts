@@ -3,15 +3,15 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { pathInside, serviceHint } from "./platform.ts";
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
-import { appendFileSync, mkdirSync, statSync as fileStat } from "node:fs";
+import { appendFileSync, closeSync, mkdirSync, openSync, statSync as fileStat } from "node:fs";
 import { authorize, authorizeTerminal, hasPassword, isPureLocal, login, logout, setPassword } from "./terminal-auth.ts";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { getCurrent, getSession, putCurrent, putSession } from "./code-session.ts";
 import { listDevices, pushAll, pushConfigured, registerDevice, unregisterDevice } from "./apns.ts";
-import { expandHome, findTailscale, onSettingsChange, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
+import { desktopSignal, expandHome, findTailscale, onSettingsChange, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
-import { agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
+import { APP_DIR, agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog, updateRequestError } from "./update.ts";
 import { serveOff, serveOn } from "./tailscale.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
@@ -105,7 +105,29 @@ function send(res: ServerResponse, status: number, data: unknown, type = "applic
 	res.end(typeof data === "string" || Buffer.isBuffer(data) ? data : JSON.stringify(data));
 }
 
-export function startServer(store: Store, steward: Steward, watcher: Watcher): void {
+/** 設定改變後在背景重新套用桌面整合,輸出留在資料目錄。 */
+function runDesktopSetup(): void {
+	const log = join(DATA_DIR, "logs", "desktop-setup.log");
+	let out: number | undefined;
+	try {
+		mkdirSync(dirname(log), { recursive: true });
+		appendFileSync(log, `\n===== ${new Date().toISOString()} =====\n`);
+		out = openSync(log, "a");
+		const node = process.env.STEWARD_NODE || process.execPath;
+		const child = spawn(node, ["--experimental-strip-types", "--no-warnings", join(APP_DIR, "src", "desktop-setup.ts")], {
+			env: { ...process.env, STEWARD_APP_DIR: APP_DIR, STEWARD_NODE: node },
+			stdio: ["ignore", out, out], windowsHide: true,
+		});
+		child.on("error", (error) => appendFileSync(log, `[desktop-setup] ${error.message}\n`));
+		child.on("close", (code, signal) => appendFileSync(log, `[desktop-setup] exit ${code ?? signal}\n`));
+	} catch (error) {
+		console.error("[desktop-setup] 無法啟動", error);
+	} finally {
+		if (out !== undefined) closeSync(out);
+	}
+}
+
+export function startServer(store: Store, steward: Steward, watcher: Watcher): () => Promise<void> {
 	const clients = new Set<ServerResponse>();
 	store.onChange((what) => {
 		for (const c of clients) c.write(`data: ${JSON.stringify({ what })}\n\n`);
@@ -497,7 +519,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				}
 				if (req.method === "GET" && path === "/api/settings") {
 					const lanIps = Object.values(networkInterfaces()).flat().filter((n) => n && n.family === "IPv4" && !n.internal && !n.address.startsWith("100.")).map((n) => n!.address);
-					return send(res, 200, { settings: publicSettings(), platform: process.platform, detected: { tailscale: !!findTailscale(), piPrivacy: existsSync(join(HOME, ".pi", "agent", "privacy-paths.json")), hermes: !!hermesSecret(settings().notify.hermes.route), lanIps, port: PORT } });
+					return send(res, 200, { settings: publicSettings(), platform: process.platform, desktop: process.env.STEWARD_DESKTOP === "1", detected: { tailscale: !!findTailscale(), piPrivacy: existsSync(join(HOME, ".pi", "agent", "privacy-paths.json")), hermes: !!hermesSecret(settings().notify.hermes.route), lanIps, port: PORT } });
 				}
 				if (req.method === "PUT" && path === "/api/settings") {
 					const before = settings();
@@ -546,6 +568,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 					await syncProviders();
 					if (fillEmptyRouting()) next = settings();
 					steward.resetModels();
+					if (process.env.STEWARD_DESKTOP === "1") {
+						if (next.desktop.autostart !== before.desktop.autostart) desktopSignal({ cmd: "autostart", on: next.desktop.autostart });
+						if (next.ui.lang !== before.ui.lang) desktopSignal({ cmd: "lang", lang: next.ui.lang });
+						if (next.desktop.herdrCli !== before.desktop.herdrCli || next.desktop.herdrConfig !== before.desktop.herdrConfig) runDesktopSetup();
+					}
 					const restart = next.server.port !== before.server.port || next.server.terminalPort !== before.server.terminalPort || next.access.lan.enabled !== before.access.lan.enabled || next.server.hosts.some((host) => !before.server.hosts.includes(host));
 					return send(res, 200, { settings: publicSettings(next), restartNeeded: restart });
 				}
@@ -1307,11 +1334,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 				return send(res, 200, putCurrent(p.id, String(b.source ?? "")));
 			}
 			if (req.method === "GET" && path === "/api/health") {
-				// 沒登入只回「活著」;用量、窗格狀態要登入才看得到
-				if (!(await authorize(req)).ok) return send(res, 200, { ok: true });
+				// 沒登入只回「活著」與執行模式;用量、窗格狀態要登入才看得到
+				const mode = process.env.STEWARD_DESKTOP === "1" ? "desktop" : "service";
+				if (!(await authorize(req)).ok) return send(res, 200, { ok: true, mode });
 				const usage = await steward.usage().catch(() => undefined);
 				const watchedCards = await steward.watchedCards().catch(() => undefined);
-				return send(res, 200, { ok: true, usage, watchedCards, watcher: watcher.status() });
+				return send(res, 200, { ok: true, mode, usage, watchedCards, watcher: watcher.status() });
 			}
 			// 手動觸發:立刻整理某個窗格的新內容(除錯、或使用者想馬上更新時用)
 			if (req.method === "POST" && path === "/api/ingest") {
@@ -1420,4 +1448,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): v
 			}
 		}
 	});
+	return async () => {
+		for (const client of clients) client.end();
+		await Promise.all([...listening.values()].map((server) => new Promise<void>((done) => server.close(() => done()))));
+	};
 }

@@ -108,7 +108,14 @@ async function pin(check) {
 	const manifest = JSON.parse(original);
 	const results = await Promise.all(manifest.components.map(async (component) => {
 		const names = filenames(component);
-		return names ? { component, files: await officialFiles(component, names) } : undefined;
+		if (!names) return undefined;
+		const files = await officialFiles(component, names);
+		if (component.id === "ttyd") {
+			Object.assign(files, await officialFiles({ ...component, repo: "hao-github-0216/agent-steward", tag: `deps-ttyd-${component.version}-1` }, {
+				"macos-universal": `ttyd-${component.version}-macos-universal.tar.gz`,
+			}));
+		}
+		return { component, files };
 	}));
 	let changed = false;
 	for (const result of results) {
