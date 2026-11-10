@@ -482,6 +482,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				}
 				return send(res, 404, { error: "not found" });
 			}
+			if (path === "/api/desktop/update" && process.env.STEWARD_DESKTOP !== "1") return send(res, 404, { error: "not found" });
 			// 所有 /api 都要登入;例外:健康檢查、網頁回報錯誤、本機 agent 整合(開工簡報、提問、回報)
 			const OPEN = new Set(["/api/health", "/api/clientlog"]);
 			const LOCAL_INTEGRATION = new Set(["/api/brief", "/api/ask", "/api/report", "/api/projects"]);
@@ -509,13 +510,19 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				return await codeRoute(p, mc[2], req, res, url);
 			}
 			// ---------- 設定頁:讀寫設定(要登入,和終端機同一套身分檢查) ----------
-			if (path === "/api/settings" || path.startsWith("/api/settings/")) {
+			if (path === "/api/settings" || path.startsWith("/api/settings/") || path === "/api/desktop/update") {
 				const auth = await authorizeTerminal(req);
 				if (!auth.ok) {
 					const headers: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
 					res.writeHead(auth.status, headers);
 					res.end(JSON.stringify({ error: auth.reason }));
 					return;
+				}
+				if (req.method === "POST" && path === "/api/desktop/update") {
+					const input = await body(req);
+					if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length) return send(res, 400, { error: "App 更新不接受參數" });
+					desktopSignal({ cmd: "update" });
+					return send(res, 200, { ok: true });
 				}
 				if (req.method === "GET" && path === "/api/settings") {
 					const lanIps = Object.values(networkInterfaces()).flat().filter((n) => n && n.family === "IPv4" && !n.internal && !n.address.startsWith("100.")).map((n) => n!.address);
@@ -524,6 +531,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (req.method === "PUT" && path === "/api/settings") {
 					const before = settings();
 					const incoming = stripMasked((await body(req)).settings ?? {});
+					if (incoming.desktop && Object.hasOwn(incoming.desktop, "autoUpdate") && typeof incoming.desktop.autoUpdate !== "boolean") return send(res, 400, { error: "desktop.autoUpdate must be a boolean" });
 					if (incoming.ui?.lang !== undefined && !["", "zh-TW", "en"].includes(incoming.ui.lang)) return send(res, 400, { error: "語言設定不對" });
 					if (incoming.code) {
 						if (incoming.code.autoFetch !== undefined && !["ask", "on", "off"].includes(incoming.code.autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });

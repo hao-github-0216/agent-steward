@@ -3,9 +3,10 @@ use crate::{
     i18n::Lang,
     mark_done, open_browser,
     paths::{
-        parse_ttyd_pid, process_executable, read_settings, same_executable, signal_process, Paths,
+        parse_ttyd_pid, process_executable, quiet_command, read_settings, same_executable,
+        signal_process, Paths,
     },
-    refresh_menu, set_status, show_error, takeover, Desktop, Status,
+    refresh_menu, set_status, show_error, takeover, updater, Desktop, Status,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -76,6 +77,7 @@ impl Logger {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "cmd", rename_all = "lowercase")]
 pub enum DesktopSignal {
+    Update,
     Autostart {
         on: Option<bool>,
     },
@@ -95,6 +97,8 @@ pub fn parse_signal(line: &str) -> Option<DesktopSignal> {
 pub enum Control {
     Quit,
     Restart,
+    StopForUpdate(Sender<()>),
+    ResumeAfterUpdate(Sender<()>),
     Autostart(bool),
     Signal(DesktopSignal),
     OutputClosed,
@@ -505,11 +509,14 @@ fn run_setup(desktop: &Desktop) -> bool {
     exited == Some(true) && matches!(last_setup, Some(DesktopSignal::Setup { ok: true, .. }))
 }
 
-fn handle_signal(app: &AppHandle, desktop: &Desktop, signal: DesktopSignal) {
+fn handle_signal(app: &AppHandle, desktop: &Arc<Desktop>, signal: DesktopSignal) {
     desktop
         .log
         .write("desktop.log", &format!("desktop message: {signal:?}"));
     match signal {
+        DesktopSignal::Update => {
+            updater::request_check(app, desktop, updater::CheckMode::Manual);
+        }
         DesktopSignal::Autostart { on } => {
             let on = on
                 .or_else(|| read_settings(&desktop.paths.data)["desktop"]["autostart"].as_bool())
@@ -555,7 +562,61 @@ fn occupied(
     }
 }
 
-fn stop_herdr(desktop: &Desktop) {
+fn herdr_executables() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let output = quiet_command("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath } | ForEach-Object { $_.ExecutablePath })"])
+            .output();
+        output
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| serde_json::from_slice::<Vec<PathBuf>>(&output.stdout).ok())
+            .unwrap_or_default()
+    }
+    #[cfg(not(windows))]
+    {
+        let Ok(output) = quiet_command("ps").args(["-axo", "pid="]).output() else {
+            return Vec::new();
+        };
+        String::from_utf8_lossy(&output.stdout)
+            .split_whitespace()
+            .filter_map(|pid| pid.parse().ok())
+            .filter_map(process_executable)
+            .collect()
+    }
+}
+
+pub fn herdr_in_app(paths: &Paths) -> bool {
+    herdr_executables()
+        .iter()
+        .any(|exe| same_executable(exe, &paths.herdr))
+}
+
+pub fn herdr_running(desktop: &Desktop) -> bool {
+    let output = desktop
+        .paths
+        .command(&desktop.paths.herdr, &desktop.token)
+        .args(["status", "server", "--json"])
+        .output();
+    if let Some(running) = output
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| serde_json::from_slice::<Value>(&output.stdout).ok())
+        .and_then(|status| status["running"].as_bool())
+    {
+        return running;
+    }
+    herdr_executables().iter().any(|exe| {
+        exe.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.eq_ignore_ascii_case("herdr") || name.eq_ignore_ascii_case("herdr.exe")
+            })
+    })
+}
+
+pub fn stop_herdr(desktop: &Desktop) {
     let result = desktop
         .paths
         .command(&desktop.paths.herdr, &desktop.token)
@@ -609,6 +670,7 @@ pub fn start(
         }
         let setup_ok = run_setup(&desktop);
         desktop.view.lock().unwrap().setup_failed = !setup_ok;
+        updater::check_herdr_version(&app, &desktop);
         let autostart = read_settings(&desktop.paths.data)["desktop"]["autostart"]
             .as_bool()
             .unwrap_or(true);
@@ -621,6 +683,7 @@ pub fn start(
         ];
         let epoch = Instant::now();
         let mut blocked = false;
+        let mut update_paused = false;
         let mut preflight = true;
         let mut shown = HashSet::new();
         let mut next_health = Instant::now();
@@ -630,6 +693,40 @@ pub fn start(
                 match message {
                     Control::Quit => {
                         desktop.stopping.store(true, Ordering::SeqCst);
+                    }
+                    Control::StopForUpdate(done) => {
+                        if !update_paused {
+                            stop_services(&mut services, &desktop);
+                            update_paused = true;
+                            set_status(&app, &desktop, Status::Stopped);
+                            desktop
+                                .log
+                                .write("desktop.log", "App services stopped for update");
+                        }
+                        let _ = done.send(());
+                    }
+                    Control::ResumeAfterUpdate(done) => {
+                        if update_paused {
+                            for service in &mut services {
+                                service.reset();
+                            }
+                            update_paused = false;
+                            blocked = false;
+                            preflight = true;
+                            next_health = Instant::now();
+                            last_healthy = Instant::now();
+                            set_status(&app, &desktop, Status::Starting);
+                            desktop
+                                .log
+                                .write("desktop.log", "App services resuming after failed update");
+                        }
+                        let _ = done.send(());
+                    }
+                    Control::Restart if update_paused => {
+                        desktop.log.write(
+                            "desktop.log",
+                            "service restart ignored while installing update",
+                        );
                     }
                     Control::Restart => {
                         stop_services(&mut services, &desktop);
@@ -672,7 +769,7 @@ pub fn start(
             if desktop.stopping.load(Ordering::SeqCst) {
                 break;
             }
-            if preflight {
+            if preflight && !update_paused {
                 preflight = false;
                 let conflict = if health(desktop.paths.port) != Health::Absent {
                     Some(desktop.paths.port)
@@ -686,7 +783,7 @@ pub fn start(
                     blocked = true;
                 }
             }
-            if !blocked {
+            if !blocked && !update_paused {
                 for service in &mut services {
                     service.poll(&desktop, epoch);
                     service.launch(&desktop, epoch);
@@ -822,6 +919,10 @@ mod tests {
     }
     #[test]
     fn desktop_messages_require_the_prefix_and_valid_known_payloads() {
+        assert_eq!(
+            parse_signal(r#"@@desktop {"cmd":"update"}"#),
+            Some(DesktopSignal::Update)
+        );
         assert_eq!(
             parse_signal(r#"@@desktop {"cmd":"autostart","on":false}"#),
             Some(DesktopSignal::Autostart { on: Some(false) })

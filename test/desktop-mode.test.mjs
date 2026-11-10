@@ -38,7 +38,7 @@ async function unusedPort() {
 	await new Promise((done, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", done); });
 	const port = server.address().port;
 	await new Promise((done) => server.close(done));
-	assert.ok(![8791, 8792, 8793].includes(port));
+	if (port >= 8780 && port <= 8810) return unusedPort();
 	return port;
 }
 function fixture(desktop, { password = false } = {}) {
@@ -86,7 +86,7 @@ function launch(t, script, env) {
 async function main(t, desktop, options) {
 	const f = fixture(desktop, options);
 	f.env.STEWARD_PORT = String(await unusedPort());
-	f.env.STEWARD_TERMINAL_PORT = String(await unusedPort());
+	do { f.env.STEWARD_TERMINAL_PORT = String(await unusedPort()); } while (f.env.STEWARD_TERMINAL_PORT === f.env.STEWARD_PORT);
 	const proc = launch(t, "main.ts", f.env);
 	const base = `http://127.0.0.1:${f.env.STEWARD_PORT}`;
 	const health = await waitFor(async () => {
@@ -112,7 +112,7 @@ test("desktop main reports its mode, applies settings signals/setup, and exits w
 	assert.equal(body.desktop, true);
 	assert.equal(typeof body.platform, "string");
 	assert.ok(body.detected);
-	assert.deepEqual(body.settings.desktop, { herdrCli: true, herdrConfig: true, autostart: true });
+	assert.deepEqual(body.settings.desktop, { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true });
 	await put(f.base, { ui: { lang: "en" }, desktop: { autostart: false, herdrCli: false, herdrConfig: false } });
 	const log = join(f.data, "logs", "desktop-setup.log");
 	await waitFor(() => existsSync(log) && readFileSync(log, "utf8").includes('"cmd":"setup","ok":true'));
@@ -205,16 +205,16 @@ test("desktop update checks return mode/download URL offline and never apply an 
 	process.env.STEWARD_DESKTOP = "1";
 	t.after(() => { delete process.env.STEWARD_DESKTOP; });
 	let calls = 0;
-	t.mock.method(globalThis, "fetch", async () => { calls++; return new Response(JSON.stringify({ tag_name: "v9.9.9", html_url: "https://example.invalid/release", body: "test" })); });
+	const mockedFetch = t.mock.method(globalThis, "fetch", async () => { calls++; return new Response(JSON.stringify({ tag_name: "v9.9.9", html_url: "https://example.invalid/release", body: "test" })); });
 	await assert.rejects(applyUpdate("v9.9.9"), { message: "App 版請到 GitHub 下載新版 App" });
 	assert.equal(calls, 0);
 	assert.equal(existsSync(join(HOME, "update")), false);
 	const info = await checkUpdate(true);
 	assert.equal(info.desktop, true);
 	assert.equal(info.downloadUrl, `https://github.com/${REPO}/releases/latest`);
-	t.mock.method(globalThis, "fetch", async () => new Response("Not Found", { status: 404 }));
+	mockedFetch.mock.mockImplementation(async () => new Response("Not Found", { status: 404 }));
 	assert.equal((await checkUpdate(true)).desktop, true);
-	t.mock.method(globalThis, "fetch", async () => { throw new Error("offline"); });
+	mockedFetch.mock.mockImplementation(async () => { throw new Error("offline"); });
 	assert.equal((await checkUpdate(true)).downloadUrl, info.downloadUrl);
 	delete process.env.STEWARD_DESKTOP;
 	assert.equal((await checkUpdate(true)).desktop, false);
@@ -230,7 +230,7 @@ test("desktopSignal emits newline-terminated single-line JSON only in desktop mo
 		assert.equal(result.status, 0, result.stderr);
 		assert.equal(result.stdout, mode === "1" ? '@@desktop {"cmd":"autostart","on":true}\n@@desktop {"cmd":"lang","lang":"en"}\n' : "");
 	}
-	assert.deepEqual(settings().desktop, { herdrCli: true, herdrConfig: true, autostart: true });
+	assert.deepEqual(settings().desktop, { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true });
 });
 
 function uiFixture(desktop) {
@@ -249,10 +249,12 @@ function uiFixture(desktop) {
 	const element = (id) => {
 		if (id === "setModal") return modal;
 		if (!modal.innerHTML.includes(`id="${id}"`)) return null;
-		if (!nodes.has(id)) nodes.set(id, { addEventListener() {} });
+		if (!nodes.has(id)) nodes.set(id, { addEventListener(event, handler) { this[`on${event}`] = handler; } });
 		return nodes.get(id);
 	};
+	const requests = [], toasts = [];
 	const context = vm.createContext({
+		post: async (...args) => { requests.push(args); return {}; }, toast: (message) => toasts.push(message),
 		$: element, fixtureSettings: structuredClone(DEFAULTS), window: {}, pref: () => "", clearInterval,
 		aiPane: () => "", agentsPane: () => "", routingPane: () => "", saveSettings: async () => true,
 		setModels: {},
@@ -263,7 +265,7 @@ function uiFixture(desktop) {
 	const collect = html.slice(html.indexOf("function collectSettings()"), html.indexOf("async function saveSettings("));
 	run(html.match(/^const esc = .*;$/m)[0] + "\n" + settingsSource + "\n" + render + "\n" + collect);
 	run(`setState = { s: fixtureSettings, detected: {}, platform: "darwin", desktop: ${desktop}, tab: "general" }; setAgents = []; setPlugins = []; setUpdate = { current: "v1.0.0", latest: "v1.1.0", hasUpdate: true, desktop: ${desktop}, downloadUrl: "https://github.com/example/repo/releases/latest", components: [] };`);
-	return { run, modal, element };
+	return { run, modal, element, requests, toasts };
 }
 
 test("desktop UI adds App controls and a wizard-only step; service UI stays unchanged", async () => {
@@ -271,7 +273,7 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 		const f = uiFixture(desktop);
 		f.run("renderSettings()");
 		assert.equal(f.modal.innerHTML.includes("<h4>App</h4>"), desktop);
-		assert.equal(f.modal.fields.filter((field) => field.dataset.k.startsWith("desktop.")).length, desktop ? 3 : 0);
+		assert.equal(f.modal.fields.filter((field) => field.dataset.k.startsWith("desktop.")).length, desktop ? 4 : 0);
 		f.run("setState.wizard = 0; renderSettings()");
 		assert.ok(f.modal.innerHTML.includes(`1/${desktop ? 6 : 5} 歡迎`));
 		assert.equal(f.modal.innerHTML.includes('data-k="desktop.'), false);
@@ -279,7 +281,8 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 		assert.equal(f.run("setState.tab"), desktop ? "desktop" : "ai");
 		if (desktop) {
 			assert.match(f.modal.innerHTML, /2\/6 元件與背景執行/);
-			assert.equal(f.modal.fields.length, 3);
+			assert.equal(f.modal.fields.length, 4);
+			assert.match(f.modal.innerHTML, /自動檢查 App 更新/);
 			assert.ok(f.modal.fields.every((field) => field.checked));
 			f.modal.fields[0].checked = false;
 			f.run("collectSettings()");
@@ -289,16 +292,81 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 	}
 });
 
-test("desktop About links to the App download and hides installer update/removal controls", () => {
+test("desktop About uses an App update button and hides installer update/removal controls", () => {
 	for (const desktop of [false, true]) {
 		const f = uiFixture(desktop);
 		const markup = f.run("aboutPane()");
 		assert.equal(markup.includes('id="updApply"'), !desktop);
-		assert.equal(markup.includes("到 GitHub 下載新版 App"), desktop);
+		assert.equal(markup.includes('id="updDesktop"'), desktop);
 		assert.equal(markup.includes("sh ~/.agent-steward/app/uninstall.sh"), !desktop);
 		if (desktop) {
-			assert.match(markup, /href="https:\/\/github.com\/example\/repo\/releases\/latest" target="_blank" rel="noopener"/);
+			assert.match(markup, /更新 App 到 v1.1.0/);
+			f.run("setUpdate.hasUpdate = false");
+			assert.match(f.run("aboutPane()"), /用 App 檢查更新/);
+			f.run('setState.s.ui.lang = "en"');
+			assert.match(f.run("aboutPane()"), /Check for updates in App/);
 			assert.match(markup, /在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除/);
 		}
+	}
+});
+
+test("desktop update API emits only the fixed command and persists autoUpdate", { timeout: 30_000 }, async (t) => {
+	const f = await main(t, true);
+	const request = (body) => fetch(f.base + "/api/desktop/update", { method: "POST", headers: { "content-type": "application/json", connection: "close" }, body: JSON.stringify(body) });
+	for (const body of [{ url: "https://example.invalid/evil" }, { version: "99.0.0" }, { tag: "v99.0.0" }, [], null]) {
+		assert.equal((await request(body)).status, 400);
+	}
+	assert.doesNotMatch(f.output(), /"cmd":"update"/);
+	const response = await request({});
+	assert.equal(response.status, 200);
+	assert.deepEqual(await response.json(), { ok: true });
+	await waitFor(() => f.output().includes('@@desktop {"cmd":"update"}\n'));
+	assert.equal(f.output().split('@@desktop {"cmd":"update"}\n').length - 1, 1);
+	for (const value of ["false", 0, null]) {
+		const invalid = await fetch(f.base + "/api/settings", { method: "PUT", headers: { "content-type": "application/json", connection: "close" }, body: JSON.stringify({ settings: { desktop: { autoUpdate: value } } }) });
+		assert.equal(invalid.status, 400);
+	}
+	assert.equal((await put(f.base, { desktop: { autoUpdate: false } })).settings.desktop.autoUpdate, false);
+	assert.equal(JSON.parse(readFileSync(join(f.data, "settings.json"), "utf8")).desktop.autoUpdate, false);
+	f.child.stdin.end();
+	assert.equal((await within(f.exited, 5000)).code, 0);
+});
+
+test("service desktop update API is 404 even behind settings authentication", { timeout: 30_000 }, async (t) => {
+	for (const password of [false, true]) {
+		const f = await main(t, false, { password });
+		const response = await fetch(f.base + "/api/desktop/update", { method: "POST", headers: { "content-type": "application/json", connection: "close" }, body: "{}" });
+		assert.equal(response.status, 404);
+		assert.doesNotMatch(f.output(), /@@desktop /);
+		f.child.kill("SIGTERM");
+		await within(f.exited, 5000);
+	}
+});
+
+test("desktop update API requires the same authentication and forwarded-request permissions as settings", { timeout: 30_000 }, async (t) => {
+	for (const password of [true, false]) {
+		const f = await main(t, true, { password });
+		const headers = { "content-type": "application/json", connection: "close", ...(!password ? { "x-forwarded-for": "192.0.2.1" } : {}) };
+		const update = await fetch(f.base + "/api/desktop/update", { method: "POST", headers, body: "{}" });
+		const settings = await fetch(f.base + "/api/settings", { method: "PUT", headers, body: '{"settings":{}}' });
+		assert.equal(update.status, password ? 401 : 403);
+		assert.equal(update.status, settings.status);
+		assert.doesNotMatch(f.output(), /"cmd":"update"/);
+		f.child.stdin.end();
+		await within(f.exited, 5000);
+	}
+});
+
+test("desktop update button posts no parameters and shows the App dialog message in both languages", async () => {
+	for (const lang of ["zh-TW", "en"]) {
+		const f = uiFixture(true);
+		f.run(`setState.s.ui.lang = ${JSON.stringify(lang)}; setState.tab = "about"; renderSettings()`);
+		await f.element("updDesktop").onclick();
+		assert.equal(f.requests.length, 1);
+		assert.equal(f.requests[0][0], "/api/desktop/update");
+		assert.equal(JSON.stringify(f.requests[0][1]), "{}");
+		assert.equal(f.toasts[0], lang === "en" ? "Asked the App to check for updates. Please see the App dialog." : "已請 App 檢查更新，請看 App 跳出的視窗");
+		f.run('setState.tab = "general"; renderSettings()');
+		assert.ok(f.modal.innerHTML.includes(lang === "en" ? "Automatically check for App updates" : "自動檢查 App 更新"));
 	}
 });

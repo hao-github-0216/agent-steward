@@ -4,6 +4,7 @@ mod i18n;
 mod paths;
 mod supervisor;
 mod takeover;
+mod updater;
 
 use i18n::Lang;
 use paths::{read_settings, Paths};
@@ -48,6 +49,8 @@ pub struct Desktop {
     pub control: mpsc::Sender<Control>,
     pub stopping: AtomicBool,
     pub stop_terminals: AtomicBool,
+    pub update_active: AtomicBool,
+    pub desktop_state_lock: Mutex<()>,
     pub done: (Mutex<bool>, Condvar),
 }
 
@@ -239,12 +242,7 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             }
         }
         "updates" => {
-            if let Err(error) = app.opener().open_url(
-                "https://github.com/hao-github-0216/agent-steward/releases/latest",
-                None::<&str>,
-            ) {
-                show_error(app, &desktop, &format!("open releases: {error}"));
-            }
+            updater::request_check(app, &desktop, updater::CheckMode::Manual);
         }
         "about" => {
             if let Err(error) = app.opener().open_path(
@@ -282,6 +280,7 @@ fn main() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -309,6 +308,8 @@ fn main() {
                 control: tx,
                 stopping: AtomicBool::new(false),
                 stop_terminals: AtomicBool::new(false),
+                update_active: AtomicBool::new(false),
+                desktop_state_lock: Mutex::new(()),
                 done: (Mutex::new(false), Condvar::new()),
             });
             app.manage(desktop.clone());
@@ -354,12 +355,9 @@ fn main() {
                     }
                 });
             }
-            supervisor::start(
-                app.handle().clone(),
-                desktop,
-                rx,
-                !std::env::args().any(|arg| arg == "--autostart"),
-            );
+            let autostart = std::env::args().any(|arg| arg == "--autostart");
+            supervisor::start(app.handle().clone(), desktop.clone(), rx, !autostart);
+            updater::start(app.handle().clone(), desktop, autostart);
             Ok(())
         });
     let app = builder

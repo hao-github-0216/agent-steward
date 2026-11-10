@@ -10,7 +10,7 @@ process.env.USERPROFILE = DATA;
 process.env.STEWARD_DATA_DIR = DATA;
 after(() => rmSync(DATA, { recursive: true, force: true }));
 writeFileSync(join(DATA, "settings.json"), JSON.stringify({ version: 1, access: { tailscale: { enabled: false } }, plugins: {}, setupDone: true }));
-const { DEFAULTS, detect, settings } = await import("../src/settings.ts");
+const { DEFAULTS, detect, settings, updateSettings } = await import("../src/settings.ts");
 
 const status = {
 	Self: { UserID: 1, TailscaleIPs: ["100.101.102.103", "fd7a:115c::1"], DNSName: "box.example.ts.net." },
@@ -46,4 +46,16 @@ test("沒有 Tailscale:只聽本機,不開遠端存取", () => {
 test("舊設定會補上尚未確認 tailnet 監聽的預設值", () => {
 	assert.equal(DEFAULTS.server.tailnetBindReviewed, false);
 	assert.equal(settings().server.tailnetBindReviewed, false);
+});
+
+test("desktop.autoUpdate defaults to true for new and legacy settings and rejects wrong types", () => {
+	assert.equal(DEFAULTS.desktop.autoUpdate, true);
+	assert.equal(detect(() => undefined).desktop.autoUpdate, true);
+	assert.equal(settings().desktop.autoUpdate, true);
+	assert.equal(updateSettings({ desktop: { autoUpdate: false } }).desktop.autoUpdate, false);
+	for (const value of ["true", 0, null, [], {}]) {
+		assert.throws(() => updateSettings({ desktop: { autoUpdate: value } }), /desktop.autoUpdate must be a boolean/);
+		assert.equal(settings().desktop.autoUpdate, false);
+	}
+	assert.equal(updateSettings({ desktop: { autoUpdate: true } }).desktop.autoUpdate, true);
 });

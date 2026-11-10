@@ -1897,6 +1897,7 @@ function desktopPane(s) {
 		["herdrCli", "在終端機也能用 herdr 指令", "（會在 ~/.local/bin 放一個指向 App 內 herdr 的連結；你自己裝的 herdr 不會被覆蓋）"],
 		["herdrConfig", "herdr 快捷鍵與外掛", "（會在 herdr 的 config.toml 加上資料夾導覽快捷鍵 prefix+e，並先備份）"],
 		["autostart", "登入時自動啟動專案管家", ""],
+		["autoUpdate", s.ui.lang === "en" ? "Automatically check for App updates" : "自動檢查 App 更新", ""],
 	].map(([k, label, hint]) => `<div><label><input type="checkbox" data-k="desktop.${k}" ${s.desktop[k] ? "checked" : ""}> ${label}</label>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`).join("");
 }
 async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: "連不上管家" })); }
@@ -1913,7 +1914,7 @@ function aboutPane() {
 	return `<label class="field">目前版本<input type="text" readonly value="${esc(u?.current ?? "")}"></label>
 		<div class="hint">${st}</div>
 		${u?.notes && u.hasUpdate ? `<pre class="upd-notes">${esc(u.notes)}</pre>` : ""}
-		<div><button class="small" id="updCheck">檢查更新</button> ${u?.desktop ? `<a class="small primary" href="${esc(u.downloadUrl)}" target="_blank" rel="noopener">到 GitHub 下載新版 App</a>` : u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">更新到 ${esc(u.latest)}</button>` : ""}</div>
+		<div><button class="small" id="updCheck">檢查更新</button> ${desktop ? `<button class="small primary" id="updDesktop">${setState.s.ui.lang === "en" ? (u?.hasUpdate ? `Update App to ${esc(u.latest)}` : "Check for updates in App") : (u?.hasUpdate ? `更新 App 到 ${esc(u.latest)}` : "用 App 檢查更新")}</button>` : u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">更新到 ${esc(u.latest)}</button>` : ""}</div>
 		<pre class="upd-log" id="updLog" ${u?.running ? "" : "hidden"}></pre>
 		<h4>第三方元件</h4>
 		<div class="hint">安裝程式會從各元件的官方來源下載這些軟體，並驗證 SHA-256。</div>
@@ -2272,6 +2273,10 @@ function renderSettings() {
 	if (tab === "about" && !setUpdate) loadSetUpdate().then(() => setState && setState.tab === "about" && renderSettings());
 	if (tab === "about" && setUpdate?.running) pollUpdateLog();
 	$("updCheck")?.addEventListener("click", () => { setUpdate = null; renderSettings(); loadSetUpdate(true).then(() => setState && renderSettings()); });
+	$("updDesktop")?.addEventListener("click", async () => {
+		const r = await post("/api/desktop/update", {}).catch(() => ({ error: "連不上管家" }));
+		toast(r.error || (setState.s.ui.lang === "en" ? "Asked the App to check for updates. Please see the App dialog." : "已請 App 檢查更新，請看 App 跳出的視窗"));
+	});
 	$("updApply")?.addEventListener("click", async () => {
 		if (!(await window.confirmBox("更新專案管家", `從 ${setUpdate.current} 更新到 ${setUpdate.latest}。\n會從 GitHub 下載 ${setUpdate.latest} 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。`, "更新"))) return;
 		$("updApply").disabled = true;

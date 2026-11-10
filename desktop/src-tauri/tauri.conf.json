@@ -9,5 +9,11 @@
     "category": "DeveloperTool",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": { "../resources/app/": "app/", "../resources/licenses/": "licenses/" }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCODBDNzJBRkI3RjIyOEUKUldTT0luLzdLc2VBdTBFbnA3bEk1elJ4VjRpSW9FUFZxWVJZeTJpbERDVjF1UXVuSzlUSFdqM1oK",
+      "windows": { "installMode": "passive" }
+    }
   }
 }
