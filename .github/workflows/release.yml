@@ -123,8 +123,10 @@ jobs:
       HAS_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
       HAS_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
       HAS_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      HAS_UPDATER_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
     steps:
-      - name: Check Mac signing configuration
+      - name: Require Mac and updater signing configuration
         id: signing
         shell: bash
         run: |
@@ -135,15 +137,14 @@ jobs:
           [ "$HAS_API_ISSUER" = true ] || missing+=(APPLE_API_ISSUER)
           [ "$HAS_API_KEY" = true ] || missing+=(APPLE_API_KEY)
           [ "$HAS_API_KEY_P8" = true ] || missing+=(APPLE_API_KEY_P8)
-          if [ "${#missing[@]}" -eq 0 ]; then
-            echo 'ready=true' >> "$GITHUB_OUTPUT"
-          elif [ "${#missing[@]}" -eq 5 ]; then
-            echo 'ready=false' >> "$GITHUB_OUTPUT"
-            echo '::warning::Mac signing secrets are not set; the desktop App is not included in this release.'
-          else
+          [ "$HAS_UPDATER_KEY" = true ] || missing+=(TAURI_SIGNING_PRIVATE_KEY)
+          [ "$HAS_UPDATER_KEY_PASSWORD" = true ] || missing+=(TAURI_SIGNING_PRIVATE_KEY_PASSWORD)
+          if [ "${#missing[@]}" -gt 0 ]; then
             printf '::error::Missing signing secrets: %s\n' "${missing[*]}"
+            echo '::error::Every future release needs App updater artifacts or installed Apps cannot find updates. Configure all seven signing secrets before releasing.'
             exit 1
           fi
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
 
   desktop:
     needs: [build, signing]
@@ -157,7 +158,7 @@ jobs:
 
   publish:
     needs: [build, signing, desktop]
-    if: always() && needs.build.result == 'success' && needs.signing.result == 'success' && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+    if: always() && needs.build.result == 'success' && needs.signing.result == 'success' && needs.desktop.result == 'success' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -165,26 +166,63 @@ jobs:
       attestations: write
     env:
       TAG: ${{ needs.build.outputs.tag }}
-      HAS_DESKTOP: ${{ needs.desktop.result == 'success' }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
       - uses: actions/download-artifact@v4
         with:
           name: release-core
           path: dist/
           merge-multiple: true
       - uses: actions/download-artifact@v4
-        if: needs.desktop.result == 'success'
         with:
           name: desktop-macos
           path: dist/
           merge-multiple: true
       - uses: actions/download-artifact@v4
-        if: needs.desktop.result == 'success'
         with:
           name: desktop-windows
           path: dist/
           merge-multiple: true
+      - name: Verify updater signatures and generate the update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAC="agent-steward-desktop-$TAG-macos-universal.app.tar.gz"
+          WIN="agent-steward-desktop-$TAG-windows-x64-setup.exe"
+          PUBKEY=$(node -p 'JSON.parse(require("node:fs").readFileSync("desktop/src-tauri/tauri.conf.json", "utf8")).plugins.updater.pubkey')
+          node desktop/scripts/updater-artifacts.mjs verify --pubkey "$PUBKEY" --file "dist/$MAC" --sig "dist/$MAC.sig"
+          node desktop/scripts/updater-artifacts.mjs verify --pubkey "$PUBKEY" --file "dist/$WIN" --sig "dist/$WIN.sig"
+          NOTES=$(mktemp "$RUNNER_TEMP/release-notes.XXXXXX")
+          trap 'rm -f "$NOTES"' EXIT
+          printf 'See https://github.com/%s/releases/tag/%s\n' "$GITHUB_REPOSITORY" "$TAG" > "$NOTES"
+          node desktop/scripts/updater-artifacts.mjs manifest --version "${TAG#v}" --notes-file "$NOTES" \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
+            --mac "dist/$MAC" --win "dist/$WIN" --out dist/latest.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const tag = process.env.TAG;
+          const manifest = JSON.parse(readFileSync('dist/latest.json', 'utf8'));
+          assert.equal(manifest.version, tag.replace(/^v/, ''));
+          const assets = {
+            'darwin-aarch64': `agent-steward-desktop-${tag}-macos-universal.app.tar.gz`,
+            'darwin-x86_64': `agent-steward-desktop-${tag}-macos-universal.app.tar.gz`,
+            'windows-x86_64': `agent-steward-desktop-${tag}-windows-x64-setup.exe`,
+          };
+          assert.deepEqual(Object.keys(manifest.platforms).sort(), Object.keys(assets).sort());
+          const base = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${tag}/`;
+          for (const [platform, asset] of Object.entries(assets)) {
+            assert.equal(manifest.platforms[platform].url, base + asset);
+            assert.ok(!manifest.platforms[platform].url.includes('/latest/'));
+            assert.equal(manifest.platforms[platform].signature, readFileSync(`dist/${asset}.sig`, 'utf8'));
+          }
+          NODE
       - name: Check the exact release asset list
         shell: bash
         run: |
@@ -194,13 +232,20 @@ jobs:
           import { readdirSync } from 'node:fs';
           const tag = process.env.TAG;
           const expected = [`agent-steward-${tag}.tar.gz`, `agent-steward-${tag}.zip`, 'install.sh', 'install.ps1', 'install-windows.ps1'];
-          if (process.env.HAS_DESKTOP === 'true') expected.push(`agent-steward-desktop-${tag}-macos-universal.dmg`, `agent-steward-desktop-${tag}-windows-x64-setup.exe`);
+          expected.push(
+            `agent-steward-desktop-${tag}-macos-universal.dmg`,
+            `agent-steward-desktop-${tag}-macos-universal.app.tar.gz`,
+            `agent-steward-desktop-${tag}-macos-universal.app.tar.gz.sig`,
+            `agent-steward-desktop-${tag}-windows-x64-setup.exe`,
+            `agent-steward-desktop-${tag}-windows-x64-setup.exe.sig`,
+            'latest.json',
+          );
           const entries = readdirSync('dist', {withFileTypes:true});
           assert.ok(entries.every(entry => entry.isFile()), 'dist must contain only regular files');
           assert.deepEqual(entries.map(entry => entry.name).sort(), expected.sort(), 'Unexpected release assets');
           NODE
       - name: Generate SHA256SUMS
-        run: cd dist && sha256sum agent-steward-* install.sh install.ps1 install-windows.ps1 > SHA256SUMS
+        run: cd dist && sha256sum agent-steward-* install.sh install.ps1 install-windows.ps1 latest.json > SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/*
@@ -228,6 +273,14 @@ jobs:
       TAG: ${{ needs.build.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v4
+        if: runner.os == 'macOS'
+        with:
+          ref: ${{ needs.build.outputs.tag }}
+      - uses: actions/setup-node@v4
+        if: runner.os == 'macOS'
+        with:
+          node-version: 22.x
       - name: Install and uninstall the published release
         shell: bash
         run: |
@@ -248,24 +301,49 @@ jobs:
             "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/agent-steward-$TAG.tar.gz" \
             -o "dist/agent-steward-$TAG.tar.gz"
           gh attestation verify "dist/agent-steward-$TAG.tar.gz" -R "$GITHUB_REPOSITORY"
-      - name: Verify the published Mac desktop App when present
+      - name: Verify the published Mac desktop App and updater
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
           ASSET="agent-steward-desktop-$TAG-macos-universal.dmg"
-          ASSETS=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          if ! grep -Fxq "$ASSET" <<< "$ASSETS"; then echo 'No desktop DMG in this release; skipping.'; exit 0; fi
+          UPDATE="agent-steward-desktop-$TAG-macos-universal.app.tar.gz"
           T=$(mktemp -d "$RUNNER_TEMP/desktop-verify.XXXXXX")
           cleanup() { hdiutil detach "$T/mount" >/dev/null 2>&1 || true; rm -rf "$T"; }
           trap cleanup EXIT
-          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$ASSET" -p SHA256SUMS -D "$T"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$ASSET" -p "$UPDATE" -p "$UPDATE.sig" -p latest.json -p SHA256SUMS -D "$T"
           (
             cd "$T"
-            awk -v name="$ASSET" '$2 == name {print; found++} END {if (found != 1) exit 1}' SHA256SUMS > desktop.sha256
-            shasum -a 256 -c desktop.sha256
+            for FILE in "$ASSET" "$UPDATE" "$UPDATE.sig" latest.json; do
+              awk -v name="$FILE" '$2 == name {print; found++} END {if (found != 1) exit 1}' SHA256SUMS > desktop.sha256
+              shasum -a 256 -c desktop.sha256
+            done
           )
           gh attestation verify "$T/$ASSET" -R "$GITHUB_REPOSITORY"
+          gh attestation verify "$T/$UPDATE" -R "$GITHUB_REPOSITORY"
+          gh attestation verify "$T/latest.json" -R "$GITHUB_REPOSITORY"
+          PUBKEY=$(node -p 'JSON.parse(require("node:fs").readFileSync("desktop/src-tauri/tauri.conf.json", "utf8")).plugins.updater.pubkey')
+          node desktop/scripts/updater-artifacts.mjs verify --pubkey "$PUBKEY" --file "$T/$UPDATE" --sig "$T/$UPDATE.sig"
+          VERIFY_DIR="$T" node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const dir = process.env.VERIFY_DIR;
+          const tag = process.env.TAG;
+          const asset = `agent-steward-desktop-${tag}-macos-universal.app.tar.gz`;
+          const manifest = JSON.parse(readFileSync(join(dir, 'latest.json'), 'utf8'));
+          const signature = readFileSync(join(dir, `${asset}.sig`), 'utf8');
+          assert.equal(manifest.version, tag.replace(/^v/, ''));
+          for (const platform of ['darwin-aarch64', 'darwin-x86_64']) {
+            assert.equal(manifest.platforms[platform].signature, signature);
+            assert.equal(manifest.platforms[platform].url, `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${tag}/${asset}`);
+          }
+          NODE
+          mkdir "$T/updater"
+          tar -xzf "$T/$UPDATE" -C "$T/updater"
+          codesign --verify --deep --strict "$T/updater/Agent Steward.app"
+          spctl -a -vv -t exec "$T/updater/Agent Steward.app"
+          xcrun stapler validate "$T/updater/Agent Steward.app"
           mkdir "$T/mount"
           hdiutil attach -nobrowse -readonly -mountpoint "$T/mount" "$T/$ASSET"
           codesign --verify --deep --strict "$T/mount/Agent Steward.app"
@@ -287,6 +365,12 @@ jobs:
       STEWARD_NO_SERVICE: "1"
       STEWARD_NO_OPEN: "1"
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
       - name: Install and uninstall with Windows PowerShell 5.1
         shell: powershell
         run: |
@@ -298,27 +382,33 @@ jobs:
           if (-not (Test-Path "$HOME\.agent-steward\install.json" -PathType Leaf)) { throw "Missing installation receipt" }
           & "$HOME\.agent-steward\app\uninstall.ps1" -Purge
           if ($LASTEXITCODE -ne 0) { throw "Uninstall failed: $LASTEXITCODE" }
-      - name: Verify the published Windows desktop installer when present
+      - name: Verify the published Windows desktop installer and updater
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $asset = "agent-steward-desktop-$env:TAG-windows-x64-setup.exe"
-          $json = gh release view $env:TAG -R $env:GITHUB_REPOSITORY --json assets
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot read release assets' }
-          $release = $json | ConvertFrom-Json
-          if (@($release.assets.name) -notcontains $asset) {
-            Write-Host 'No desktop Windows installer in this release; skipping.'
-          } else {
-            $temp = Join-Path $env:RUNNER_TEMP ('desktop-verify-' + [guid]::NewGuid())
-            New-Item -ItemType Directory $temp | Out-Null
-            try {
-              gh release download $env:TAG -R $env:GITHUB_REPOSITORY -p $asset -p SHA256SUMS -D $temp
-              if ($LASTEXITCODE -ne 0) { throw 'Cannot download release assets' }
-              $lines = @(Get-Content (Join-Path $temp 'SHA256SUMS') | Where-Object { $_ -match ('^[a-f0-9]{64}\s+\*?' + [regex]::Escape($asset) + '$') })
-              if ($lines.Count -ne 1) { throw 'Expected exactly one desktop installer checksum' }
+          $temp = Join-Path $env:RUNNER_TEMP ('desktop-verify-' + [guid]::NewGuid())
+          New-Item -ItemType Directory $temp | Out-Null
+          try {
+            gh release download $env:TAG -R $env:GITHUB_REPOSITORY -p $asset -p "$asset.sig" -p latest.json -p SHA256SUMS -D $temp
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot download release assets' }
+            foreach ($name in @($asset, "$asset.sig", 'latest.json')) {
+              $lines = @(Get-Content (Join-Path $temp 'SHA256SUMS') | Where-Object { $_ -match ('^[a-f0-9]{64}\s+\*?' + [regex]::Escape($name) + '$') })
+              if ($lines.Count -ne 1) { throw "Expected exactly one checksum for $name" }
               $expected = ($lines[0] -split '\s+')[0]
-              $file = Join-Path $temp $asset
-              if ((Get-FileHash $file -Algorithm SHA256).Hash -ine $expected) { throw 'Desktop installer checksum mismatch' }
-              gh attestation verify $file -R $env:GITHUB_REPOSITORY
-              if ($LASTEXITCODE -ne 0) { throw 'Desktop installer attestation verification failed' }
-            } finally { Remove-Item $temp -Recurse -Force }
-          }
+              if ((Get-FileHash (Join-Path $temp $name) -Algorithm SHA256).Hash -ine $expected) { throw "Checksum mismatch for $name" }
+            }
+            $file = Join-Path $temp $asset
+            gh attestation verify $file -R $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Desktop installer attestation verification failed' }
+            $pubkey = node -p 'JSON.parse(require("node:fs").readFileSync("desktop/src-tauri/tauri.conf.json", "utf8")).plugins.updater.pubkey'
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read updater public key' }
+            node desktop/scripts/updater-artifacts.mjs verify --pubkey $pubkey --file $file --sig "$file.sig"
+            if ($LASTEXITCODE -ne 0) { throw 'Desktop installer updater signature verification failed' }
+            $manifest = Get-Content (Join-Path $temp 'latest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $signature = Get-Content "$file.sig" -Raw -Encoding UTF8
+            if ($manifest.version -cne ($env:TAG -creplace '^v', '')) { throw 'Updater manifest version mismatch' }
+            if ($manifest.platforms.'windows-x86_64'.signature -cne $signature) { throw 'Updater manifest Windows signature mismatch' }
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/$asset"
+            if ($manifest.platforms.'windows-x86_64'.url -cne $url) { throw 'Updater manifest Windows URL mismatch' }
+          } finally { Remove-Item $temp -Recurse -Force }

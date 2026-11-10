@@ -146,7 +146,12 @@ What gets installed:
 ## Update and uninstall
 
 - **Update (one-line install)**: Settings → 關於 (About) → check for updates → update. A confirmation dialog first explains what will be downloaded. You can also run the install command again. Updates keep your previous choices, and settings you removed yourself stay removed.
-- **Update (desktop App)**: the App doesn't update itself yet. "Check for updates…" in the menu opens the latest release on GitHub, and Settings → 關於 (About) also shows whether a new version is out. To update, quit Agent Steward from the menu, then install the new version with the steps above (on a Mac, replace the old copy in Applications). Your settings and data are kept.
+- **Update (desktop App)**: from v0.4.0, the App checks for new versions itself.
+  - It checks a few minutes after it starts, then once a day. When a new version is out, it asks first, and it downloads and installs only after you click "Update".
+  - Every update file must pass an update-signature check before it's installed. Only then does the App stop the services, install the new version, and restart itself. The web terminal disconnects once, and agents in herdr keep running.
+  - On Windows, if herdr is running, the update has to close all terminals and agents. The App explains this and asks first, so you can choose "Later" and update once your work is done.
+  - You can also check by hand from "Check for updates…" in the menu or Settings → 關於 (About). Settings → 一般 (General) turns off automatic checks.
+  - v0.3.0 doesn't have this yet, so install v0.4.0 by hand once: quit Agent Steward from the menu, then install the new version with the steps above (on a Mac, replace the old copy in Applications). Your settings and data are kept.
 - **Uninstall (one-line install)** (keeps your data; add `--purge` / `-Purge` to delete it too):
 
   ```sh

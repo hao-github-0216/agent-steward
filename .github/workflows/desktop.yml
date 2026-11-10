@@ -30,8 +30,46 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       label: ${{ steps.version.outputs.label }}
       macos-file: ${{ steps.version.outputs.macos-file }}
+      macos-update-file: ${{ steps.version.outputs.macos-update-file }}
+      mode: ${{ steps.mode.outputs.mode }}
       windows-file: ${{ steps.version.outputs.windows-file }}
     steps:
+      - name: Decide signing mode
+        id: mode
+        shell: bash
+        env:
+          CALL_TAG: ${{ inputs.tag }}
+          REQUEST_SIGN: ${{ inputs.sign }}
+          HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
+          HAS_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
+          HAS_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+          HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          HAS_UPDATER_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_CERT" = true ] || missing+=(APPLE_CERTIFICATE)
+          [ "$HAS_CERT_PASSWORD" = true ] || missing+=(APPLE_CERTIFICATE_PASSWORD)
+          [ "$HAS_API_ISSUER" = true ] || missing+=(APPLE_API_ISSUER)
+          [ "$HAS_API_KEY" = true ] || missing+=(APPLE_API_KEY)
+          [ "$HAS_API_KEY_P8" = true ] || missing+=(APPLE_API_KEY_P8)
+          [ "$HAS_UPDATER_KEY" = true ] || missing+=(TAURI_SIGNING_PRIVATE_KEY)
+          [ "$HAS_UPDATER_KEY_PASSWORD" = true ] || missing+=(TAURI_SIGNING_PRIVATE_KEY_PASSWORD)
+          if [ "${#missing[@]}" -gt 0 ] && { [ "${#missing[@]}" -lt 7 ] || [ -n "$CALL_TAG" ]; }; then
+            printf '::error::Missing signing secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+          MODE=adhoc
+          # Reusable workflows retain the caller's event name; tag identifies this call.
+          if [ -n "$CALL_TAG" ]; then
+            MODE=signed
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$REQUEST_SIGN" = true ] && [ "${#missing[@]}" -eq 0 ]; then
+            MODE=signed
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Desktop signing mode: $MODE"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -60,6 +98,7 @@ jobs:
             echo "version=$VERSION"
             echo "label=$LABEL"
             echo "macos-file=agent-steward-desktop-$LABEL-macos-universal.dmg"
+            echo "macos-update-file=agent-steward-desktop-$LABEL-macos-universal.app.tar.gz"
             echo "windows-file=agent-steward-desktop-$LABEL-windows-x64-setup.exe"
           } >> "$GITHUB_OUTPUT"
 
@@ -67,46 +106,12 @@ jobs:
     needs: version
     runs-on: macos-latest
     timeout-minutes: 120
-    outputs:
-      signing-mode: ${{ steps.mode.outputs.mode }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
       DMG_NAME: ${{ needs.version.outputs.macos-file }}
-      HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      HAS_CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
-      HAS_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
-      HAS_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
-      HAS_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+      UPDATE_NAME: ${{ needs.version.outputs.macos-update-file }}
+      SIGNING_IDENTITY: '-'
     steps:
-      - name: Decide signing mode
-        id: mode
-        shell: bash
-        env:
-          CALL_TAG: ${{ inputs.tag }}
-          REQUEST_SIGN: ${{ inputs.sign }}
-        run: |
-          set -euo pipefail
-          missing=()
-          [ "$HAS_CERT" = true ] || missing+=(APPLE_CERTIFICATE)
-          [ "$HAS_CERT_PASSWORD" = true ] || missing+=(APPLE_CERTIFICATE_PASSWORD)
-          [ "$HAS_API_ISSUER" = true ] || missing+=(APPLE_API_ISSUER)
-          [ "$HAS_API_KEY" = true ] || missing+=(APPLE_API_KEY)
-          [ "$HAS_API_KEY_P8" = true ] || missing+=(APPLE_API_KEY_P8)
-          if [ "${#missing[@]}" -gt 0 ] && [ "${#missing[@]}" -lt 5 ]; then
-            printf '::error::Missing signing secrets: %s\n' "${missing[*]}"
-            exit 1
-          fi
-          MODE=adhoc
-          # Reusable workflows retain the caller's event name; tag identifies this call.
-          if [ -n "$CALL_TAG" ]; then
-            [ "${#missing[@]}" -eq 0 ] || { echo '::error::Release builds require all five Mac signing secrets.'; exit 1; }
-            MODE=signed
-          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$REQUEST_SIGN" = true ] && [ "${#missing[@]}" -eq 0 ]; then
-            MODE=signed
-          fi
-          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-          echo 'SIGNING_IDENTITY=-' >> "$GITHUB_ENV"
-          echo "Mac signing mode: $MODE"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -132,7 +137,7 @@ jobs:
           done
           cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
       - name: Import Developer ID certificate and API key
-        if: steps.mode.outputs.mode == 'signed'
+        if: needs.version.outputs.mode == 'signed'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -174,7 +179,7 @@ jobs:
             fs.appendFileSync(process.env.GITHUB_ENV, `APPLE_API_KEY_PATH=${file}\n`);
           '
       - name: Build the ad-hoc App bundle
-        if: steps.mode.outputs.mode != 'signed'
+        if: needs.version.outputs.mode != 'signed'
         working-directory: desktop
         shell: bash
         run: |
@@ -182,27 +187,72 @@ jobs:
           node -e 'require("fs").writeFileSync(require("path").join(process.env.RUNNER_TEMP,"tauri-version.json"),JSON.stringify({version:process.env.VERSION,bundle:{macOS:{signingIdentity:"-"}}}))'
           npx tauri build --target universal-apple-darwin --bundles app --config "$RUNNER_TEMP/tauri-version.json"
       - name: Build, sign, and notarize the App bundle
-        if: steps.mode.outputs.mode == 'signed'
+        if: needs.version.outputs.mode == 'signed'
         working-directory: desktop
         shell: bash
         env:
+          CALL_TAG: ${{ inputs.tag }}
           APPLE_SIGNING_IDENTITY: ${{ env.SIGNING_IDENTITY }}
           APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euo pipefail
-          node -e 'require("fs").writeFileSync(require("path").join(process.env.RUNNER_TEMP,"tauri-version.json"),JSON.stringify({version:process.env.VERSION,bundle:{macOS:{signingIdentity:process.env.SIGNING_IDENTITY}}}))'
+          node <<'NODE'
+          const fs = require("fs"), path = require("path");
+          const config = {version: process.env.VERSION, bundle: {macOS: {signingIdentity: process.env.SIGNING_IDENTITY}}};
+          if (process.env.CALL_TAG) {
+            const base = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+            config.plugins = {...base.plugins, updater: {...base.plugins.updater, endpoints: ["https://github.com/hao-github-0216/agent-steward/releases/latest/download/latest.json"]}};
+          }
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, "tauri-version.json"), JSON.stringify(config));
+          NODE
           npx tauri build --target universal-apple-darwin --bundles app --config "$RUNNER_TEMP/tauri-version.json"
+      - name: Check the embedded production updater endpoint
+        shell: bash
+        env:
+          CALL_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const binary = fs.readFileSync("desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Agent Steward.app/Contents/MacOS/agent-steward-desktop");
+          const endpoint = "https://github.com/hao-github-0216/agent-steward/releases/latest/download/latest.json";
+          if (binary.includes(Buffer.from(endpoint)) !== Boolean(process.env.CALL_TAG)) throw new Error("Unexpected production updater endpoint presence");
+          NODE
+      - name: Archive the notarized and stapled App for updates
+        if: needs.version.outputs.mode == 'signed'
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun stapler validate 'desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Agent Steward.app'
+          mkdir -p dist
+          node desktop/scripts/updater-artifacts.mjs mac-archive --app 'desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Agent Steward.app' --out "dist/$UPDATE_NAME"
+      - name: Sign the Mac updater archive
+        if: needs.version.outputs.mode == 'signed'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          node desktop/scripts/updater-artifacts.mjs sign --file "dist/$UPDATE_NAME"
+      - name: Verify the Mac updater signature
+        if: needs.version.outputs.mode == 'signed'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBKEY=$(node -p 'JSON.parse(require("fs").readFileSync("desktop/src-tauri/tauri.conf.json", "utf8")).plugins.updater.pubkey')
+          node desktop/scripts/updater-artifacts.mjs verify --pubkey "$PUBKEY" --file "dist/$UPDATE_NAME" --sig "dist/$UPDATE_NAME.sig"
       - name: Create and verify the ad-hoc DMG
-        if: steps.mode.outputs.mode != 'signed'
+        if: needs.version.outputs.mode != 'signed'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
           desktop/scripts/macos-package.sh --app 'desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/Agent Steward.app' --out "dist/$DMG_NAME"
       - name: Create, sign, and notarize the DMG
-        if: steps.mode.outputs.mode == 'signed'
+        if: needs.version.outputs.mode == 'signed'
         shell: bash
         env:
           APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
@@ -227,7 +277,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos
-          path: dist/${{ needs.version.outputs.macos-file }}
+          path: |
+            dist/${{ needs.version.outputs.macos-file }}
+            dist/${{ needs.version.outputs.macos-update-file }}
+            dist/${{ needs.version.outputs.macos-update-file }}.sig
           if-no-files-found: error
       - name: Remove temporary signing material
         if: always()
@@ -245,7 +298,7 @@ jobs:
     runs-on: macos-15-intel
     env:
       DMG_NAME: ${{ needs.version.outputs.macos-file }}
-      SIGNING_MODE: ${{ needs.macos.outputs.signing-mode }}
+      SIGNING_MODE: ${{ needs.version.outputs.mode }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -300,17 +353,53 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'cargo test failed' }
       - name: Build the unsigned NSIS installer
         working-directory: desktop
+        env:
+          CALL_TAG: ${{ inputs.tag }}
         run: |
-          node -e 'require("fs").writeFileSync(require("path").join(process.env.RUNNER_TEMP,"tauri-version.json"),JSON.stringify({version:process.env.VERSION}))'
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const config = {version: process.env.VERSION};
+            if (process.env.CALL_TAG) {
+              const base = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+              config.plugins = {...base.plugins, updater: {...base.plugins.updater, endpoints: ["https://github.com/hao-github-0216/agent-steward/releases/latest/download/latest.json"]}};
+            }
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP, "tauri-version.json"), JSON.stringify(config));
+          '
           if ($LASTEXITCODE -ne 0) { throw 'Could not generate Tauri config' }
           npx tauri build --target x86_64-pc-windows-msvc --bundles nsis --config "$env:RUNNER_TEMP\tauri-version.json"
           if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
+      - name: Check the embedded production updater endpoint
+        env:
+          CALL_TAG: ${{ inputs.tag }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const binary = fs.readFileSync("desktop/src-tauri/target/x86_64-pc-windows-msvc/release/agent-steward-desktop.exe");
+            const endpoint = "https://github.com/hao-github-0216/agent-steward/releases/latest/download/latest.json";
+            if (binary.includes(Buffer.from(endpoint)) !== Boolean(process.env.CALL_TAG)) throw new Error("Unexpected production updater endpoint presence");
+          '
+          if ($LASTEXITCODE -ne 0) { throw 'Updater endpoint check failed' }
       - name: Name the installer
         run: |
           $installers = @(Get-ChildItem 'desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe' -File)
           if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item $installers[0].FullName (Join-Path dist $env:SETUP_NAME)
+      - name: Sign the Windows updater installer
+        if: needs.version.outputs.mode == 'signed'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node desktop/scripts/updater-artifacts.mjs sign --file "dist/$env:SETUP_NAME"
+          if ($LASTEXITCODE -ne 0) { throw 'Updater signing failed' }
+      - name: Verify the Windows updater signature
+        if: needs.version.outputs.mode == 'signed'
+        run: |
+          $pubkey = node -p 'JSON.parse(require("fs").readFileSync("desktop/src-tauri/tauri.conf.json", "utf8")).plugins.updater.pubkey'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read updater public key' }
+          node desktop/scripts/updater-artifacts.mjs verify --pubkey $pubkey --file "dist/$env:SETUP_NAME" --sig "dist/$env:SETUP_NAME.sig"
+          if ($LASTEXITCODE -ne 0) { throw 'Updater signature verification failed' }
       - name: Install, smoke-test, and uninstall
         run: |
           $installer = (Resolve-Path (Join-Path dist $env:SETUP_NAME)).Path
@@ -338,5 +427,130 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
-          path: dist/${{ needs.version.outputs.windows-file }}
+          path: |
+            dist/${{ needs.version.outputs.windows-file }}
+            dist/${{ needs.version.outputs.windows-file }}.sig
           if-no-files-found: error
+
+  update-e2e-macos:
+    needs: [version, macos]
+    if: needs.version.outputs.mode == 'signed'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      UPDATE_NAME: ${{ needs.version.outputs.macos-update-file }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - run: npm ci --prefix desktop
+      - name: Install the native Rust target
+        run: rustup target add aarch64-apple-darwin
+      - name: Stage native executables and licenses
+        run: node desktop/scripts/stage.mjs --target aarch64-apple-darwin
+      - name: Generate an ephemeral updater test key
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          npx tauri signer generate --ci -p "" -w "$RUNNER_TEMP/updater-test-signing" >/dev/null 2>&1 || { echo '::error::Test key generation failed (output suppressed).'; exit 1; }
+      - name: Build the old native test App
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs"), path = require("path");
+          const pubkey = fs.readFileSync(path.join(process.env.RUNNER_TEMP, "updater-test-signing.pub"), "utf8").trim();
+          const config = {
+            version: "0.0.1",
+            bundle: {macOS: {signingIdentity: "-"}},
+            plugins: {updater: {pubkey, endpoints: ["http://127.0.0.1:19341/latest.json"], dangerousInsecureTransportProtocol: true}},
+          };
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, "tauri-e2e.json"), JSON.stringify(config));
+          NODE
+          npx tauri build --target aarch64-apple-darwin --bundles app --config "$RUNNER_TEMP/tauri-e2e.json"
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-macos
+          path: dist
+      - name: Test a real native App update
+        shell: bash
+        run: |
+          set -euo pipefail
+          node desktop/scripts/update-e2e.mjs --old-app 'desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agent Steward.app' --new "dist/$UPDATE_NAME" --new-version "$VERSION" --key-file "$RUNNER_TEMP/updater-test-signing" --port 19341
+      - name: Remove the ephemeral updater test key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/updater-test-signing" "$RUNNER_TEMP/updater-test-signing.pub"
+
+  update-e2e-windows:
+    needs: [version, windows]
+    if: needs.version.outputs.mode == 'signed'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SETUP_NAME: ${{ needs.version.outputs.windows-file }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - run: npm ci --prefix desktop
+      - name: Install the native Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+      - name: Stage native executables and licenses
+        run: node desktop/scripts/stage.mjs --target x86_64-pc-windows-msvc
+      - name: Generate an ephemeral updater test key
+        working-directory: desktop
+        run: |
+          # Invoke npx through Node to preserve the empty password argument on Windows.
+          node -e '
+            const path = require("path"), {execFileSync} = require("child_process");
+            try {
+              execFileSync(process.execPath, [path.resolve(path.dirname(process.execPath), "node_modules/npm/bin/npx-cli.js"), "--no-install", "tauri", "signer", "generate", "--ci", "-p", "", "-w", path.join(process.env.RUNNER_TEMP, "updater-test-signing")], {stdio: "ignore", windowsHide: true});
+            } catch { console.error("Test key generation failed (output suppressed)."); process.exitCode = 1; }
+          '
+          if ($LASTEXITCODE -ne 0) { throw 'Test key generation failed' }
+      - name: Build the old native test installer
+        working-directory: desktop
+        run: |
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const pubkey = fs.readFileSync(path.join(process.env.RUNNER_TEMP, "updater-test-signing.pub"), "utf8").trim();
+            const config = {
+              version: "0.0.1",
+              plugins: {updater: {pubkey, endpoints: ["http://127.0.0.1:19341/latest.json"], dangerousInsecureTransportProtocol: true}},
+            };
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP, "tauri-e2e.json"), JSON.stringify(config));
+          '
+          if ($LASTEXITCODE -ne 0) { throw 'Could not generate test Tauri config' }
+          npx tauri build --target x86_64-pc-windows-msvc --bundles nsis --config "$env:RUNNER_TEMP\tauri-e2e.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Test Tauri build failed' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows
+          path: dist
+      - name: Test a real native App update
+        run: |
+          $installers = @(Get-ChildItem 'desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one old NSIS installer' }
+          node desktop/scripts/update-e2e.mjs --old-app $installers[0].FullName --new "dist/$env:SETUP_NAME" --new-version "$env:VERSION" --key-file "$env:RUNNER_TEMP\updater-test-signing" --port 19341
+          if ($LASTEXITCODE -ne 0) { throw 'Windows update E2E failed' }
+      - name: Remove the ephemeral updater test key
+        if: always()
+        run: |
+          foreach ($file in @("$env:RUNNER_TEMP\updater-test-signing", "$env:RUNNER_TEMP\updater-test-signing.pub")) {
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force -ErrorAction Stop }
+          }
