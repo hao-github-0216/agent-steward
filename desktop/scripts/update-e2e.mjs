@@ -225,8 +225,13 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 			exe = safePath(appRoot, "Contents", "MacOS", "agent-steward-desktop");
 		} else {
 			appRoot = safePath(home, "app", "Agent Steward");
-			// NSIS requires /D to be the final argument, without added quotes.
-			await run(oldApp, ["/S", `/D=${appRoot}`], { ...options, timeout: 120_000 });
+			// NSIS requires /D to be the final argument, without added quotes. Node quotes
+			// arguments that contain spaces, so pass them verbatim and run a copy of the
+			// installer from a path without spaces.
+			const installer = safePath(home, "artifacts", "old-setup.exe");
+			if (/\s/.test(installer)) throw new Error("Temporary installer path must not contain spaces");
+			await copyFile(oldApp, installer);
+			await run(installer, ["/S", `/D=${appRoot}`], { ...options, timeout: 120_000, windowsVerbatimArguments: true });
 			exe = safePath(appRoot, "agent-steward-desktop.exe");
 		}
 		if (interrupted) throw new Error("Update E2E interrupted");
