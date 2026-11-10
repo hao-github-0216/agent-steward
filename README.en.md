@@ -21,9 +21,46 @@ it is easy to lose track of where each project stands, who is doing what, and wh
 |---|---|---|
 | ![Routing](docs/images/settings-routing.png) | ![Agents](docs/images/settings-agents.png) | ![Mobile](docs/images/mobile.png) |
 
-> The UI is currently Traditional Chinese only.
+> The web UI is currently Traditional Chinese only. The installer and the desktop App menus are available in Traditional Chinese and English.
 
 ## Install
+
+There are two ways to install. Both give you the same steward, so pick one per computer:
+
+- **Desktop App** (Mac, Windows): download an installer and double-click it. No commands needed.
+- **One-line install** (macOS, Linux, Windows): paste one command into a terminal. This is the only option on Linux for now.
+
+### Desktop App
+
+Download the file for your system from [Releases](https://github.com/hao-github-0216/agent-steward/releases/latest) (`vX.Y.Z` is the version number):
+
+| System | File |
+|---|---|
+| macOS 13.5 or later (Apple Silicon and Intel) | `agent-steward-desktop-vX.Y.Z-macos-universal.dmg` |
+| Windows 10 or later (x64) | `agent-steward-desktop-vX.Y.Z-windows-x64-setup.exe` |
+
+- **Mac**: open the .dmg, drag Agent Steward into Applications, and open it from there. The App is signed with an Apple Developer ID and notarized by Apple, so macOS opens it without a warning.
+- **Windows**: run the setup .exe. It starts with a language choice (繁體中文 / English) and installs for the current user, so you don't need administrator rights.
+  - The installer isn't code-signed, so Windows shows "Windows protected your PC". Click "More info", then "Run anyway".
+  - Your browser may also warn that the file isn't commonly downloaded. Choose to keep it.
+  - To check that the file hasn't been tampered with first, see [How downloads are verified](#how-downloads-are-verified) below.
+
+The App has no window and doesn't appear in the Dock or the taskbar. When it starts, an icon appears in the Mac menu bar (on Windows, in the system tray at the bottom right), and your default browser opens `http://127.0.0.1:8791/`. To open it again later, click the icon and choose "Open Agent Steward".
+
+The first time, a setup wizard walks you through the same steps as the [one-line install](#one-line-install), plus one extra step, 元件與背景執行 (Components and background), which asks three separate questions:
+
+- Whether to make the `herdr` command available in your terminal
+- Whether to add the herdr shortcut and plugins (this changes herdr's `config.toml`)
+- Whether to start at login
+
+The App bundles Node.js, herdr, and ttyd, so you don't need to install anything else. Settings and data live in `~/.agent-steward/`, just as with the one-line install.
+
+**If you already used the one-line install**: the first time the App opens, it detects the old background services and asks whether the App should take over.
+
+- "Let the App manage it": your settings and data are kept. The old background services are disabled and removed, and the old program files are left in place.
+- "Quit App": nothing changes, and the existing installation keeps running.
+
+### One-line install
 
 **macOS / Linux** (terminal):
 
@@ -89,13 +126,28 @@ What gets installed:
   gh attestation verify agent-steward-vX.Y.Z.tar.gz -R hao-github-0216/agent-steward
   ```
 
+- The two desktop App installers are listed in `SHA256SUMS` too, so `sha256sum -c` checks them as well. Attestations are checked one file at a time: run `gh attestation verify` again with the installer's file name.
+- On Windows without `sha256sum`, compute the checksum in PowerShell and compare it with the line for the same file name in `SHA256SUMS`:
+
+  ```powershell
+  Get-FileHash .\agent-steward-desktop-vX.Y.Z-windows-x64-setup.exe -Algorithm SHA256
+  ```
+
+- For the Mac .dmg, you can also check the Apple signature and notarization:
+
+  ```sh
+  spctl -a -vv -t open --context context:primary-signature agent-steward-desktop-vX.Y.Z-macos-universal.dmg
+  xcrun stapler validate agent-steward-desktop-vX.Y.Z-macos-universal.dmg
+  ```
+
 - To install a specific version, replace `latest/download` in the URL with `download/vX.Y.Z`.
 - agent-steward and its installer send no usage data.
 
 ## Update and uninstall
 
-- **Update**: Settings → 關於 (About) → check for updates → update. A confirmation dialog first explains what will be downloaded. You can also run the install command again. Updates keep your previous choices, and settings you removed yourself stay removed.
-- **Uninstall** (keeps your data; add `--purge` / `-Purge` to delete it too):
+- **Update (one-line install)**: Settings → 關於 (About) → check for updates → update. A confirmation dialog first explains what will be downloaded. You can also run the install command again. Updates keep your previous choices, and settings you removed yourself stay removed.
+- **Update (desktop App)**: the App doesn't update itself yet. "Check for updates…" in the menu opens the latest release on GitHub, and Settings → 關於 (About) also shows whether a new version is out. To update, quit Agent Steward from the menu, then install the new version with the steps above (on a Mac, replace the old copy in Applications). Your settings and data are kept.
+- **Uninstall (one-line install)** (keeps your data; add `--purge` / `-Purge` to delete it too):
 
   ```sh
   sh ~/.agent-steward/app/uninstall.sh
@@ -111,6 +163,12 @@ What gets installed:
   - It turns off the Tailscale Serve entry that points to the steward.
 
   Any backup files from installation are listed so you can decide whether to delete them.
+
+- **Uninstall (desktop App)**:
+  1. To also remove what the steward added to each agent's config files, disconnect each agent first in Settings → Agent. If you turned on Tailscale or LAN access, turn it off in Settings → 存取 (Access).
+  2. Uncheck "Start at login" in the menu, then quit Agent Steward. If you skip this, the login item setting stays behind on your system.
+  3. Mac: drag Agent Steward from Applications to the Trash. Windows: Settings → Apps → Installed apps → Agent Steward → Uninstall.
+  4. Your settings and data stay in `~/.agent-steward/`. The `~/.local/bin/steward` command the App created (`steward.cmd` on Windows), and the `herdr` command if you agreed to it, also stay. Delete them yourself if you don't need them.
 
 ## AI providers and routing
 

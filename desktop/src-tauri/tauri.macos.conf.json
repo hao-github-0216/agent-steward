@@ -3,7 +3,7 @@
   "bundle": {
     "externalBin": ["binaries/node", "binaries/herdr", "binaries/ttyd"],
     "macOS": {
-      "minimumSystemVersion": "12.0",
+      "minimumSystemVersion": "13.5",
       "hardenedRuntime": true,
       "entitlements": "entitlements.plist",
       "signingIdentity": null

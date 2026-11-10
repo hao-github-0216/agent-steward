@@ -21,9 +21,46 @@
 |---|---|---|
 | ![路由](docs/images/settings-routing.png) | ![Agent](docs/images/settings-agents.png) | ![手機](docs/images/mobile.png) |
 
-> 介面目前只有繁體中文。
+> 網頁介面目前只有繁體中文。安裝程式和桌面 App 的選單可以選繁體中文或 English。
 
 ## 安裝
+
+有兩種裝法，裝好之後用起來一樣，同一台電腦選一種就好：
+
+- **桌面 App**（Mac、Windows）：下載安裝檔，點兩下就能用，不用打指令。
+- **一行安裝指令**（macOS、Linux、Windows）：在終端機貼一行指令。Linux 目前只有這種裝法。
+
+### 桌面 App
+
+到 [Releases](https://github.com/hao-github-0216/agent-steward/releases/latest) 下載你的系統用的檔案（`vX.Y.Z` 是版本號）：
+
+| 系統 | 檔案 |
+|---|---|
+| macOS 13.5 以上（Apple Silicon、Intel 都適用） | `agent-steward-desktop-vX.Y.Z-macos-universal.dmg` |
+| Windows 10 以上（x64） | `agent-steward-desktop-vX.Y.Z-windows-x64-setup.exe` |
+
+- **Mac**：打開 .dmg，把 Agent Steward 拖進「應用程式」，再從「應用程式」打開。App 有 Apple 的 Developer ID 簽章，也通過 Apple 公證，打開時不會被擋下來。
+- **Windows**：執行 setup.exe。一開始可以選語言（繁體中文 / English），會裝給目前的使用者，不需要系統管理員。
+  - 安裝檔沒有程式碼簽章，所以 Windows 會跳出「Windows 已保護您的電腦」。按「其他資訊」，再按「仍要執行」。
+  - 瀏覽器下載時也可能提醒這個檔案不常被下載，選擇保留就可以。
+  - 想先確認檔案沒被動過，見下面的[下載的東西怎麼驗證](#下載的東西怎麼驗證)。
+
+App 沒有視窗，也不會出現在 Dock 或工作列。打開後，Mac 的選單列（Windows 是右下角的系統匣）會出現一個圖示，同時用預設瀏覽器打開 `http://127.0.0.1:8791/`。之後要打開畫面，點這個圖示選「打開專案管家」。
+
+第一次打開會走設定精靈，內容和[一行安裝](#一行安裝指令)相同，另外多一步「元件與背景執行」，分開問三件事：
+
+- 要不要在終端機也能用 `herdr` 指令
+- 要不要加上 herdr 的快捷鍵與外掛（會修改 herdr 的 `config.toml`）
+- 要不要登入時自動啟動
+
+App 內附 Node.js、herdr 和 ttyd，不用另外安裝。設定與資料和一行安裝一樣，放在 `~/.agent-steward/`。
+
+**已經用一行指令裝過的話**：App 第一次打開時會偵測到舊的背景服務，問你要不要改由 App 管理。
+
+- 選「改由 App 管理」：設定與資料都保留，舊的背景服務會停用並移除，舊的程式檔先留著。
+- 選「結束 App」：什麼都不改，舊的安裝照常執行。
+
+### 一行安裝指令
 
 **macOS / Linux**（終端機）：
 
@@ -89,13 +126,28 @@ irm https://github.com/hao-github-0216/agent-steward/releases/latest/download/in
   gh attestation verify agent-steward-vX.Y.Z.tar.gz -R hao-github-0216/agent-steward
   ```
 
+- 桌面 App 的兩個安裝檔也列在 `SHA256SUMS` 裡，`sha256sum -c` 會一起核對。來源證明要一個檔案一個檔案驗，把上面 `gh attestation verify` 的檔名換掉再跑一次就可以。
+- Windows 上沒有 `sha256sum` 的話，用 PowerShell 算出檢查碼，再和 `SHA256SUMS` 裡同一個檔名的那一行比對：
+
+  ```powershell
+  Get-FileHash .\agent-steward-desktop-vX.Y.Z-windows-x64-setup.exe -Algorithm SHA256
+  ```
+
+- Mac 的 .dmg 還可以確認 Apple 簽章與公證：
+
+  ```sh
+  spctl -a -vv -t open --context context:primary-signature agent-steward-desktop-vX.Y.Z-macos-universal.dmg
+  xcrun stapler validate agent-steward-desktop-vX.Y.Z-macos-universal.dmg
+  ```
+
 - 要固定裝某一版，把網址裡的 `latest/download` 換成 `download/vX.Y.Z`。
 - 專案管家和安裝程式都不會傳送任何使用資料。
 
 ## 更新與移除
 
-- **更新**：設定 → 關於 → 檢查更新 → 「更新到 vX.Y.Z」。按下去會先跳確認視窗，說明會下載什麼。也可以再跑一次安裝指令。更新時沿用上次的選擇，你自己拿掉的設定不會加回來。
-- **移除**（資料會保留，加 `--purge` / `-Purge` 連資料一起刪）：
+- **更新（一行安裝）**：設定 → 關於 → 檢查更新 → 「更新到 vX.Y.Z」。按下去會先跳確認視窗，說明會下載什麼。也可以再跑一次安裝指令。更新時沿用上次的選擇，你自己拿掉的設定不會加回來。
+- **更新（桌面 App）**：目前還不會自動更新。選單的「檢查更新…」會打開 GitHub 上最新版的頁面，設定 → 關於 也會顯示有沒有新版。有新版時，先從選單結束專案管家，再照上面的安裝步驟裝新版（Mac 直接覆蓋「應用程式」裡的舊版）。設定與資料都會保留。
+- **移除（一行安裝）**（資料會保留，加 `--purge` / `-Purge` 連資料一起刪）：
 
   ```sh
   sh ~/.agent-steward/app/uninstall.sh
@@ -111,6 +163,12 @@ irm https://github.com/hao-github-0216/agent-steward/releases/latest/download/in
   - 關掉轉到管家的 Tailscale Serve。
 
   安裝時留下的備份檔會列出來，由你決定要不要刪。
+
+- **移除（桌面 App）**：
+  1. 想把專案管家加進各 agent 設定檔的部分一起拿掉，先到 設定 → Agent 逐一拿掉。有開 Tailscale 或區網存取的話，也先到 設定 → 存取 關掉。
+  2. 在選單取消勾選「登入時自動啟動」，再結束專案管家。沒有先取消的話，系統裡的登入項目設定會留下來。
+  3. Mac：把「應用程式」裡的 Agent Steward 拖到垃圾桶。Windows：設定 → 應用程式 → 已安裝的應用程式 → Agent Steward → 解除安裝。
+  4. 設定與資料還留在 `~/.agent-steward/`。App 建的 `~/.local/bin/steward`（Windows 是 `steward.cmd`），以及你同意時建的 `herdr` 指令也還在。不需要的話自己刪掉。
 
 ## AI 接口與路由
 
