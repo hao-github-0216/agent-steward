@@ -105,7 +105,9 @@ test("notebook 所在資料夾也向下搜尋,並保留向上找到的專案環�
 	isolated(t, `${notebook}
 		const upward = python(join(root, ".venv"));
 		file(join(root, "a", "b", "c", "nested.ipynb"), "{}");
-		const downward = python(join(root, "a", "b", "c", "sub", "inner", ".conda"));
+		const condaPrefix = join(root, "a", "b", "c", "sub", "inner", ".conda");
+		// Windows 的 conda 環境把 python.exe 放在環境資料夾最上層
+		const downward = win ? file(join(condaPrefix, "python.exe")) : python(condaPrefix);
 		const envs = await pythonEnvs(p, "a/b/c/nested.ipynb", options);
 		assert.equal(envs.some((e) => e.id === "py:" + realpathSync(upward)), true);
 		assert.equal(envs.find((e) => e.id === "py:" + realpathSync(downward))?.group, "project");
