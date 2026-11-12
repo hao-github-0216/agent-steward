@@ -156,14 +156,46 @@ async function dumpLogs(home, secrets) {
 	}
 }
 
+// On Windows, list what is still running from the App folder or as an installer,
+// and read the text of their open windows (a blocked NSIS installer waits on a dialog).
+const WINDOWS_DIAGNOSTICS = String.raw`
+$root = $env:STEWARD_E2E_ROOT.TrimEnd('\') + '\'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$procs = @(Get-CimInstance Win32_Process | Where-Object {
+  ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) -or $_.Name -match 'installer|setup|uninstall'
+})
+"processes: $($procs.Count)"
+foreach ($p in $procs) {
+  "- $($p.Name) pid=$($p.ProcessId) parent=$($p.ParentProcessId)"
+  $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$p.ProcessId)
+  $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond)
+  foreach ($w in $windows) {
+    "  window: $($w.Current.Name)"
+    foreach ($e in $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+      if ($e.Current.Name) { "    $($e.Current.ControlType.ProgrammaticName): $($e.Current.Name)" }
+    }
+  }
+}
+`;
+
+async function windowsDiagnostics(appRoot, options, secrets) {
+	if (process.platform !== "win32" || !appRoot || !options) return;
+	try {
+		const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_DIAGNOSTICS], { ...options, timeout: 30_000, env: { ...options.env, STEWARD_E2E_ROOT: appRoot } });
+		console.error(`--- Windows processes and dialogs ---\n${safeLog(stdout, secrets).trimEnd().split(/\r?\n/).slice(0, 80).join("\n")}`);
+	} catch { console.error("--- Windows processes and dialogs: unavailable ---"); }
+}
+
 async function appVersion(appRoot, exe, options) {
 	if (process.platform === "darwin") {
 		const { stdout } = await run("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", safePath(appRoot, "Contents", "Info.plist")], options);
 		return stdout.trim();
 	}
-	const script = "$v = (Get-Item -LiteralPath $env.STEWARD_E2E_EXE).VersionInfo; '{0}.{1}.{2}' -f $v.FileMajorPart,$v.FileMinorPart,$v.FileBuildPart";
+	const script = "$v = (Get-Item -LiteralPath $env:STEWARD_E2E_EXE).VersionInfo; '{0}.{1}.{2}' -f $v.FileMajorPart,$v.FileMinorPart,$v.FileBuildPart";
 	const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { ...options, env: { ...options.env, STEWARD_E2E_EXE: exe } });
-	return stdout.trim();
+	const version = stdout.trim();
+	if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("Could not read the App file version");
+	return version;
 }
 
 export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) {
@@ -275,6 +307,7 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 		failure = error;
 		console.error(`update-e2e: ${safeLog(error.message, secrets)}`);
 		await dumpLogs(home, secrets);
+		await windowsDiagnostics(appRoot, options, secrets);
 	} finally {
 		// Cleanup must run even when a signal cancelled a setup command.
 		if (options) { options = { ...options }; delete options.signal; }
