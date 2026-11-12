@@ -1,9 +1,10 @@
 # 專案管家的 Jupyter kernel 橋接程式:用 jupyter_client 啟動一個 kernel,
 # 從標準輸入收 JSON 指令、把 kernel 的輸出轉成 nbformat 格式,一行一個 JSON 寫到標準輸出。
-# 用哪個 Python 執行這支,kernel 就跑在哪個環境(預設的 python3 kernel 用同一個直譯器)。
+# 未指定 kernelspec 時,預設的 python3 kernel 用執行這支程式的直譯器;指定時使用該核心的 argv/env。
 #
 # 指令:{"op":"execute","id":"…","code":"…"} / {"op":"interrupt"} / {"op":"restart"} / {"op":"shutdown"}
 # 事件:ready、status、started(執行編號)、output、clear、done、dead、error
+import argparse
 import json
 import os
 import queue
@@ -21,13 +22,25 @@ def emit(obj):
 
 try:
     from jupyter_client.manager import KernelManager
+    from jupyter_client.kernelspec import KernelSpecManager
 except Exception as e:  # 沒裝 jupyter_client / ipykernel
     emit({"ev": "error", "message": f"這個 Python 環境沒有 jupyter_client:{e}"})
     sys.exit(2)
 
-kernel_name = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "python3"
+parser = argparse.ArgumentParser()
+parser.add_argument("kernel_name", nargs="?", default="python3")
+parser.add_argument("--spec-dir")
+args = parser.parse_args()
+kernel_name = args.kernel_name or "python3"
+manager_options = {}
+if args.spec_dir:
+    spec_dir = os.path.abspath(args.spec_dir)
+    kernel_name = os.path.basename(spec_dir)
+    manager_options["kernel_spec_manager"] = KernelSpecManager(kernel_dirs=[os.path.dirname(spec_dir)])
 # Mac/Linux 用本機 IPC(不開 TCP 埠);Windows 只能用 TCP(只綁 127.0.0.1)
-km = KernelManager(kernel_name=kernel_name, transport="tcp" if os.name == "nt" else "ipc")
+km = KernelManager(kernel_name=kernel_name, transport="tcp" if os.name == "nt" else "ipc", **manager_options)
+if os.name == "nt":
+    km.ip = "127.0.0.1"
 if os.name != "nt":
     # IPC 連線檔放系統暫存資料夾,不要留在使用者的專案裡
     import tempfile
@@ -46,7 +59,7 @@ except Exception as e:
     sys.exit(3)
 
 pending = {}  # kernel 的 msg_id -> 網頁的 id
-emit({"ev": "ready", "kernel": kernel_name, "python": sys.executable})
+emit({"ev": "ready", "kernel": kernel_name, "python": sys.executable, "language": km.kernel_spec.language})
 
 
 def iopub():
@@ -108,7 +121,7 @@ for line in sys.stdin:
             km.restart_kernel(now=True)
             pending.clear()
             kc.wait_for_ready(timeout=90)
-            emit({"ev": "ready", "kernel": kernel_name, "python": sys.executable, "restarted": True})
+            emit({"ev": "ready", "kernel": kernel_name, "python": sys.executable, "language": km.kernel_spec.language, "restarted": True})
         elif op == "shutdown":
             break
     except Exception as e:

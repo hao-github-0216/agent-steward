@@ -21,7 +21,7 @@ import { PasteError, savePastedImage } from "./term-paste.ts";
 import { findSnapPane, parseSnap, snapPrompt, terminalContext } from "./snap.ts";
 import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./plugins.ts";
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
-import { installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
+import { check as checkPython, installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, NoModelError, parseRef, routeFor, syncProviders } from "./models.ts";
 import { publicProjectView } from "./privacy.ts";
@@ -29,8 +29,8 @@ import { embedTexts } from "./recall.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile } from "./code.ts";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve as resolvePath } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brief } from "./brief.ts";
 import { DATA_DIR, HOME, HOSTS, isPrivatePath, MISC_ROOTS, PORT, publicUrl, TERMINAL_PORT } from "./config.ts";
@@ -374,24 +374,46 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (sub.startsWith("nb/")) {
 				const op = sub.slice(3);
 				if (req.method === "GET" && op === "events") return subscribeKernel(p, q("path"), res);
-				if (req.method === "GET" && op === "pythons") return send(res, 200, { envs: await pythonEnvs(p, q("path")), kernel: kernelInfo(p, q("path")) });
+				if (req.method === "GET" && op === "pythons") return send(res, 200, { envs: await pythonEnvs(p, q("path"), { refresh: q("refresh") === "1" }), kernel: kernelInfo(p, q("path")) });
 				if (req.method === "POST") {
 					const b = await body(req);
+					// 手動環境路徑不是 notebook 路徑;仍在原本的登入與外掛 guard 內。
+					if (op === "add-python" || op === "remove-python") {
+						if (typeof b.path !== "string" || !isAbsolute(b.path)) return send(res, 400, { error: "請提供 Python 的絕對路徑" });
+						const python = b.path;
+						let pythons = settings().plugins.notebook.pythons;
+						if (op === "add-python") {
+							if (!/^python(\d+(\.\d+)*)?(\.exe)?$/i.test(basename(python))) return send(res, 400, { error: "檔名必須是 Python 直譯器（例如 python3 或 python.exe）" });
+							let file = false;
+							try { file = statSync(python).isFile(); } catch { /* 不存在或無法讀取 */ }
+							if (!file) return send(res, 400, { error: "找不到這個 Python 檔案" });
+							const result = await checkPython(python);
+							if (!result.version) return send(res, 400, { error: result.why ?? "無法確認 Python 版本" });
+							// 檢查期間可能有另一個新增請求完成,存檔前重讀清單。
+							pythons = [...new Set([...settings().plugins.notebook.pythons, python])];
+						} else pythons = pythons.filter((path) => path !== python);
+						try { updateSettings({ plugins: { notebook: { pythons } } }); }
+						catch (e) { return send(res, 400, { error: (e as Error).message }); }
+						return send(res, 200, { envs: await pythonEnvs(p, q("path") || ""), ...(op === "add-python" ? { id: `py:${realpathSync(python)}` } : {}) });
+					}
 					const rel = String(b.path ?? "");
 					if (!/\.ipynb$/i.test(rel)) return send(res, 400, { error: "只能執行 .ipynb" });
-					// 只能用偵測到的 Python(不接受任意執行檔路徑)
-					const pick = async () => (await pythonEnvs(p, rel)).find((e) => e.python === String(b.python ?? ""));
+					// 只從伺服器偵測結果取完整環境,不接受客戶端的 bridge/specDir 或任意路徑。
+					const pick = async () => (await pythonEnvs(p, rel)).find((e) => b.id !== undefined ? e.id === b.id : e.python === String(b.python ?? ""));
 					if (op === "install") {
 						const env = await pick();
 						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
-						try { return send(res, 200, { python: await installKernel(env.python, !!env.own) }); }
+						try {
+							const python = await installKernel(env.python, env.kind === "kernelspec" || !!env.own);
+							return send(res, 200, { id: env.kind === "kernelspec" ? env.id : `py:${realpathSync(python)}`, python });
+						}
 						catch (e) { return send(res, 500, { error: `安裝失敗:${(e as Error).message}` }); }
 					}
 					if (op === "start") {
 						const env = await pick();
 						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
-						if (!env.ready) return send(res, 400, { error: "這個 Python 環境還沒有 ipykernel" });
-						return send(res, 200, startKernel(p, rel, env.python));
+						if (!env.ready) return send(res, 400, { error: env.why ?? "這個核心環境還不能使用" });
+						return send(res, 200, startKernel(p, rel, env));
 					}
 					if (op === "exec") return sendKernel(p, rel, { op: "execute", id: String(b.id ?? ""), code: String(b.code ?? "") }) ? send(res, 200, { ok: true }) : send(res, 409, { error: "kernel 沒有在跑" });
 					if (op === "interrupt" || op === "restart") return sendKernel(p, rel, { op }) ? send(res, 200, { ok: true }) : send(res, 409, { error: "kernel 沒有在跑" });

@@ -1343,51 +1343,145 @@
 		t.es = es;
 		es.onmessage = (m) => { let ev; try { ev = JSON.parse(m.data); } catch { return; } nbEvent(t, ev); };
 	}
-	async function nbLoadPythons(t) {
-		const r = await api(`nb/pythons?path=${encodeURIComponent(t.path)}`).catch(() => null);
-		if (!r) return;
+	function nbSetKernel(t, env) {
+		if (t.kernelId !== env?.id) t.kernelLanguage = null;
+		t.kernelId = env?.id;
+		t.python = env?.python;
+	}
+	function nbRememberKernel(t) {
+		try { localStorage.setItem(`steward.nbKernel:${cm.pid}:${t.path}`, t.kernelId); } catch { /* 無痕模式 */ }
+	}
+	async function nbLoadPythons(t, refresh = false) {
+		const r = await api(`nb/pythons?path=${encodeURIComponent(t.path)}${refresh ? "&refresh=1" : ""}`).catch((e) => { toast(e.message); return null; });
+		if (!r || r.error) { if (r?.error) toast(r.error); return; }
 		t.envs = r.envs;
-		let saved = null;
-		try { saved = localStorage.getItem(`steward.nbPy:${cm.pid}:${t.path}`); } catch { /* 無痕模式 */ }
-		t.python = (r.kernel.running && r.kernel.python) || (r.envs.find((e) => e.python === saved) || r.envs.find((e) => e.ready) || r.envs[0])?.python;
-		if (r.kernel.running) t.kstate = r.kernel.state || "idle";
+		let saved = null, oldPython = null;
+		try {
+			saved = localStorage.getItem(`steward.nbKernel:${cm.pid}:${t.path}`);
+			if (saved === null) oldPython = localStorage.getItem(`steward.nbPy:${cm.pid}:${t.path}`);
+		} catch { /* 無痕模式 */ }
+		const env = (r.kernel?.running && r.envs.find((e) => e.id === r.kernel.id))
+			|| r.envs.find((e) => saved !== null ? e.id === saved : e.python === oldPython)
+			|| r.envs.find((e) => e.kind === "kernelspec" && e.name === t.nb?.metadata?.kernelspec?.name)
+			|| r.envs.find((e) => e.ready) || r.envs[0];
+		nbSetKernel(t, env);
+		if (r.kernel?.running) t.kstate = r.kernel.state || "idle";
 		nbToolbar(t);
+	}
+	async function nbStopKernel(t) {
+		if (t.kstate !== "off" && t.kstate !== "dead") {
+			const r = await nbApi("stop", { path: t.path });
+			if (r.error) throw new Error(r.error);
+		}
+		for (const [, c] of t.runs) nbFinishRun(t, c, true);
+		t.onReady?.(false); t.onReady = null;
+		t.kstate = "off";
+	}
+	/** 手動換核心先停舊的,避免下一次啟動被尚未完成的停止請求打斷。 */
+	async function nbSelectKernel(t, env) {
+		if (t.kernelSwitch) await t.kernelSwitch;
+		const change = async () => {
+			if (t.kernelId !== env.id) {
+				await nbStopKernel(t);
+				nbSetKernel(t, env);
+			}
+			nbRememberKernel(t);
+			if (env.kind === "kernelspec" && !t.readonly) {
+				const metadata = t.nb.metadata || {};
+				const ks = metadata.kernelspec;
+				if (ks?.name !== env.name || ks?.display_name !== env.displayName || ks?.language !== env.language || metadata.language_info?.name !== env.language) {
+					t.nb.metadata = { ...metadata, kernelspec: { name: env.name, display_name: env.displayName, language: env.language }, language_info: { ...metadata.language_info, name: env.language } };
+					nbMarkDirty(t);
+					for (const c of t.nb.cells) {
+						const pre = c._el?.querySelector(".nb-code");
+						if (pre) nbColor(t, pre, nbText(c.source));
+					}
+				}
+			}
+		};
+		t.kernelSwitch = change();
+		nbToolbar(t);
+		try { await t.kernelSwitch; }
+		finally { t.kernelSwitch = null; nbToolbar(t); }
 	}
 	const KSTATE = { off: "kernel 未啟動", starting: "kernel 啟動中…", idle: "kernel 閒置", busy: "執行中…", dead: "kernel 停止了" };
 	function nbToolbar(t) {
 		const bar = t.pv?.querySelector(".nb-toolbar");
 		if (!bar) return;
-		const env = t.envs?.find((e) => e.python === t.python);
-		const opts = (t.envs || []).map((e) => `<option value="${esc(e.python)}" ${e.python === t.python ? "selected" : ""}>${esc(e.label)}${e.version ? ` · Python ${esc(e.version)}` : ""}${e.ready ? "" : `(${esc(e.why || "不能用")})`}</option>`).join("");
+		const env = t.envs?.find((e) => e.id === t.kernelId);
+		const groups = [["kernel", "Jupyter 核心"], ["project", "專案環境"], ["conda", "conda"], ["pyenv", "pyenv"], ["custom", "自己加的"], ["own", "專案管家的 Jupyter 環境"], ["system", "系統"]];
+		const opts = groups.map(([group, label]) => {
+			const items = (t.envs || []).filter((e) => e.group === group);
+			return items.length ? `<optgroup label="${esc(label)}">${items.map((e) => `<option value="${esc(e.id)}" ${e.id === t.kernelId ? "selected" : ""}>${esc(e.label)}${e.kind === "python" ? (e.version ? ` · Python ${esc(e.version)}` : "") : (e.language ? ` · ${esc(e.language)}` : "")}${e.ready ? "" : ` (${esc(e.why || "不能用")})`}</option>`).join("")}</optgroup>` : "";
+		}).join("");
 		const busy = t.kstate === "busy" || t.kstate === "starting";
+		const switching = !!t.kernelSwitch;
+		const language = env?.kind === "python" ? `Python${env.version ? ` ${env.version}` : ""}` : (t.kernelLanguage || env?.language || "");
+		const install = env && !env.ready && (env.kind === "python" || env.why === "需要一個有 jupyter_client 的 Python 才能啟動這個核心");
 		if (!cm.plugins.notebook) {
 			bar.innerHTML = `<span class="hint">要在網頁上執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」(可以照常檢視與編輯)</span><span class="sp"></span><button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled" : ""}>${t.dirty ? "● 存檔" : "存檔"}</button>`;
 			bar.onclick = (e) => { if (e.target.closest("[data-nb=save]")) saveNb(t); };
 			return;
 		}
-		bar.innerHTML = `<select class="nb-py" title="用哪個 Python 環境執行">${opts || "<option>偵測 Python 環境中…</option>"}</select>
-			${env && !env.ready ? `<button class="small primary" data-nb="install">${env.own ? "建立並安裝 ipykernel" : "在這個環境安裝 ipykernel"}</button>` : ""}
-			<span class="nb-kstate nb-k-${t.kstate}">${KSTATE[t.kstate] || t.kstate}</span>
+		bar.innerHTML = `<select class="nb-py" title="選擇執行核心或 Python 環境" ${switching ? "disabled" : ""}>${opts || '<option value="">沒有可用的環境</option>'}<option value="nb:add">＋ 指定其他 Python 直譯器…</option><option value="nb:refresh">↻ 重新整理清單</option></select>
+			${env?.group === "custom" ? `<button class="small" data-nb="remove" ${switching ? "disabled" : ""}>移除</button>` : ""}
+			${install ? `<button class="small primary" data-nb="install" ${switching ? "disabled" : ""}>${env.kind === "kernelspec" ? "在管家自己的環境安裝核心橋接套件" : (env.own ? "建立並安裝 ipykernel" : "在這個環境安裝 ipykernel")}</button>` : ""}
+			<span class="nb-kstate nb-k-${t.kstate}">${KSTATE[t.kstate] || t.kstate}</span>${language ? `<span class="hint">${esc(language)}</span>` : ""}
 			<span class="sp"></span>
-			<button class="small" data-nb="runall" ${t.readonly ? "disabled" : ""}>▶ 全部執行</button>
-			<button class="small" data-nb="interrupt" ${busy ? "" : "disabled"}>■ 中斷</button>
-			<button class="small" data-nb="restart" ${t.kstate === "off" ? "disabled" : ""}>↻ 重新啟動</button>
+			<button class="small" data-nb="runall" ${t.readonly || switching ? "disabled" : ""}>▶ 全部執行</button>
+			<button class="small" data-nb="interrupt" ${busy && !switching ? "" : "disabled"}>■ 中斷</button>
+			<button class="small" data-nb="restart" ${t.kstate === "off" || switching ? "disabled" : ""}>↻ 重新啟動</button>
 			<button class="small" data-nb="clear" ${t.readonly ? "disabled" : ""}>清除輸出</button>
 			<button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled title=\"檔案太大,唯讀\"" : ""}>${t.dirty ? "● 存檔" : "存檔"}</button>`;
-		bar.querySelector(".nb-py").onchange = (e) => {
-			t.python = e.target.value;
-			try { localStorage.setItem(`steward.nbPy:${cm.pid}:${t.path}`, t.python); } catch { /* 無痕模式 */ }
-			if (t.kstate !== "off") nbApi("stop", { path: t.path }).catch(() => {});
-			t.kstate = "off";
-			nbToolbar(t);
+		bar.querySelector(".nb-py").onchange = async (e) => {
+			const id = e.target.value;
+			e.target.value = t.kernelId || "";
+			try {
+				if (id === "nb:refresh") return await nbLoadPythons(t, true);
+				if (id === "nb:add") {
+					const path = await askName("指定其他 Python 直譯器", "", "Python 直譯器的絕對路徑");
+					if (!path) return;
+					const r = await nbApi("add-python", { path });
+					if (r.error) return toast(r.error);
+					await nbLoadPythons(t);
+					const added = t.envs?.find((e) => e.id === r.id) || t.envs?.find((e) => e.python === path);
+					if (added) await nbSelectKernel(t, added);
+					return;
+				}
+				const selected = t.envs?.find((e) => e.id === id);
+				if (selected) await nbSelectKernel(t, selected);
+			} catch (err) { fail(err); }
 		};
 		bar.onclick = async (e) => {
 			const a = e.target.closest("[data-nb]")?.dataset.nb;
 			if (!a) return;
+			if (a === "remove") {
+				if (!env || !(await confirmBox("移除自訂 Python", `只從清單移除,不會刪除直譯器：\n${env.python}`, "移除"))) return;
+				try {
+					if (t.kernelSwitch) await t.kernelSwitch;
+					const remove = async () => {
+						const r = await nbApi("remove-python", { path: env.python });
+						if (r.error) return toast(r.error);
+						if (t.kernelId === env.id) await nbStopKernel(t);
+						await nbLoadPythons(t);
+					};
+					t.kernelSwitch = remove();
+					nbToolbar(t);
+					try { await t.kernelSwitch; }
+					finally { t.kernelSwitch = null; nbToolbar(t); }
+				} catch (err) { fail(err); }
+				return;
+			}
 			if (a === "install") {
 				e.target.disabled = true; e.target.textContent = "安裝中(約 1 分鐘)…";
-				const r = await nbApi("install", { path: t.path, python: t.python }).catch((err) => ({ error: err.message }));
-				if (r.error) toast(r.error); else { toast("已安裝 ipykernel"); t.python = r.python; }
+				const r = await nbApi("install", { path: t.path, id: t.kernelId }).catch((err) => ({ error: err.message }));
+				if (r.error) toast(r.error);
+				else {
+					toast(env.kind === "kernelspec" ? "已安裝核心橋接套件" : "已安裝 ipykernel");
+					t.kernelId = env.kind === "kernelspec" ? env.id : (r.id || env.id);
+					t.python = r.python || env.python;
+					nbRememberKernel(t);
+				}
 				return nbLoadPythons(t);
 			}
 			if (a === "runall") return nbRun(t, t.nb.cells.filter((c) => c.cell_type === "code"));
@@ -1406,16 +1500,17 @@
 			if (a === "save") return saveNb(t);
 		};
 	}
-	/** 確保 kernel 在跑(沒有就用選的 Python 啟動,等到 ready) */
+	/** 確保 kernel 在跑(沒有就用選的核心啟動,等到 ready) */
 	async function nbEnsureKernel(t) {
+		if (t.kernelSwitch) { try { await t.kernelSwitch; } catch { return false; } }
 		if (t.kstate !== "off" && t.kstate !== "dead") return true;
-		const env = t.envs?.find((e) => e.python === t.python);
-		if (!env) { toast("找不到可以用的 Python 環境"); return false; }
-		if (!env.ready) { toast("這個 Python 環境還沒有 ipykernel:按上面的「安裝 ipykernel」"); return false; }
+		const env = t.envs?.find((e) => e.id === t.kernelId);
+		if (!env) { toast("找不到可以用的執行核心或 Python 環境"); return false; }
+		if (!env.ready) { toast(env.why || "這個環境目前不能用"); return false; }
 		t.kstate = "starting"; nbToolbar(t);
 		const ready = new Promise((ok) => { t.onReady = ok; });
-		const r = await nbApi("start", { path: t.path, python: t.python }).catch((e) => ({ error: e.message }));
-		if (r.error) { t.kstate = "off"; nbToolbar(t); toast(r.error); return false; }
+		const r = await nbApi("start", { path: t.path, id: t.kernelId }).catch((e) => ({ error: e.message }));
+		if (r.error) { t.onReady?.(false); t.onReady = null; t.kstate = "off"; nbToolbar(t); toast(r.error); return false; }
 		const ok = await Promise.race([ready, new Promise((x) => setTimeout(() => x(false), 120_000))]);
 		if (!ok) { toast("kernel 啟動失敗或太久沒回應"); t.kstate = "off"; nbToolbar(t); }
 		return !!ok;
@@ -1457,8 +1552,15 @@
 	}
 	function nbEvent(t, ev) {
 		const c = ev.id ? t.runs.get(ev.id) : null;
-		if (ev.ev === "hello") { if (ev.running) t.kstate = ev.state || "idle"; nbToolbar(t); return; }
-		if (ev.ev === "ready") { t.kstate = "idle"; t.onReady?.(true); t.onReady = null; nbToolbar(t); if (ev.restarted) toast("kernel 已重新啟動"); return; }
+		if (ev.ev === "hello") {
+			if (ev.running) {
+				t.kstate = ev.state || "idle";
+				const env = t.envs?.find((e) => e.id === ev.id);
+				if (env) nbSetKernel(t, env);
+			}
+			nbToolbar(t); return;
+		}
+		if (ev.ev === "ready") { t.kstate = "idle"; t.kernelLanguage = ev.language || null; t.onReady?.(true); t.onReady = null; nbToolbar(t); if (ev.restarted) toast("kernel 已重新啟動"); return; }
 		if (ev.ev === "status") {
 			if (!ev.id && ev.state) { t.kstate = ev.state === "starting" ? "starting" : t.kstate; }
 			else if (ev.state === "busy" || ev.state === "idle") t.kstate = ev.state === "busy" ? "busy" : (t.runs.size > 1 ? "busy" : "idle");

@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 const HOME = homedir();
 export const DATA_DIR = process.env.STEWARD_DATA_DIR ?? join(HOME, ".agent-steward");
@@ -94,7 +94,7 @@ export interface Settings {
 	/** 第一次設定精靈已經走完(或略過) */
 	setupDone: boolean;
 	/** 內建外掛的開關(設定 → 外掛);相依軟體裝在 ~/.agent-steward/tools */
-	plugins: Record<PluginId, { enabled: boolean }>;
+	plugins: Record<PluginId, { enabled: boolean }> & { notebook: { enabled: boolean; pythons: string[] } };
 	providers: ProviderConfig[];
 	routing: Record<RouteRole, Route> & { privacy: string; embedding: string };
 	notify: {
@@ -117,7 +117,7 @@ export const DEFAULTS: Settings = {
 	paths: { createRoot: "~", privacy: [], usePiPrivacy: false },
 	aiDetected: false,
 	setupDone: false,
-	plugins: { latex: { enabled: false }, notebook: { enabled: false }, office: { enabled: true } },
+	plugins: { latex: { enabled: false }, notebook: { enabled: false, pythons: [] }, office: { enabled: true } },
 	providers: [],
 	routing: {
 		chat: { primary: "", fallback: "" },
@@ -199,7 +199,7 @@ export function detect(ts: (args: string[]) => any = tailscaleJson): Settings {
 		}
 	}
 	// 外掛:電腦上已經有 TeX / Jupyter 的直接開啟
-	s.plugins = { latex: { enabled: hasSystemTex() }, notebook: { enabled: hasSystemJupyter() }, office: { enabled: true } };
+	s.plugins = { latex: { enabled: hasSystemTex() }, notebook: { enabled: hasSystemJupyter(), pythons: [] }, office: { enabled: true } };
 	// pi 的隱私清單
 	if (existsSync(join(HOME, ".pi", "agent", "privacy-paths.json"))) s.paths.usePiPrivacy = true;
 	// Hermes 推播路由
@@ -276,7 +276,11 @@ export function settings(): Settings {
 			}
 			// 外掛出現之前就在用的人:原本就能用的功能維持開啟(LaTeX 要電腦上有 TeX)
 			if (raw.plugins === undefined) {
-				current.plugins = { latex: { enabled: hasSystemTex() }, notebook: { enabled: true }, office: { enabled: true } };
+				current.plugins = { latex: { enabled: hasSystemTex() }, notebook: { enabled: true, pythons: [] }, office: { enabled: true } };
+				write(current);
+			}
+			if (raw.plugins?.notebook?.pythons === undefined) {
+				current.plugins.notebook.pythons = [];
 				write(current);
 			}
 			// 有精靈之前就在用的人:不再跳出第一次設定
@@ -307,7 +311,14 @@ export function settings(): Settings {
 export function updateSettings(patch: unknown): Settings {
 	const desktop = (patch as { desktop?: { autoUpdate?: unknown } } | null)?.desktop;
 	if (desktop && Object.hasOwn(desktop, "autoUpdate") && typeof desktop.autoUpdate !== "boolean") throw new TypeError("desktop.autoUpdate must be a boolean");
+	const notebook = (patch as { plugins?: { notebook?: { pythons?: unknown } } } | null)?.plugins?.notebook;
+	if (notebook && Object.hasOwn(notebook, "pythons")) {
+		const pythons = notebook.pythons;
+		if (!Array.isArray(pythons) || !pythons.every((p) => typeof p === "string" && isAbsolute(p))) throw new TypeError("Notebook Python 必須是絕對路徑的字串陣列");
+		if (pythons.length > 20) throw new TypeError("最多只能加入 20 個 Python");
+	}
 	const next = merge(settings(), patch);
+	next.plugins.notebook.pythons = [...new Set(next.plugins.notebook.pythons)];
 	next.version = 1;
 	if (!next.server.hosts.includes("127.0.0.1")) next.server.hosts = ["127.0.0.1", ...next.server.hosts];
 	write(next);
