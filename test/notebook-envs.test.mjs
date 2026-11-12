@@ -361,3 +361,26 @@ test("網頁依核心 id、記憶、metadata 與 ready 順序選擇,只有手動
 		t.readonly = false; t.kstate = "idle"; await context.select(t, pyEnv); assert.equal(stopped, 1); assert.equal(t.kstate, "off");
 	`);
 });
+
+test("共用同一個基底 Python 的不同虛擬環境都會列出,id 也不同", (t) => {
+	isolated(t, `${notebook}
+		const base = python(join(home, "uv-python"));
+		function venv(prefix) {
+			file(join(prefix, "pyvenv.cfg"), "home = " + dirname(base));
+			const exe = py(prefix); mkdirSync(dirname(exe), { recursive: true });
+			if (win) writeFileSync(exe, "fixture"); else symlinkSync(base, exe);
+			return exe;
+		}
+		const projectEnv = venv(join(root, "kaggle", ".venv"));
+		const ownEnv = venv(join(home, "jupyter", ".venv"));
+		const envs = await pythonEnvs(p, "demo.ipynb", options);
+		const project = envs.find((e) => e.group === "project");
+		const own = envs.find((e) => e.own);
+		assert.ok(project, "專案的虛擬環境要列出");
+		assert.ok(project.label.replaceAll("\\\\", "/").includes("kaggle/.venv"));
+		assert.ok(own, "管家自己的環境要列出");
+		assert.equal(own.python, ownEnv);
+		assert.notEqual(project.id, own.id);
+		assert.equal(envs.filter((e) => e.python === base).length, 0, "基底 Python 不在 PATH 上,不該出現");
+	`);
+});

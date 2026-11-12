@@ -21,7 +21,7 @@ import { PasteError, savePastedImage } from "./term-paste.ts";
 import { findSnapPane, parseSnap, snapPrompt, terminalContext } from "./snap.ts";
 import { pluginEnabled, pluginList, removePluginFiles, togglePlugin } from "./plugins.ts";
 import { handleDav, officeEditing, officeLink, officeRestore, officeVersionFile, officeVersions } from "./office-dav.ts";
-import { check as checkPython, installKernel, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
+import { check as checkPython, installKernel, pyId, kernelInfo, pythonEnvs, sendKernel, startKernel, stopKernelFor, subscribe as subscribeKernel } from "./notebook.ts";
 import { CLI_KINDS, detectCliProviders, isCliKind } from "./agent-cli.ts";
 import { chatUsesCli, compatInfo, fillEmptyRouting, missingCoreRoutes, imageRoute, LOGIN_PROVIDERS, signedIn, testModelFor, hasFallback, modelIds, modelLabel, NoModelError, parseRef, routeFor, syncProviders } from "./models.ts";
 import { publicProjectView } from "./privacy.ts";
@@ -29,7 +29,7 @@ import { embedTexts } from "./recall.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
 import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile } from "./code.ts";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brief } from "./brief.ts";
@@ -394,7 +394,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						} else pythons = pythons.filter((path) => path !== python);
 						try { updateSettings({ plugins: { notebook: { pythons } } }); }
 						catch (e) { return send(res, 400, { error: (e as Error).message }); }
-						return send(res, 200, { envs: await pythonEnvs(p, q("path") || ""), ...(op === "add-python" ? { id: `py:${realpathSync(python)}` } : {}) });
+						return send(res, 200, { envs: await pythonEnvs(p, q("path") || ""), ...(op === "add-python" ? { id: pyId(python) } : {}) });
 					}
 					const rel = String(b.path ?? "");
 					if (!/\.ipynb$/i.test(rel)) return send(res, 400, { error: "只能執行 .ipynb" });
@@ -405,7 +405,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
 						try {
 							const python = await installKernel(env.python, env.kind === "kernelspec" || !!env.own);
-							return send(res, 200, { id: env.kind === "kernelspec" ? env.id : `py:${realpathSync(python)}`, python });
+							return send(res, 200, { id: env.kind === "kernelspec" ? env.id : pyId(python), python });
 						}
 						catch (e) { return send(res, 500, { error: `安裝失敗:${(e as Error).message}` }); }
 					}

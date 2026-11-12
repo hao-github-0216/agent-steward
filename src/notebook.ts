@@ -39,12 +39,21 @@ type Checker = (python: string) => Promise<PythonCheck>;
 const checkCaches = new Map<Checker, Map<string, { at: number; value: Promise<PythonCheck> }>>();
 const real = (path: string) => { try { return realpathSync(path); } catch { return path; } };
 const isFile = (path: string) => { try { return statSync(path).isFile(); } catch { return false; } };
+/** 一個 Python 的身分。虛擬環境裡的 python 通常連到同一個基底 Python(例如 uv 管的 cpython),
+ *  所以在虛擬環境裡改用環境資料夾當身分,不同的虛擬環境才不會被當成同一個。 */
+const pyKey = (python: string) => {
+	const dir = dirname(python);
+	const prefix = /^(bin|Scripts)$/i.test(basename(dir)) ? dirname(dir) : dir;
+	return isFile(join(prefix, "pyvenv.cfg")) ? `${real(prefix)}${sep}` : real(python);
+};
+/** 選單用的環境 id(伺服器回傳新加入或剛安裝的環境時也用這個) */
+export const pyId = (python: string) => `py:${pyKey(python)}`;
 
 function clearChecks(): void { checkCaches.clear(); }
 function cachedCheck(python: string, checker: Checker): Promise<PythonCheck> {
 	let mtime: number;
 	try { mtime = statSync(python).mtimeMs; } catch { return Promise.resolve({ ready: false, why: "找不到 Python 程式" }); }
-	const key = `${real(python)}:${mtime}`;
+	const key = `${pyKey(python)}:${mtime}`;
 	let cache = checkCaches.get(checker);
 	if (!cache) checkCaches.set(checker, (cache = new Map()));
 	const old = cache.get(key);
@@ -101,8 +110,8 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 	const projectSeen = new Set<string>();
 	const addProject = (dir: string) => {
 		const python = win && basename(dir) === ".conda" ? condaPython(dir) : envPython(dir);
-		if (projectSeen.size >= 30 || !isFile(python) || projectSeen.has(real(python))) return;
-		projectSeen.add(real(python));
+		if (projectSeen.size >= 30 || !isFile(python) || projectSeen.has(pyKey(python))) return;
+		projectSeen.add(pyKey(python));
 		cands.push({ python, group: "project", label: `${relative(root, dir).split(sep).join("/")}（專案環境）` });
 	};
 	for (let d = nbDir; ; d = dirname(d)) {
@@ -131,7 +140,7 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 	const addConda = (prefix: string, name = basename(prefix)) => {
 		const python = condaPython(prefix);
 		if (!isFile(python)) return;
-		const previous = cands.find((c) => c.group === "conda" && real(c.python) === real(python));
+		const previous = cands.find((c) => c.group === "conda" && pyKey(c.python) === pyKey(python));
 		if (previous) { if (name === "base") previous.label = "conda: base"; }
 		else cands.push({ python, group: "conda", label: `conda: ${name}` });
 	};
@@ -158,22 +167,22 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 	// 設定也可能被直接改過,列出前再檢查一次:只收絕對路徑、檔名像 Python 的檔案。
 	for (const python of settings().plugins.notebook.pythons) if (isAbsolute(python) && PYTHON_NAME.test(basename(python)) && isFile(python)) cands.push({ python, group: "custom", label: python });
 	cands.push({ python: envPython(OWN_ENV), group: "own", label: "專案管家的 Jupyter 環境", own: true });
-	const systemSeen = new Set(cands.filter((c) => isFile(c.python)).map((c) => real(c.python)));
+	const systemSeen = new Set(cands.filter((c) => isFile(c.python)).map((c) => pyKey(c.python)));
 	let systemCount = 0;
 	for (const python of findOnPath(win ? ["python.exe", "py.exe"] : ["python3", "python"])) {
 		if (systemCount >= 5) break;
-		if (systemSeen.has(real(python))) continue;
-		systemSeen.add(real(python)); systemCount++;
+		if (systemSeen.has(pyKey(python))) continue;
+		systemSeen.add(pyKey(python)); systemCount++;
 		cands.push({ python, group: "system", label: `系統的 ${basename(python)} (${python})` });
 	}
 	const seen = new Set<string>();
 	const unique = cands.filter((c) => {
-		if ((!isFile(c.python) && !c.own) || seen.has(real(c.python))) return false;
-		seen.add(real(c.python)); return true;
+		if ((!isFile(c.python) && !c.own) || seen.has(pyKey(c.python))) return false;
+		seen.add(pyKey(c.python)); return true;
 	});
 	const pythons = await Promise.all(unique.map(async (c): Promise<PythonEnv> => {
 		const result: PythonCheck = isFile(c.python) ? await inspect(c.python) : { ready: false, why: "還沒建立" };
-		return { ...c, id: `py:${real(c.python)}`, kind: "python", version: result.version, ready: result.ready, why: result.why };
+		return { ...c, id: pyId(c.python), kind: "python", version: result.version, ready: result.ready, why: result.why };
 	}));
 
 	const specRoots: { dir: string; environment?: boolean }[] = [];
