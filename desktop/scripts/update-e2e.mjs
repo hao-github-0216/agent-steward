@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, open, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createConnection } from "node:net";
@@ -202,6 +202,15 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 	// Validate direct callers as well as CLI users before creating any files.
 	({ oldApp, newFile, newVersion, keyFile, port } = parseArgs(["--old-app", oldApp, "--new", newFile, "--new-version", newVersion, "--key-file", keyFile, "--port", String(port)]));
 	if (!["darwin", "win32"].includes(process.platform)) throw new Error("Update E2E requires macOS or Windows");
+	// The NSIS installer relaunches the updated App through nsis_tauri_utils::RunAsUser, which
+	// gives it the signed-in user's default environment instead of the temporary HOME. On
+	// Windows the updated App therefore uses the real profile, so only run on disposable CI runners.
+	let realData;
+	if (process.platform === "win32") {
+		if (process.env.GITHUB_ACTIONS !== "true" || !process.env.USERPROFILE) throw new Error("Windows update E2E runs only on disposable GitHub Actions runners (the updated App uses the real user profile)");
+		realData = join(process.env.USERPROFILE, ".agent-steward");
+		if (existsSync(realData)) throw new Error("The runner profile already has .agent-steward; refusing to overwrite it");
+	}
 	oldApp = await realpath(resolve(oldApp));
 	newFile = await realpath(resolve(newFile));
 	keyFile = await realpath(resolve(keyFile));
@@ -240,6 +249,11 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 			server: { port: ports[0], terminalPort: ports[1], hosts: ["127.0.0.1"], publicUrl: "", tailnetBindReviewed: false },
 			access: { tailscale: { enabled: false }, lan: { enabled: false }, tailscaleUsers: [] },
 		})}\n`, { mode: 0o600 });
+		if (realData) {
+			// Same settings for the relaunched App, which reads the real profile.
+			await mkdir(realData, { recursive: true });
+			await copyFile(safePath(home, ".agent-steward", "settings.json"), join(realData, "settings.json"));
+		}
 		const artifact = safePath(home, "artifacts", process.platform === "darwin" ? "update.tar.gz" : "update-setup.exe");
 		const latest = safePath(home, "artifacts", "latest.json");
 		const notes = safePath(home, "artifacts", "notes");
@@ -291,7 +305,11 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 			try {
 				if (await appVersion(appRoot, exe, options) !== newVersion) return false;
 				const log = await readFile(safePath(home, ".agent-steward", "logs", "desktop.log"), "utf8");
-				if ((log.match(/App starting/g) || []).length < 2) return false;
+				if (realData) {
+					if (!log.includes("installing verified App update")) return false;
+					const relaunched = await readFile(join(realData, "logs", "desktop.log"), "utf8");
+					if (!relaunched.includes("App starting")) return false;
+				} else if ((log.match(/App starting/g) || []).length < 2) return false;
 				if (process.platform === "darwin") {
 					// Inspect inherited HOME without printing any process environment.
 					const { stdout } = await run("/bin/ps", ["eww", "-p", String(main.pid), "-o", "command="], options);
@@ -307,6 +325,12 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 		failure = error;
 		console.error(`update-e2e: ${safeLog(error.message, secrets)}`);
 		await dumpLogs(home, secrets);
+		if (realData) {
+			try {
+				const text = await readFile(join(realData, "logs", "desktop.log"), "utf8");
+				console.error(`--- relaunched App desktop.log (last 40 lines) ---\n${safeLog(text, secrets).trimEnd().split(/\r?\n/).slice(-40).join("\n")}`);
+			} catch { console.error("--- relaunched App desktop.log: missing ---"); }
+		}
 		await windowsDiagnostics(appRoot, options, secrets);
 	} finally {
 		// Cleanup must run even when a signal cancelled a setup command.
@@ -354,6 +378,11 @@ export async function updateE2E({ oldApp, newFile, newVersion, keyFile, port }) 
 			} finally {
 				try { await rm(home, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 }); }
 				catch { failure ||= new Error("Could not remove the temporary HOME"); }
+				// realData did not exist before this run (checked above), so it is ours to remove.
+				if (realData) {
+					try { await rm(realData, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 }); }
+					catch { failure ||= new Error("Could not remove the runner profile .agent-steward"); }
+				}
 				process.off("SIGINT", onSignal);
 				process.off("SIGTERM", onSignal);
 			}
