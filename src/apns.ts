@@ -4,6 +4,7 @@
 // 再加 config.json {"teamId": "...", "bundleId": "..."}(keyId 沒寫就從檔名取)。
 // 裝置:iPhone app 登入後把 device token 送到 /api/push/register,記在 ~/.agent-steward/push-devices.json。
 // Xcode 直接裝的開發版走 sandbox,TestFlight / App Store 版走 production,由 app 自己回報。
+import { tr } from "./i18n.ts";
 import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { connect } from "node:http2";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -60,7 +61,7 @@ function saveDevices(list: PushDevice[]): void {
 }
 
 export function registerDevice(token: string, env: string, name?: string): PushDevice {
-	if (!/^[0-9a-f]{32,200}$/i.test(token)) throw new Error("device token 格式不對");
+	if (!/^[0-9a-f]{32,200}$/i.test(token)) throw new Error(tr("device token 格式不對"));
 	const d: PushDevice = { token: token.toLowerCase(), env: env === "production" ? "production" : "sandbox", name: name?.slice(0, 80), addedAt: new Date().toISOString() };
 	saveDevices([...listDevices().filter((x) => x.token !== d.token), d]);
 	return d;
@@ -140,8 +141,8 @@ export async function pushAll(msg: PushMessage, only?: string): Promise<boolean>
 
 /** 管家原本的通知文字(第一行是標題)→ 推播:去掉附在最後的看板網址 */
 export function messageFromText(text: string, projectId?: string): PushMessage {
-	const lines = text.split("\n").filter((l) => !/^(到看板核准:)?https?:\/\/\S+$/.test(l.trim()));
-	const title = (lines.shift() ?? "專案管家").trim();
+	const lines = text.split("\n").filter((l) => !/^(到看板核准:|Approve on board: )?https?:\/\/\S+$/.test(l.trim()));
+	const title = (lines.shift() ?? tr("專案管家")).trim();
 	const body = lines.join("\n").replace(/\n{2,}/g, "\n").trim();
 	return { title, body: body || title, ...(projectId ? { link: `agentsteward://project/${projectId}`, thread: projectId } : {}) };
 }

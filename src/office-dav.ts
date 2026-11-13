@@ -2,6 +2,7 @@
 // Office 打開後按存檔就直接寫回專案裡的原檔。
 // 專用連結只能存取一個檔案,12 小時有效,每次存檔或鎖定都會延長;Office 拿不到瀏覽器的登入,所以靠這個連結。
 // 每次存檔前把舊版本留在 ~/.agent-steward/office-history(每個檔案最近 20 版、最多 30 天)。
+import { tr } from "./i18n.ts";
 import { randomBytes, createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -66,9 +67,9 @@ export function officeVersions(p: Project, rel: string): { id: string; at: numbe
 	return readdirSync(dir).filter((f) => /^\d+\./.test(f)).sort().reverse().map((f) => ({ id: f, at: Number(f.split(".")[0]), size: statSync(join(dir, f)).size }));
 }
 export function officeVersionFile(p: Project, rel: string, id: string): string {
-	if (!/^\d+\.[A-Za-z0-9]+$/.test(id)) throw new CodeError(400, "版本代號不對");
+	if (!/^\d+\.[A-Za-z0-9]+$/.test(id)) throw new CodeError(400, tr("版本代號不對"));
 	const f = join(histDir(p, rel), id);
-	if (!existsSync(f)) throw new CodeError(404, "找不到這個版本(可能已經超過 30 天被清掉了)");
+	if (!existsSync(f)) throw new CodeError(404, tr("找不到這個版本(可能已經超過 30 天被清掉了)"));
 	return f;
 }
 /** 還原:目前的版本也先留一份 */
@@ -107,7 +108,7 @@ export async function handleDav(req: IncomingMessage, res: ServerResponse, store
 	if (!m) return false;
 	const link = links[m[1]];
 	const reply = (code: number, headers: Record<string, string> = {}, body = "") => { res.writeHead(code, { "cache-control": "no-store", ...headers }); res.end(body); };
-	if (!link || link.exp < Date.now()) { reply(404, { "content-type": "text/plain; charset=utf-8" }, "這個編輯連結已經過期,請回到專案管家重新按「用 Office 編輯」"); return true; }
+	if (!link || link.exp < Date.now()) { reply(404, { "content-type": "text/plain; charset=utf-8" }, tr("這個編輯連結已經過期,請回到專案管家重新按「用 Office 編輯」")); return true; }
 	const p = store.project(link.pid);
 	if (!p) { reply(404); return true; }
 	const abs = inProject(p, link.rel);

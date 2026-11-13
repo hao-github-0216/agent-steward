@@ -3,6 +3,7 @@
 //  - 其他 agent,或找不到主線的 session:開同一種 agent 的新對話,第一則訊息帶主線的節錄(tab 名稱標「節錄」)
 //  - 預設開在獨立的 git worktree(檔案跟主線分開,見 worktree.ts);非 git、隱私專案或使用者要求時開在同一個資料夾
 //  - 「帶回主線」:管家把支線整理成結論(worktree 附上改動和套用方式),使用者確認後,等主線閒下來送進去
+import { tr } from "./i18n.ts";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR } from "./config.ts";
@@ -51,8 +52,8 @@ export function pickMainPane(opts: { pane?: string; workspace?: string }, panes 
 	const focused = inWs.find((p) => p.focused);
 	if (focused) return focused;
 	if (inWs.length === 1) return inWs[0];
-	if (!inWs.length) throw new BranchError(opts.pane && !given ? `找不到窗格 ${opts.pane}` : "這個 space 裡沒有 agent 可以開支線");
-	throw new BranchError(`這個 space 有好幾個 agent,請指定要從哪個開支線:\n${inWs.map((p) => `  ${p.pane_id}  ${p.agent}  「${tabLabel(p.tab_id)}」`).join("\n")}`);
+	if (!inWs.length) throw new BranchError(opts.pane && !given ? tr("找不到窗格 {pane}", { pane: opts.pane }) : tr("這個 space 裡沒有 agent 可以開支線"));
+	throw new BranchError(tr("這個 space 有好幾個 agent,請指定要從哪個開支線:\n{agents}", { agents: inWs.map((p) => tr("  {pane}  {agent}  「{label}」", { pane: p.pane_id, agent: p.agent, label: tabLabel(p.tab_id) })).join("\n") }));
 }
 
 /** 各 agent 的分叉參數;不支援或缺 session 就回 undefined */
@@ -95,8 +96,8 @@ function excerptPrompt(store: Store, main: HerdrPane, mainLabel: string): string
 export function openBranch(store: Store, mainPaneId: string, opts: { here?: boolean } = {}): Branch {
 	const panes = listPanes() ?? [];
 	const main = panes.find((p) => p.pane_id === mainPaneId);
-	if (!main) throw new BranchError(`找不到窗格 ${mainPaneId}`);
-	if (!main.agent) throw new BranchError("這個窗格沒有在跑 agent");
+	if (!main) throw new BranchError(tr("找不到窗格 {pane}", { pane: mainPaneId }));
+	if (!main.agent) throw new BranchError(tr("這個窗格沒有在跑 agent"));
 	const agent = main.agent;
 	const mainCwd = cwdOf(main);
 	const project = resolveProject(store, mainCwd);
@@ -104,13 +105,13 @@ export function openBranch(store: Store, mainPaneId: string, opts: { here?: bool
 	const id = store.newBranchId();
 
 	// 開在哪裡:預設 worktree;使用者要求、隱私專案(worktree 不在隱私路徑底下,pi 會改走雲端模型)、非 git 就同資料夾
-	const hereReason = opts.here ? "使用者選擇同資料夾開" : project.private ? "隱私專案不開 worktree" : worktreeBlocker(mainCwd);
+	const hereReason = opts.here ? tr("使用者選擇同資料夾開") : project.private ? tr("隱私專案不開 worktree") : worktreeBlocker(mainCwd);
 	let wt: WorktreeInfo | undefined;
 	if (!hereReason) {
 		try {
 			wt = createWorktree(mainCwd, project.id, id);
 		} catch (e) {
-			throw new BranchError(`建立 worktree 失敗:${(e as Error).message}(可以改用「同資料夾開」)`);
+			throw new BranchError(tr("建立 worktree 失敗:{error}(可以改用「同資料夾開」)", { error: (e as Error).message }));
 		}
 	}
 	const cwd = wt?.cwd ?? mainCwd;
@@ -124,14 +125,14 @@ export function openBranch(store: Store, mainPaneId: string, opts: { here?: bool
 	const parent = store.branchOfPane(main);
 	const mainLabel = parent?.mainLabel ?? tabLabel(main.tab_id);
 	const n = store.branches().filter((b) => (main.terminal_id ? b.mainTerminalId === main.terminal_id : b.mainPaneId === main.pane_id)).length + 1;
-	const tags = [mode === "excerpt" ? "節錄" : "", wt ? "" : "同資料夾"].filter(Boolean);
-	const label = `支線${tags.length ? `(${tags.join("·")})` : ""}:${mainLabel} #${n}`.slice(0, 48);
+	const tags = [mode === "excerpt" ? tr("節錄") : "", wt ? "" : tr("同資料夾")].filter(Boolean);
+	const label = tr("支線{tags}:{label} #{n}", { tags: tags.length ? `(${tags.join("·")})` : "", label: mainLabel, n }).slice(0, 48);
 
 	const created = herdrCli(["tab", "create", "--workspace", main.workspace_id, "--cwd", cwd, "--label", label]);
 	const pane = created?.result?.root_pane as HerdrPane | undefined;
 	if (!pane?.pane_id) {
 		cleanup();
-		throw new BranchError(`開 tab 失敗:${JSON.stringify(created?.error ?? created).slice(0, 200)}`);
+		throw new BranchError(tr("開 tab 失敗:{error}", { error: JSON.stringify(created?.error ?? created).slice(0, 200) }));
 	}
 	const createdAt = new Date().toISOString();
 	// 節錄模式:Claude Code / Codex 把節錄當啟動參數帶進去(Claude 不帶參數啟動可能先進 session 清單,不是對話);
@@ -158,7 +159,7 @@ export function openBranch(store: Store, mainPaneId: string, opts: { here?: bool
 	if (started?.error && !waitingUser) {
 		herdrCli(["tab", "close", pane.tab_id]);
 		cleanup();
-		throw new BranchError(`啟動 ${agent} 失敗:${String(started.error.message ?? "").slice(0, 300)}`);
+		throw new BranchError(tr("啟動 {agent} 失敗:{error}", { agent, error: String(started.error.message ?? "").slice(0, 300) }));
 	}
 	if (intro && !introAsArg && !waitingUser) {
 		const sent = herdrCli(["agent", "prompt", pane.pane_id, intro], 20_000);
@@ -182,7 +183,7 @@ export function openBranch(store: Store, mainPaneId: string, opts: { here?: bool
 		paneId: pane.pane_id,
 		terminalId: pane.terminal_id,
 		tabId: pane.tab_id,
-		startupNote: waitingUser ? `${agent} 啟動時停在確認畫面(例如要不要使用專案的 MCP 伺服器),請到「${label}」那個 tab 確認` : undefined,
+		startupNote: waitingUser ? tr("{agent} 啟動時停在確認畫面(例如要不要使用專案的 MCP 伺服器),請到「{label}」那個 tab 確認", { agent, label }) : undefined,
 		createdAt,
 	});
 }
@@ -219,12 +220,12 @@ export function branchContent(store: Store, b: Branch): string {
 /** 擬「帶回主線」的草稿 */
 export async function draftHandoff(store: Store, steward: Steward, id: string): Promise<string> {
 	const b = store.branch(id);
-	if (!b) throw new BranchError("找不到這條支線");
+	if (!b) throw new BranchError(tr("找不到這條支線"));
 	const project = store.project(b.projectId);
-	if (!project) throw new BranchError("找不到專案");
+	if (!project) throw new BranchError(tr("找不到專案"));
 	const content = branchContent(store, b);
 	const changes = b.worktree && !b.worktree.removed ? worktreeChanges(b.worktree) : undefined;
-	if (!content.trim() && !changes?.files.length) throw new BranchError("支線裡還沒有任何內容可以帶回");
+	if (!content.trim() && !changes?.files.length) throw new BranchError(tr("支線裡還沒有任何內容可以帶回"));
 	const changeText = changes?.files.length ? `\n\n【支線在 worktree 改的檔案(相對於開支線時)】\n${changes.stat}\n\n${changes.diff.slice(0, 20_000)}` : "";
 	const summary = await steward.handoffDraft(project, { label: b.label, mainLabel: b.mainLabel }, `${content}${changeText}`);
 	const draft = `${summary}${b.worktree ? `\n\n${worktreeFooter(b, changes?.files ?? [])}` : ""}`;
@@ -252,8 +253,8 @@ export const mainAlive = (b: Branch, panes: HerdrPane[]) => !!mainPaneOf(b, pane
 /** 排入「帶回主線」:主線閒著就馬上送,在忙就等 watcher 下一輪 */
 export function queueHandoff(store: Store, id: string, text: string, onSent?: (paneId: string) => void): Branch {
 	const b = store.branch(id);
-	if (!b) throw new BranchError("找不到這條支線");
-	if (!text.trim()) throw new BranchError("內容不能空白");
+	if (!b) throw new BranchError(tr("找不到這條支線"));
+	if (!text.trim()) throw new BranchError(tr("內容不能空白"));
 	store.updateBranch(id, { handoff: { text: text.trim(), status: "queued", at: new Date().toISOString() } });
 	deliverHandoffs(store, listPanes() ?? [], onSent);
 	return store.branch(id)!;
@@ -265,14 +266,14 @@ export function deliverHandoffs(store: Store, panes: HerdrPane[], onSent?: (pane
 		if (b.handoff?.status !== "queued") continue;
 		const main = mainPaneOf(b, panes);
 		if (!main?.agent) {
-			store.updateBranch(b.id, { handoff: { ...b.handoff, status: "failed", note: "主線已經關閉" } });
+			store.updateBranch(b.id, { handoff: { ...b.handoff, status: "failed", note: tr("主線已經關閉") } });
 			continue;
 		}
 		if (main.agent_status !== "idle" && main.agent_status !== "done") continue;
 		const text = `【支線結論】來自支線「${b.label}」:\n${b.handoff.text}`;
 		const sent = herdrCli(["agent", "prompt", main.pane_id, text], 20_000);
 		if (sent?.error) {
-			store.updateBranch(b.id, { handoff: { ...b.handoff, status: "failed", note: String(sent.error.message ?? "送出失敗").slice(0, 200) } });
+			store.updateBranch(b.id, { handoff: { ...b.handoff, status: "failed", note: String(sent.error.message ?? tr("送出失敗")).slice(0, 200) } });
 			continue;
 		}
 		store.updateBranch(b.id, { handoff: { ...b.handoff, status: "sent", sentAt: new Date().toISOString() } });
@@ -283,17 +284,17 @@ export function deliverHandoffs(store: Store, panes: HerdrPane[], onSent?: (pane
 /** 關掉支線的 tab;removeWorktree 時一併移除 worktree(改動先提交到支線分支,分支保留) */
 export function closeBranch(store: Store, id: string, opts: { removeWorktree?: boolean } = {}): void {
 	const b = store.branch(id);
-	if (!b) throw new BranchError("找不到這條支線");
+	if (!b) throw new BranchError(tr("找不到這條支線"));
 	const pane = (listPanes() ?? []).find((p) => (b.terminalId ? p.terminal_id === b.terminalId : p.pane_id === b.paneId));
 	if (pane) {
 		const res = herdrCli(["tab", "close", pane.tab_id]);
-		if (res?.error) throw new BranchError(String(res.error.message ?? "關閉失敗"));
+		if (res?.error) throw new BranchError(String(res.error.message ?? tr("關閉失敗")));
 	}
 	if (opts.removeWorktree && b.worktree && !b.worktree.removed) {
 		try {
 			removeWorktree(b.worktree);
 		} catch (e) {
-			throw new BranchError(`支線已關閉,但 worktree 沒移除:${(e as Error).message}`);
+			throw new BranchError(tr("支線已關閉,但 worktree 沒移除:{error}", { error: (e as Error).message }));
 		}
 		store.updateBranch(id, { worktree: { ...b.worktree, removed: true } });
 	}

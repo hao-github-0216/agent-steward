@@ -2,6 +2,7 @@
 // 回答(用它們自己的訂閱,不用另外登入或付 API 費用)。
 // CLI 沒辦法呼叫管家的工具,所以只用在不需要工具的工作:聊天問答、建議問題、產生提交訊息。
 // 每次呼叫都在空的暫存資料夾裡、關掉工具與外掛執行;問題從標準輸入送進去(不放在指令列上)。
+import { tr } from "./i18n.ts";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +19,7 @@ export const CLI_ROLES = ["chat", "suggest", "commitmsg"] as const;
 const CODEX_MODELS = Object.values(OPENAI_CODEX_MODELS as Record<string, { id: string }>).map((m) => m.id);
 export const CLI_KINDS: Record<CliKind, { name: string; exe: string[]; models: string[]; note?: string }> = {
 	claude: { name: "Claude Code", exe: ["claude"], models: ["default", "sonnet", "opus", "haiku"] },
-	codex: { name: "Codex", exe: ["codex"], models: ["default", ...CODEX_MODELS], note: "Codex 每次呼叫會先送出它自己的長提示(約 1 萬多 token),比較慢" },
+	codex: { name: "Codex", exe: ["codex"], models: ["default", ...CODEX_MODELS], get note() { return tr("Codex 每次呼叫會先送出它自己的長提示(約 1 萬多 token),比較慢"); } },
 	gemini: { name: "Gemini CLI", exe: ["gemini"], models: ["default"] },
 	copilot: { name: "GitHub Copilot CLI", exe: ["copilot"], models: ["default"] },
 	qwen: { name: "Qwen Code", exe: ["qwen"], models: ["default"] },
@@ -38,7 +39,7 @@ const strip = (s: string) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim();
 export function runCli(kind: CliKind, model: string, system: string, user: string, timeoutMs = 180_000): Promise<string> {
 	const def = CLI_KINDS[kind];
 	const exe = def.exe.map(which).find(Boolean);
-	if (!exe) return Promise.reject(new Error(`這台電腦找不到 ${def.name}(${def.exe[0]} 指令)`));
+	if (!exe) return Promise.reject(new Error(tr("這台電腦找不到 {name}({exe} 指令)", { name: def.name, exe: def.exe[0] })));
 	const dir = mkdtempSync(join(tmpdir(), "steward-cli-"));
 	const m = model && model !== "default" ? model : "";
 	const prompt = `${system}\n\n---\n\n${user}`;
@@ -57,7 +58,7 @@ export function runCli(kind: CliKind, model: string, system: string, user: strin
 		args = ["-p", "Answer the request above.", ...(m ? ["-m", m] : [])];
 	} else {
 		// Copilot CLI 只吃指令列上的問題
-		if (IS_WIN) return Promise.reject(new Error("GitHub Copilot CLI 在 Windows 上還不支援當管家的接口"));
+		if (IS_WIN) return Promise.reject(new Error(tr("GitHub Copilot CLI 在 Windows 上還不支援當管家的接口")));
 		args = ["-p", prompt, ...(m ? ["--model", m] : [])];
 	}
 	return new Promise((resolve, reject) => {
@@ -77,7 +78,7 @@ export function runCli(kind: CliKind, model: string, system: string, user: strin
 			if (outFile) { try { text = strip(readFileSync(outFile, "utf8")); } catch { /* 沒寫出來 */ } }
 			rmSync(dir, { recursive: true, force: true });
 			if (code === 0 && text) return resolve(text);
-			const why = strip(err).split("\n").filter(Boolean).slice(-3).join(" ") || strip(out).slice(-300) || `結束代碼 ${code}`;
+			const why = strip(err).split("\n").filter(Boolean).slice(-3).join(" ") || strip(out).slice(-300) || tr("結束代碼 {code}", { code });
 			reject(new Error(`${def.name}:${why.slice(0, 400)}`));
 		});
 		if (kind !== "copilot") child.stdin.end(prompt);

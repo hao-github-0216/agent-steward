@@ -1,4 +1,5 @@
 // 桌面 App 啟動前套用指令、herdr 設定與既有 agent 整合。
+import { tr } from "./i18n.ts";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -9,7 +10,7 @@ import { settings } from "./settings.ts";
 
 function requiredPath(name: string): string {
 	const value = process.env[name];
-	if (!value) throw new Error(`請設定 ${name} 的絕對路徑後再執行 desktop-setup.ts`);
+	if (!value) throw new Error(tr("請設定 {name} 的絕對路徑後再執行 desktop-setup.ts", { name }));
 	return resolve(value);
 }
 
@@ -38,7 +39,7 @@ function installHerdr(bin: string, herdr: string, notes: string[]): void {
 		if (existing) {
 			const before = existing.isFile() ? readFileSync(file, "utf8") : "";
 			if (!before.startsWith(HERDR_CMD_MARK)) {
-				notes.push("%USERPROFILE%\\.local\\bin\\herdr.cmd 是你自己的檔案，沒有動");
+				notes.push(tr("%USERPROFILE%\\.local\\bin\\herdr.cmd 是你自己的檔案，沒有動"));
 				return;
 			}
 		}
@@ -48,9 +49,9 @@ function installHerdr(bin: string, herdr: string, notes: string[]): void {
 			const target = resolve(bin, readlinkSync(file));
 			if (target === herdr) return;
 			if (ownedHerdrPath(target)) unlinkSync(file);
-			else { notes.push("~/.local/bin/herdr 是你自己的連結，沒有動"); return; }
+			else { notes.push(tr("~/.local/bin/herdr 是你自己的連結，沒有動")); return; }
 		} else if (existing) {
-			notes.push("~/.local/bin/herdr 是你自己的檔案，沒有動");
+			notes.push(tr("~/.local/bin/herdr 是你自己的檔案，沒有動"));
 			return;
 		}
 		symlinkSync(herdr, file);
@@ -99,10 +100,10 @@ function setup(): string[] {
 			const toml = readFileSync(join(source, "herdr-plugin.toml"), "utf8").replaceAll('"node"', () => JSON.stringify(node));
 			writeChanged(join(destination, "herdr-plugin.toml"), toml);
 			const linked = run(herdr, ["plugin", "link", destination]);
-			if (linked.status !== 0) notes.push(`herdr 外掛 ${dir.name} 連結失敗：${linked.error?.message ?? linked.stderr.trim()}`);
+			if (linked.status !== 0) notes.push(tr("herdr 外掛 {name} 連結失敗：{error}", { name: dir.name, error: linked.error?.message ?? linked.stderr.trim() }));
 		}
 		const configured = run(node, ["--experimental-strip-types", "--no-warnings", join(app, "src", "herdr-setup.ts")]);
-		if (configured.status !== 0) throw new Error(`herdr 快捷鍵設定失敗：${configured.error?.message ?? configured.stderr.trim()}`);
+		if (configured.status !== 0) throw new Error(tr("herdr 快捷鍵設定失敗：{error}", { error: configured.error?.message ?? configured.stderr.trim() }));
 		run(herdr, ["server", "reload-config"]);
 	}
 	for (const path of refreshIntegrated()) console.log(`已更新 agent 整合：${path}`);

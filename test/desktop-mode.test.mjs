@@ -258,6 +258,11 @@ function uiFixture(desktop) {
 		$: element, fixtureSettings: structuredClone(DEFAULTS), window: {}, pref: () => "", clearInterval,
 		aiPane: () => "", agentsPane: () => "", routingPane: () => "", saveSettings: async () => true,
 		setModels: {},
+		tr: (zh, vars) => {
+			const text = context.fixtureSettings.ui.lang === "en" ? JSON.parse(readFileSync(join(ROOT, "web", "i18n", "en.json"), "utf8"))[zh] ?? zh : zh;
+			return text.replace(/\{([^{}]+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
+		},
+		LANG: "zh-TW",
 	});
 	const run = (source) => vm.runInContext(source, context);
 	const settingsSource = html.slice(html.indexOf("let setState = null;"), html.indexOf("// ---- 訂閱登入 ----"));

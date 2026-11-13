@@ -1,5 +1,6 @@
 // 圈選提問:網頁上圈一塊畫面問管家。網頁負責取出圈到的文字(或截圖)與周圍內容;
 // 終端機的部分由這裡找出是哪個 herdr 窗格,再讀那個窗格最近的輸出當前後文。
+import { tr } from "./i18n.ts";
 import { herdrCli, listPanes, listWorkspaces, type HerdrPane } from "./herdr.ts";
 
 export interface SnapInfo {
@@ -21,7 +22,7 @@ export function parseSnap(raw: unknown): SnapInfo | undefined {
 	const kind = (["terminal", "code", "doc", "page"] as const).find((k) => k === s.kind) ?? "page";
 	return {
 		kind,
-		label: clip(s.label, 200) || "畫面",
+		label: clip(s.label, 200) || tr("畫面"),
 		text: clip(s.text, 20_000),
 		context: s.context ? clip(s.context, 12_000) : undefined,
 		path: s.path ? clip(s.path, 500) : undefined,

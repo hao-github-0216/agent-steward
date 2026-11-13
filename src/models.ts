@@ -3,6 +3,7 @@
 //    用 pi 自己的 AuthStorage 讀寫,帶檔案鎖,token 更新會寫回 pi)
 //  - OpenAI 相容網址(Ollama、LM Studio、vLLM、自架)
 //  - 沿用 pi 的模型設定(~/.pi/agent/models.json,每次讀,pi 改了這裡跟著變)
+import { tr } from "./i18n.ts";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -175,7 +176,7 @@ export const LOGIN_PROVIDERS: Partial<Record<Builtin, string>> = {
 };
 /** 跑訂閱登入流程(登入結果經 SettingsCredentials 存進 ~/.agent-steward/auth.json) */
 export async function loginProvider(id: string, interaction: unknown): Promise<void> {
-	if (!models) throw new Error("模型還沒準備好,稍後再試");
+	if (!models) throw new Error(tr("模型還沒準備好,稍後再試"));
 	await (models as any).login(id, "oauth", interaction, { agentName: "agent-steward", getDeviceId: deviceId });
 }
 export function signedIn(c: ProviderConfig): boolean {
@@ -247,11 +248,11 @@ export function routeFor(role: RouteRole, opts: { private?: boolean; fallback?: 
 	const r = settings().routing;
 	if (opts.private) {
 		const ref = parseRef(r.privacy);
-		if (!ref) throw new NoModelError(`還沒設定「${ROLE_LABEL.privacy}」要用哪個模型(設定 → 路由)`);
+		if (!ref) throw new NoModelError(tr("還沒設定「{label}」要用哪個模型(設定 → 路由)", { label: tr(ROLE_LABEL.privacy) }));
 		return ref;
 	}
 	const ref = parseRef(opts.fallback ? r[role].fallback : r[role].primary);
-	if (!ref) throw new NoModelError(opts.fallback ? `「${ROLE_LABEL[role]}」沒有設定備用模型` : `還沒設定「${ROLE_LABEL[role]}」要用哪個模型(設定 → 路由)`);
+	if (!ref) throw new NoModelError(opts.fallback ? tr("「{label}」沒有設定備用模型", { label: tr(ROLE_LABEL[role]) }) : tr("還沒設定「{label}」要用哪個模型(設定 → 路由)", { label: tr(ROLE_LABEL[role]) }));
 	return ref;
 }
 export function hasFallback(role: RouteRole): boolean {
@@ -259,7 +260,7 @@ export function hasFallback(role: RouteRole): boolean {
 }
 export function modelLabel(ref: { provider: string; modelId: string }): string {
 	const c = settings().providers.find((p) => p.id === ref.provider);
-	return `${c?.name.replace(/[((]沿用 pi 的(登入|模型設定)[))]/, "").trim() || ref.provider} · ${ref.modelId}`;
+	return `${tr(c?.name.replace(/[((]沿用 pi 的(登入|模型設定)[))]/, "").trim() || ref.provider)} · ${ref.modelId}`;
 }
 /** 這個模型看不看得懂圖片(agent CLI 一律不行) */
 export function supportsImages(ref: { provider: string; modelId: string }): boolean {
@@ -278,7 +279,7 @@ export function missingCoreRoutes(): string[] {
 		const ref = parseRef(s.routing[role].primary);
 		const c = ref && s.providers.find((x) => x.id === ref.provider);
 		return !c || c.type === "agent-cli";
-	}).map((role) => ROLE_LABEL[role]);
+	}).map((role) => tr(ROLE_LABEL[role]));
 }
 /** 聊天室現在用的是不是電腦上的 agent CLI(看不懂圖片) */
 export function chatUsesCli(): boolean {

@@ -1,4 +1,5 @@
 // 管家常駐程式進入點(launchd 啟動)。
+import { tr } from "./i18n.ts";
 import { STORE_PATH } from "./config.ts";
 import { justAnswered } from "./followup.ts";
 import { notify } from "./notify.ts";
@@ -38,7 +39,7 @@ const steward = new Steward({
 	store,
 	onCardProposed: (card, project) => {
 		// 隱私專案本來就不能提案;這裡再擋一次,萬一哪天開放了也不會把內容推出去
-		void notify(pushText(project, `🗂 專案管家提案(${project.name})\n${card.title}\n→ 交給 ${card.agent}\n完成標準:${card.doneCriteria}\n\n到看板核准:${boardUrl()}`, `🔒 有一個隱私專案的提案等你核准\n\n${boardUrl()}`), { projectId: project.id });
+		void notify(pushText(project, tr("🗂 專案管家提案({project})\n{title}\n→ 交給 {agent}\n完成標準:{criteria}\n\n到看板核准:{url}", { project: project.name, title: card.title, agent: card.agent, criteria: card.doneCriteria, url: boardUrl() }), tr("🔒 有一個隱私專案的提案等你核准\n\n{url}", { url: boardUrl() })), { projectId: project.id });
 	},
 });
 await steward.open();
@@ -55,7 +56,7 @@ store.onChange((what) => {
 		if (lastBlocked.has(id)) continue;
 		const c = store.card(id)!;
 		const p = store.project(c.projectId);
-		void notify(pushText(p, `⚠️ 工作卡卡住(${p?.name ?? "?"})\n${c.title}\n${c.note ?? ""}\n\n${boardUrl()}`, `🔒 有一個隱私專案的工作卡卡住,請到看板查看\n\n${boardUrl()}`), { projectId: c.projectId });
+		void notify(pushText(p, tr("⚠️ 工作卡卡住({project})\n{title}\n{note}\n\n{url}", { project: p?.name ?? "?", title: c.title, note: c.note ?? "", url: boardUrl() }), tr("🔒 有一個隱私專案的工作卡卡住,請到看板查看\n\n{url}", { url: boardUrl() })), { projectId: c.projectId });
 	}
 	lastBlocked = now;
 	const done = idsIn("done");
@@ -66,7 +67,7 @@ store.onChange((what) => {
 		const p = store.project(c.projectId);
 		// 追問有回覆:推回覆的開頭
 		const reply = justAnswered(c) ? c.thread!.at(-1)!.text : undefined;
-		void notify(reply ? pushText(p, `💬 追問有回覆(${p?.name ?? "?"})\n${c.title}\n${reply.slice(0, 300)}`, "🔒 有一個隱私專案的追問有回覆") : pushText(p, `✅ 工作完成(${p?.name ?? "?"})\n${c.title}\n${(c.note ?? "").slice(0, 300)}`, "🔒 有一個隱私專案的工作完成了"), { projectId: c.projectId, iphoneOnly: true });
+		void notify(reply ? pushText(p, tr("💬 追問有回覆({project})\n{title}\n{reply}", { project: p?.name ?? "?", title: c.title, reply: reply.slice(0, 300) }), tr("🔒 有一個隱私專案的追問有回覆")) : pushText(p, tr("✅ 工作完成({project})\n{title}\n{note}", { project: p?.name ?? "?", title: c.title, note: (c.note ?? "").slice(0, 300) }), tr("🔒 有一個隱私專案的工作完成了")), { projectId: c.projectId, iphoneOnly: true });
 	}
 	lastDone = done;
 });
@@ -86,19 +87,19 @@ function digest(): void {
 	for (const c of store.cards()) {
 		const proj = store.project(c.projectId);
 		const p = proj?.name ?? "?";
-		if (c.column === "blocked" && age(c.updatedAt) > DAY) add(proj?.private, `⚠️ ${p}:「${c.title}」卡住 ${Math.floor(age(c.updatedAt) / DAY)} 天`);
-		if (c.column === "proposed" && age(c.createdAt) > 2 * DAY) add(proj?.private, `🗂 ${p}:提案「${c.title}」等核准 ${Math.floor(age(c.createdAt) / DAY)} 天`);
+		if (c.column === "blocked" && age(c.updatedAt) > DAY) add(proj?.private, tr("⚠️ {project}:「{title}」卡住 {days} 天", { project: p, title: c.title, days: Math.floor(age(c.updatedAt) / DAY) }));
+		if (c.column === "proposed" && age(c.createdAt) > 2 * DAY) add(proj?.private, tr("🗂 {project}:提案「{title}」等核准 {days} 天", { project: p, title: c.title, days: Math.floor(age(c.createdAt) / DAY) }));
 	}
 	for (const p of store.projects()) {
 		if (p.kind !== "project" || p.status !== "active" || !p.state.blockers.length) continue;
 		const idle = age(p.lastActivityAt ?? p.state.updatedAt);
-		if (idle > 3 * DAY && idle < 30 * DAY) add(p.private, `⏸ ${p.name}:${Math.floor(idle / DAY)} 天沒進展,卡在「${p.state.blockers[0]}」`);
+		if (idle > 3 * DAY && idle < 30 * DAY) add(p.private, tr("⏸ {project}:{days} 天沒進展,卡在「{blocker}」", { project: p.name, days: Math.floor(idle / DAY), blocker: p.state.blockers[0] }));
 	}
 	if (!lines.length && !hidden) return;
 	lastDigestDay = today;
 	const shown = lines.slice(0, 12);
-	if (hidden) shown.push(`🔒 隱私專案有 ${hidden} 項待處理`);
-	void notify(`📋 專案管家每日提醒\n${shown.join("\n")}\n\n${boardUrl()}`);
+	if (hidden) shown.push(tr("🔒 隱私專案有 {n} 項待處理", { n: hidden }));
+	void notify(tr("📋 專案管家每日提醒\n{items}\n\n{url}", { items: shown.join("\n"), url: boardUrl() }));
 }
 setInterval(digest, 6 * 3_600_000);
 setTimeout(digest, 60_000);

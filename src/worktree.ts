@@ -2,6 +2,7 @@
 //  - 主線還沒提交的改動(含沒追蹤的新檔)也帶過去,做成一個「支線起點」commit,支線看到的檔案跟主線一模一樣
 //  - node_modules、.venv 這類不在 git 裡的大資料夾用連結指回主線(共用)
 //  - 帶回主線用 `git diff <起點>`:只含支線自己的改動,不會把主線的未提交改動算進去
+import { tr } from "./i18n.ts";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,7 +20,7 @@ function git(cwd: string, args: string[], timeoutMs = 60_000): string {
 		return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 }).trim();
 	} catch (e: any) {
 		const msg = String(e?.stderr ?? e?.message ?? e).trim().split("\n").slice(-3).join(" ");
-		throw new WorktreeError(`git ${args[0]} 失敗:${msg.slice(0, 300)}`);
+		throw new WorktreeError(tr("git {action} 失敗:{error}", { action: args[0], error: msg.slice(0, 300) }));
 	}
 }
 
@@ -39,12 +40,12 @@ export function worktreeBlocker(cwd: string): string | undefined {
 	try {
 		root = git(cwd, ["rev-parse", "--show-toplevel"], 10_000);
 	} catch {
-		return "不是 git 專案";
+		return tr("不是 git 專案");
 	}
 	try {
 		git(root, ["rev-parse", "--verify", "HEAD"], 10_000);
 	} catch {
-		return "這個 repo 還沒有任何 commit";
+		return tr("這個 repo 還沒有任何 commit");
 	}
 	return undefined;
 }

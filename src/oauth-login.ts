@@ -1,6 +1,7 @@
 // 設定頁的「用 ChatGPT / Claude 登入」:在伺服器跑 pi-ai 的登入流程,網頁輪詢進度。
 // 在這台電腦的瀏覽器登入:登入完成後自動接上(本機回呼)。
 // 從手機或別台電腦登入:登入後的頁面會打不開,把網址列整段貼回設定頁即可。
+import { tr } from "./i18n.ts";
 import { randomBytes } from "node:crypto";
 import { loginProvider } from "./models.ts";
 
@@ -60,7 +61,7 @@ export function startLogin(provider: string, onFinish?: (ok: boolean) => void): 
 export function loginStatus(id: string) {
 	const s = sessions.get(id);
 	if (!s) return undefined;
-	return { id: s.id, provider: s.provider, status: s.status, url: s.url, userCode: s.userCode, message: s.message, needCode: s.needCode };
+	return { id: s.id, provider: s.provider, status: s.status, url: s.url, userCode: s.userCode, message: s.message === undefined ? undefined : tr(s.message), needCode: s.needCode };
 }
 
 export function submitCode(id: string, code: string): boolean {

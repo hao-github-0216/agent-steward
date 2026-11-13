@@ -1,6 +1,6 @@
 // HTTP API + 看板網頁 + SSE 即時更新。只綁本機與 tailnet IP。
 import { createServer, request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { pathInside, serviceHint } from "./platform.ts";
+import { pathInside, SERVICE, serviceHint } from "./platform.ts";
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
 import { appendFileSync, closeSync, mkdirSync, openSync, statSync as fileStat } from "node:fs";
@@ -9,7 +9,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { getCurrent, getSession, putCurrent, putSession } from "./code-session.ts";
 import { listDevices, pushAll, pushConfigured, registerDevice, unregisterDevice } from "./apns.ts";
-import { desktopSignal, expandHome, findTailscale, onSettingsChange, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
+import { desktopSignal, expandHome, findTailscale, onSettingsChange, providerLabel, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
 import { APP_DIR, agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
 import { applyUpdate, checkUpdate, updateLog, updateRequestError } from "./update.ts";
@@ -33,6 +33,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brief } from "./brief.ts";
+import { isEn, readEnTable, renderIndex, tr } from "./i18n.ts";
 import { DATA_DIR, HOME, HOSTS, isPrivatePath, MISC_ROOTS, PORT, publicUrl, TERMINAL_PORT } from "./config.ts";
 import { dispatchCard, focusProject } from "./dispatch.ts";
 import { askCard, cancelQuestion, FollowUpError, retryQuestion } from "./followup.ts";
@@ -42,7 +43,7 @@ import { boundSpace, ensureSpace, movePane, projectOfSpace, runTidy, strayPanes,
 import { worktreeTree } from "./worktree-tree.ts";
 import { chatPlan, findWorktree, ignoreWorktrees, listWorktrees, mergePreview, mergeWorktree, removeWorktreeItem, untrackGitlinks, worktreeCounts, worktreeView, WorktreesError } from "./worktrees.ts";
 import { createProject } from "./create.ts";
-import { ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
+import { displayProject, ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
 import type { Steward } from "./steward.ts";
 import type { Card, CardColumn, Project, Store } from "./store.ts";
 import type { Watcher } from "./watcher.ts";
@@ -57,9 +58,9 @@ async function fetchCompatModels(c: ProviderConfig): Promise<string[]> {
 	try {
 		r = await fetch(`${base}/models`, { headers: c.apiKey ? { authorization: `Bearer ${c.apiKey}` } : {}, signal: AbortSignal.timeout(10_000) });
 	} catch (e) {
-		throw new Error(`連不上 ${base}:${(e as Error).message}`);
+		throw new Error(tr("連不上 {base}:{error}", { base, error: (e as Error).message }));
 	}
-	if (!r.ok) throw new Error(`${base}/models 回應 ${r.status}`);
+	if (!r.ok) throw new Error(tr("{base}/models 回應 {status}", { base, status: r.status }));
 	return (((await r.json()) as { data?: { id: string }[] }).data ?? []).map((m) => m.id).filter(Boolean);
 }
 
@@ -80,19 +81,19 @@ async function body(req: IncomingMessage): Promise<any> {
  *   任何 → 提案:退回重新考慮  任何 → 不要:不做了
  */
 function moveRule(from: CardColumn, to: CardColumn): { ok: true; action?: "dispatch" | "redispatch" } | { ok: false; reason: string } {
-	if (from === to) return { ok: false, reason: "已經在這一欄" };
-	if (to === "running") return { ok: false, reason: "「進行中」只能由派工產生:要派工請拖到「已核准」" };
+	if (from === to) return { ok: false, reason: tr("已經在這一欄") };
+	if (to === "running") return { ok: false, reason: tr("「進行中」只能由派工產生:要派工請拖到「已核准」") };
 	if (to === "approved") {
 		if (from === "proposed") return { ok: true, action: "dispatch" };
 		if (from === "blocked" || from === "done") return { ok: true, action: "redispatch" };
-		return { ok: false, reason: "這張卡已經在派工中" };
+		return { ok: false, reason: tr("這張卡已經在派工中") };
 	}
 	if (to === "blocked" || to === "done") {
 		if (from === "running" || from === "approved" || from === "blocked" || from === "done") return { ok: true };
-		return { ok: false, reason: "還沒派工的提案不能直接標成卡住/完成:不要的話請按「不要」" };
+		return { ok: false, reason: tr("還沒派工的提案不能直接標成卡住/完成:不要的話請按「不要」") };
 	}
 	if (to === "proposed" || to === "rejected") return { ok: true };
-	return { ok: false, reason: "不支援這種移動" };
+	return { ok: false, reason: tr("不支援這種移動") };
 }
 
 function header(req: IncomingMessage, name: string): string | undefined {
@@ -142,7 +143,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 		const part = all.filter((x) => x.name.toLowerCase().includes(n) || n.includes(x.name.toLowerCase()));
 		return part.length === 1 ? { p: part[0], hints: [] } : { hints: (part.length ? part : all).map((x) => x.name).slice(0, 20) };
 	};
-	const PRIVATE_NOTE = (p: Project) => `「${p.name}」是隱私專案,內容不對其他專案開放。請到那個專案的資料夾裡問。`;
+	const PRIVATE_NOTE = (p: Project) => tr("「{name}」是隱私專案,內容不對其他專案開放。請到那個專案的資料夾裡問。", { name: p.name });
 	/**
 	 * 派工:卡片寫好之後專案又有新進度(舊卡)→ 先在 pi durable 的專案長期對話請管家依最新狀態改寫(revise_card),
 	 * 再派工並開始監看。卡片上的 refreshing 標記讓管家重啟後可以接著做。
@@ -154,17 +155,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 		const since = card.revisedAt ?? card.createdAt;
 		const stale = !!p?.state?.updatedAt && p.state.updatedAt > since;
 		if (p && (stale || card.refreshing)) {
-			store.updateCard(card.id, { column: "approved", refreshing: true, note: "管家正在依最新進度更新卡片…" });
+			store.updateCard(card.id, { column: "approved", refreshing: true, note: tr("管家正在依最新進度更新卡片…") });
 			const r = await steward.refreshCard(p, store.card(card.id)!).catch(() => "unchanged" as const);
 			store.updateCard(card.id, { refreshing: false });
 			if (r === "withdrawn") return; // 退回提案(revise_card 已寫好原因)
-			if (r === "unchanged") store.updateCard(card.id, { revisedAt: new Date().toISOString(), note: previous ? "重新派工中…" : "派工中…" });
+			if (r === "unchanged") store.updateCard(card.id, { revisedAt: new Date().toISOString(), note: previous ? tr("重新派工中…") : tr("派工中…") });
 			card = store.card(card.id)!;
 			if (card.column !== "approved") return;
 		}
 		await dispatchCard(store, watcher, card, previous as never)
 			.then((c) => (c.column === "running" && c.paneId ? steward.watchCard(c.id, c.paneId, c.terminalId) : undefined))
-			.catch((e) => store.updateCard(cardId, { column: "blocked", note: `派工失敗:${e}` }));
+			.catch((e) => store.updateCard(cardId, { column: "blocked", note: tr("派工失敗:{error}", { error: e }) }));
 	};
 	// 管家重啟:還在「派工前更新」的卡接著做
 	setTimeout(() => {
@@ -219,14 +220,14 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 
 	// ---------- 聊天室的三個建議問題(路由「建議問題」指定的模型產生) ----------
 	const suggesting = new Set<string>();
-	const SUGGEST_SYS = "你幫使用者想「接下來可以問專案管家的問題」。根據專案狀態和最近的問答,產生 3 個簡短、具體、彼此不同的問題,必須用繁體中文(台灣用字,不可以出現任何簡體字),每題 30 字以內。有最近問答時,順著那個方向往下問(追問細節、下一步、風險);沒有時依專案的下一步和卡住的地方。不要問管家做不到的事(它只能回答,不能改檔或派工)。只輸出 JSON 陣列,例如 [\"…\",\"…\",\"…\"],不要其他文字。";
+	const SUGGEST_SYS = () => "你幫使用者想「接下來可以問專案管家的問題」。根據專案狀態和最近的問答,產生 3 個簡短、具體、彼此不同的問題," + (isEn() ? "必須用英文,每題 15 個英文字以內" : "必須用繁體中文(台灣用字,不可以出現任何簡體字),每題 30 字以內") + "。有最近問答時,順著那個方向往下問(追問細節、下一步、風險);沒有時依專案的下一步和卡住的地方。不要問管家做不到的事(它只能回答,不能改檔或派工)。只輸出 JSON 陣列,例如 [\"…\",\"…\",\"…\"],不要其他文字。";
 	const makeSuggestions = async (p: Project) => {
 		if (suggesting.has(p.id)) return getSuggestions(p.id);
 		suggesting.add(p.id);
 		try {
 			const st = (p.state ?? {}) as { goal?: string; progress?: string; nextSteps?: string[]; blockers?: string[] };
 			const recent = recentChat(p.id, 6).map((e) => `${e.role === "me" ? "使用者" : "管家"}:${e.text.slice(0, 400)}`).join("\n");
-			const ask = () => steward.oneShot(SUGGEST_SYS, `專案:${p.name}\n目標:${st.goal || "(未記錄)"}\n進度:${st.progress || "(未記錄)"}\n下一步:${(st.nextSteps ?? []).join(";") || "(無)"}\n卡住:${(st.blockers ?? []).join(";") || "(無)"}\n\n最近問答:\n${recent || "(還沒有)"}`, "suggest", { private: p.private });
+			const ask = () => steward.oneShot(SUGGEST_SYS(), `專案:${p.name}\n目標:${st.goal || "(未記錄)"}\n進度:${st.progress || "(未記錄)"}\n下一步:${(st.nextSteps ?? []).join(";") || "(無)"}\n卡住:${(st.blockers ?? []).join(";") || "(無)"}\n\n最近問答:\n${recent || "(還沒有)"}`, "suggest", { private: p.private });
 			// 有些模型偶爾混簡體字:看到常見簡體字就重問一次
 			const SIMPLIFIED = /[这们为么备条认续时间会没还进开关应该从说过对现发问题项单证据读写样钟头无产业东车门见长难风险]/;
 			let out = await ask();
@@ -244,17 +245,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	const checkProviders = (list: ProviderConfig[]): string | null => {
 		const seen = new Set<string>();
 		for (const p of list) {
-			if (!p.id || !/^[a-z0-9][a-z0-9_-]{0,30}$/.test(p.id)) return `接口代號「${p.id}」只能用小寫英文、數字、- 和 _`;
-			if (seen.has(p.id)) return `接口代號「${p.id}」重複了`;
+			if (!p.id || !/^[a-z0-9][a-z0-9_-]{0,30}$/.test(p.id)) return tr("接口代號「{id}」只能用小寫英文、數字、- 和 _", { id: p.id });
+			if (seen.has(p.id)) return tr("接口代號「{id}」重複了", { id: p.id });
 			seen.add(p.id);
 			if (p.type === "builtin") {
-				if (!p.builtin || !(BUILTINS as readonly string[]).includes(p.builtin)) return `「${p.name}」不是支援的服務`;
-				if (p.id !== p.builtin) return `「${p.name}」的代號必須是 ${p.builtin}`;
+				if (!p.builtin || !(BUILTINS as readonly string[]).includes(p.builtin)) return tr("「{name}」不是支援的服務", { name: p.name });
+				if (p.id !== p.builtin) return tr("「{name}」的代號必須是 {id}", { name: p.name, id: p.builtin });
 			} else if (p.type === "openai-compatible") {
-				if (!/^https?:\/\//.test(p.baseUrl ?? "")) return `「${p.name}」的網址要以 http:// 或 https:// 開頭`;
+				if (!/^https?:\/\//.test(p.baseUrl ?? "")) return tr("「{name}」的網址要以 http:// 或 https:// 開頭", { name: p.name });
 			} else if (p.type === "agent-cli") {
-				if (!isCliKind(p.cli)) return `「${p.name}」不是支援的 agent CLI`;
-			} else if (p.type !== "pi-models") return `不支援的接口類型 ${p.type}`;
+				if (!isCliKind(p.cli)) return tr("「{name}」不是支援的 agent CLI", { name: p.name });
+			} else if (p.type !== "pi-models") return tr("不支援的接口類型 {type}", { type: p.type });
 		}
 		return null;
 	};
@@ -279,28 +280,28 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 		}
 		if (op === "chat" && req.method === "POST") {
 			const { item } = await findWorktree(store, p, id, deps());
-			if (item.source === "main") return send(res, 400, { error: "這是主資料夾,直接用終端機頁就好" });
-			if (!item.exists) return send(res, 400, { error: "這個 worktree 的資料夾已經不在了,沒辦法在裡面開 agent" });
+			if (item.source === "main") return send(res, 400, { error: tr("這是主資料夾,直接用終端機頁就好") });
+			if (!item.exists) return send(res, 400, { error: tr("這個 worktree 的資料夾已經不在了,沒辦法在裡面開 agent") });
 			const plan = chatPlan(item, String((b as { agent?: string }).agent ?? "") || "claude");
 			if (plan.kind === "focus") {
 				const r = herdrCli(["agent", "focus", plan.paneId!]);
-				if (r?.error) return send(res, 400, { error: `跳不過去:${String(r.error.message ?? "herdr 拒絕切換")}` });
+				if (r?.error) return send(res, 400, { error: tr("跳不過去:{error}", { error: String(r.error.message ?? tr("herdr 拒絕切換")) }) });
 				return send(res, 200, { kind: "focus", paneId: plan.paneId });
 			}
 			const { space } = ensureSpace(store, p);
-			const label = `分支:${item.branch ?? basename(item.path)}`.slice(0, 48);
+			const label = tr("分支:{name}", { name: item.branch ?? basename(item.path) }).slice(0, 48);
 			const created = herdrCli(["tab", "create", "--workspace", space.workspace_id, "--cwd", plan.cwd, "--label", label]);
 			const pane = created?.result?.root_pane as { pane_id?: string; tab_id?: string } | undefined;
-			if (!pane?.pane_id) return send(res, 500, { error: `開 tab 失敗:${JSON.stringify(created?.error ?? created).slice(0, 200)}` });
+			if (!pane?.pane_id) return send(res, 500, { error: tr("開 tab 失敗:{error}", { error: JSON.stringify(created?.error ?? created).slice(0, 200) }) });
 			const started = herdrCli(["agent", "start", `wt-${Date.now().toString(36)}`, "--kind", plan.agent, "--pane", pane.pane_id, "--timeout", "60000", ...(plan.args?.length ? ["--", ...plan.args] : [])], 70_000);
 			// 停在確認畫面(例如要不要用專案的 MCP 伺服器、要不要信任這個資料夾):tab 留著,請使用者去確認
 			const waitingUser = started?.error?.code === "agent_not_ready" && /blocked/i.test(String(started.error.message ?? ""));
 			if (started?.error && !waitingUser) {
 				herdrCli(["tab", "close", pane.tab_id!]);
-				return send(res, 500, { error: `啟動 ${plan.agent} 失敗:${String(started.error.message ?? "").slice(0, 300)}` });
+				return send(res, 500, { error: tr("啟動 {agent} 失敗:{error}", { agent: plan.agent, error: String(started.error.message ?? "").slice(0, 300) }) });
 			}
 			herdrCli(["agent", "focus", pane.pane_id]);
-			return send(res, 200, { kind: plan.kind, paneId: pane.pane_id, agent: plan.agent, label, note: waitingUser ? `${plan.agent} 啟動時停在確認畫面,請到「${label}」那個 tab 確認` : undefined });
+			return send(res, 200, { kind: plan.kind, paneId: pane.pane_id, agent: plan.agent, label, note: waitingUser ? tr("{agent} 啟動時停在確認畫面,請到「{label}」那個 tab 確認", { agent: plan.agent, label }) : undefined });
 		}
 		return send(res, 404, { error: "not found" });
 	};
@@ -313,26 +314,26 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			// 看/改 worktree 裡的檔案:?wt=<id> 讓這次請求的專案資料夾換成 worktree 裡對應的位置(id 由伺服器對照 git worktree list,不收路徑)
 			const wt = q("wt");
 			const repo = q("repo");
-			if (repo && wt) return send(res, 400, { error: "worktree 裡不能切換 repo" });
+			if (repo && wt) return send(res, 400, { error: tr("worktree 裡不能切換 repo") });
 			if (wt) {
 				const item = await worktreeView(p, wt);
-				if (!item.exists) return send(res, 404, { error: "這個 worktree 的資料夾已經不在了" });
-				if (sub.startsWith("office/") || sub.startsWith("nb/")) return send(res, 400, { error: "worktree 裡的檔案先不支援 Office 編輯與 Notebook 執行,請到主資料夾或讓 agent 處理" });
+				if (!item.exists) return send(res, 404, { error: tr("這個 worktree 的資料夾已經不在了") });
+				if (sub.startsWith("office/") || sub.startsWith("nb/")) return send(res, 400, { error: tr("worktree 裡的檔案先不支援 Office 編輯與 Notebook 執行,請到主資料夾或讓 agent 處理") });
 				if (sub === "session") return send(res, 200, {}); // 版面記錄只存主資料夾的
 				p = { ...p, root: existsSync(item.cwd) ? item.cwd : item.path };
 			}
 			// ---------- LaTeX 編譯 ----------
-			const off = (id: "latex" | "notebook" | "office", name: string) => send(res, 403, { error: `「${name}」外掛沒有開啟(設定 → 外掛)` });
-			if (sub === "latex" && !pluginEnabled("latex")) return off("latex", "LaTeX 編譯");
-			if (sub.startsWith("nb/") && !pluginEnabled("notebook")) return off("notebook", "Notebook 執行");
-			if (sub.startsWith("office/") && !pluginEnabled("office")) return off("office", "Office 編輯");
+			const off = (id: "latex" | "notebook" | "office", name: string) => send(res, 403, { error: tr("「{name}」外掛沒有開啟(設定 → 外掛)", { name }) });
+			if (sub === "latex" && !pluginEnabled("latex")) return off("latex", tr("LaTeX 編譯"));
+			if (sub.startsWith("nb/") && !pluginEnabled("notebook")) return off("notebook", tr("Notebook 執行"));
+			if (sub.startsWith("office/") && !pluginEnabled("office")) return off("office", tr("Office 編輯"));
 			if (req.method === "POST" && sub === "latex") return send(res, 200, await buildLatex(p, String((await body(req)).path ?? "")));
 			// ---------- Office:專用連結、編輯狀態、歷史版本 ----------
 			if (sub.startsWith("office/")) {
 				const op = sub.slice(7);
 				const ob = req.method === "GET" ? {} : await body(req).catch(() => ({}));
 				const rel = req.method === "GET" ? q("path") : String(ob.path ?? "");
-				if (!/\.(docx|doc|xlsx|xlsm|xls|pptx|ppt)$/i.test(rel)) return send(res, 400, { error: "不是 Office 檔" });
+				if (!/\.(docx|doc|xlsx|xlsm|xls|pptx|ppt)$/i.test(rel)) return send(res, 400, { error: tr("不是 Office 檔") });
 				inProject(p, rel); // 路徑檢查(不能跑出專案)
 				if (op === "link" && req.method === "POST") return send(res, 200, { token: officeLink(p, rel) });
 				if (op === "info" && req.method === "GET") return send(res, 200, { ...officeEditing(p, rel), versions: officeVersions(p, rel) });
@@ -379,16 +380,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					const b = await body(req);
 					// 手動環境路徑不是 notebook 路徑;仍在原本的登入與外掛 guard 內。
 					if (op === "add-python" || op === "remove-python") {
-						if (typeof b.path !== "string" || !isAbsolute(b.path)) return send(res, 400, { error: "請提供 Python 的絕對路徑" });
+						if (typeof b.path !== "string" || !isAbsolute(b.path)) return send(res, 400, { error: tr("請提供 Python 的絕對路徑") });
 						const python = b.path;
 						let pythons = settings().plugins.notebook.pythons;
 						if (op === "add-python") {
-							if (!/^python(\d+(\.\d+)*)?(\.exe)?$/i.test(basename(python))) return send(res, 400, { error: "檔名必須是 Python 直譯器（例如 python3 或 python.exe）" });
+							if (!/^python(\d+(\.\d+)*)?(\.exe)?$/i.test(basename(python))) return send(res, 400, { error: tr("檔名必須是 Python 直譯器（例如 python3 或 python.exe）") });
 							let file = false;
 							try { file = statSync(python).isFile(); } catch { /* 不存在或無法讀取 */ }
-							if (!file) return send(res, 400, { error: "找不到這個 Python 檔案" });
+							if (!file) return send(res, 400, { error: tr("找不到這個 Python 檔案") });
 							const result = await checkPython(python);
-							if (!result.version) return send(res, 400, { error: result.why ?? "無法確認 Python 版本" });
+							if (!result.version) return send(res, 400, { error: result.why ?? tr("無法確認 Python 版本") });
 							// 檢查期間可能有另一個新增請求完成,存檔前重讀清單。
 							pythons = [...new Set([...settings().plugins.notebook.pythons, python])];
 						} else pythons = pythons.filter((path) => path !== python);
@@ -397,26 +398,26 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						return send(res, 200, { envs: await pythonEnvs(p, q("path") || ""), ...(op === "add-python" ? { id: pyId(python) } : {}) });
 					}
 					const rel = String(b.path ?? "");
-					if (!/\.ipynb$/i.test(rel)) return send(res, 400, { error: "只能執行 .ipynb" });
+					if (!/\.ipynb$/i.test(rel)) return send(res, 400, { error: tr("只能執行 .ipynb") });
 					// 只從伺服器偵測結果取完整環境,不接受客戶端的 bridge/specDir 或任意路徑。
 					const pick = async () => (await pythonEnvs(p, rel)).find((e) => b.id !== undefined ? e.id === b.id : e.python === String(b.python ?? ""));
 					if (op === "install") {
 						const env = await pick();
-						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
+						if (!env) return send(res, 400, { error: tr("找不到這個 Python 環境") });
 						try {
 							const python = await installKernel(env.python, env.kind === "kernelspec" || !!env.own);
 							return send(res, 200, { id: env.kind === "kernelspec" ? env.id : pyId(python), python });
 						}
-						catch (e) { return send(res, 500, { error: `安裝失敗:${(e as Error).message}` }); }
+						catch (e) { return send(res, 500, { error: tr("安裝失敗:{error}", { error: (e as Error).message }) }); }
 					}
 					if (op === "start") {
 						const env = await pick();
-						if (!env) return send(res, 400, { error: "找不到這個 Python 環境" });
-						if (!env.ready) return send(res, 400, { error: env.why ?? "這個核心環境還不能使用" });
+						if (!env) return send(res, 400, { error: tr("找不到這個 Python 環境") });
+						if (!env.ready) return send(res, 400, { error: env.why ?? tr("這個核心環境還不能使用") });
 						return send(res, 200, startKernel(p, rel, env));
 					}
-					if (op === "exec") return sendKernel(p, rel, { op: "execute", id: String(b.id ?? ""), code: String(b.code ?? "") }) ? send(res, 200, { ok: true }) : send(res, 409, { error: "kernel 沒有在跑" });
-					if (op === "interrupt" || op === "restart") return sendKernel(p, rel, { op }) ? send(res, 200, { ok: true }) : send(res, 409, { error: "kernel 沒有在跑" });
+					if (op === "exec") return sendKernel(p, rel, { op: "execute", id: String(b.id ?? ""), code: String(b.code ?? "") }) ? send(res, 200, { ok: true }) : send(res, 409, { error: tr("kernel 沒有在跑") });
+					if (op === "interrupt" || op === "restart") return sendKernel(p, rel, { op }) ? send(res, 200, { ok: true }) : send(res, 409, { error: tr("kernel 沒有在跑") });
 					if (op === "stop") { stopKernelFor(p, rel); return send(res, 200, { ok: true }); }
 				}
 				return send(res, 404, { error: "not found" });
@@ -430,7 +431,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (req.method === "GET" && sub === "git/diff") return send(res, 200, await diffIn(p, repo, q("path"), (q("which") || "unstaged") as never, q("commit") || undefined));
 			if (req.method === "POST" && sub === "git/commitmsg") {
 				const diff = String(await gitActionIn(p, repo, "diffText", {}));
-				if (!diff.trim()) return send(res, 400, { error: "沒有變更" });
+				if (!diff.trim()) return send(res, 400, { error: tr("沒有變更") });
 				const log = ((await gitActionIn(p, repo, "log", {})) as { subject: string }[]).slice(0, 8).map((c) => `- ${c.subject}`).join("\n");
 				let msg: string;
 				try {
@@ -461,7 +462,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			const err = e as CodeError & { disk?: unknown; exists?: boolean; outside?: string[] };
 			if (err instanceof CodeError) return send(res, err.status, { error: err.message, ...(err.disk ? { disk: err.disk } : {}), ...(err.exists ? { exists: true } : {}), ...(err.outside ? { outside: err.outside } : {}) });
 			if (e instanceof WorktreesError) return send(res, e.status, { error: e.message, ...(e.code ? { code: e.code } : {}), ...(e.detail ? { detail: e.detail } : {}) });
-			if ((e as NodeJS.ErrnoException).code === "ENOENT") return send(res, 404, { error: "檔案不存在" });
+			if ((e as NodeJS.ErrnoException).code === "ENOENT") return send(res, 404, { error: tr("檔案不存在") });
 			throw e;
 		}
 	};
@@ -472,7 +473,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 		try {
 			// ---------- 用 Office 編輯(WebDAV):Office 拿不到瀏覽器登入,只靠專用連結 ----------
 			if (path.startsWith("/dav/")) {
-				if (!pluginEnabled("office")) { res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }); res.end("Office 編輯外掛沒有開啟"); return; }
+				if (!pluginEnabled("office")) { res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }); res.end(tr("Office 編輯外掛沒有開啟")); return; }
 				if (await handleDav(req, res, store)) return;
 			}
 			// ---------- 登入 ----------
@@ -527,7 +528,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				// 「專案@worktree」= 這次請求看那個 worktree 的檔案(網頁版用;和 ?wt= 一樣)
 				const [pid, wtId] = decodeURIComponent(mc[1]).split("@");
 				const p = store.project(pid);
-				if (!p || p.kind !== "project") return send(res, 404, { error: "找不到專案" });
+				if (!p || p.kind !== "project") return send(res, 404, { error: tr("找不到專案") });
 				if (wtId && !url.searchParams.has("wt")) url.searchParams.set("wt", wtId);
 				return await codeRoute(p, mc[2], req, res, url);
 			}
@@ -542,7 +543,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				}
 				if (req.method === "POST" && path === "/api/desktop/update") {
 					const input = await body(req);
-					if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length) return send(res, 400, { error: "App 更新不接受參數" });
+					if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length) return send(res, 400, { error: tr("App 更新不接受參數") });
 					desktopSignal({ cmd: "update" });
 					return send(res, 200, { ok: true });
 				}
@@ -554,9 +555,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					const before = settings();
 					const incoming = stripMasked((await body(req)).settings ?? {});
 					if (incoming.desktop && Object.hasOwn(incoming.desktop, "autoUpdate") && typeof incoming.desktop.autoUpdate !== "boolean") return send(res, 400, { error: "desktop.autoUpdate must be a boolean" });
-					if (incoming.ui?.lang !== undefined && !["", "zh-TW", "en"].includes(incoming.ui.lang)) return send(res, 400, { error: "語言設定不對" });
+					if (incoming.ui?.lang !== undefined && !["", "zh-TW", "en"].includes(incoming.ui.lang)) return send(res, 400, { error: tr("語言設定不對") });
 					if (incoming.code) {
-						if (incoming.code.autoFetch !== undefined && !["ask", "on", "off"].includes(incoming.code.autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });
+						if (incoming.code.autoFetch !== undefined && !["ask", "on", "off"].includes(incoming.code.autoFetch)) return send(res, 400, { error: tr("自動抓取的設定值不對") });
 						if (incoming.code.autoFetchMinutes !== undefined) {
 							const minutes = Number(incoming.code.autoFetchMinutes);
 							incoming.code.autoFetchMinutes = Number.isFinite(minutes) && minutes > 0 ? Math.min(60, Math.max(1, Math.round(minutes))) : 3;
@@ -568,18 +569,18 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						const cliIds = new Set(provs.filter((p) => p.type === "agent-cli").map((p) => p.id));
 						const isCli = (ref?: string) => !!ref && cliIds.has(ref.split("/")[0]);
 						const r = incoming.routing ?? {};
-						for (const [role, label] of [["digest", "整理 agent 回報"], ["judge", "提案檢查"]] as const) {
-							if (isCli(r[role]?.primary) || isCli(r[role]?.fallback)) return send(res, 400, { error: `「${label}」需要呼叫管家的工具,不能用電腦上的 agent CLI` });
+						for (const [role, label] of [["digest", tr("整理 agent 回報")], ["judge", tr("提案檢查")]] as const) {
+							if (isCli(r[role]?.primary) || isCli(r[role]?.fallback)) return send(res, 400, { error: tr("「{label}」需要呼叫管家的工具,不能用電腦上的 agent CLI", { label }) });
 						}
-						if (isCli(r.privacy)) return send(res, 400, { error: "「隱私專案」只能用本地模型,不能用 agent CLI" });
+						if (isCli(r.privacy)) return send(res, 400, { error: tr("「隱私專案」只能用本地模型,不能用 agent CLI") });
 						const embedding = parseRef(r.embedding ?? before.routing.embedding ?? "");
 						const embeddingProvider = embedding && provs.find((p) => p.id === embedding.provider);
-						if (embeddingProvider?.type === "agent-cli" || embeddingProvider?.type === "builtin") return send(res, 400, { error: "記憶搜尋(向量)只支援本地或自架(OpenAI 相容)接口" });
+						if (embeddingProvider?.type === "agent-cli" || embeddingProvider?.type === "builtin") return send(res, 400, { error: tr("記憶搜尋(向量)只支援本地或自架(OpenAI 相容)接口") });
 					}
 					// 只在使用者改了這一項時檢查:原本選的 agent 後來沒裝了,也不能擋住其他設定的儲存
 					if (typeof incoming.cards?.defaultAgent === "string" && incoming.cards.defaultAgent && incoming.cards.defaultAgent !== before.cards.defaultAgent) {
 						const id = agentIdOf(incoming.cards.defaultAgent);
-						if (!id || !dispatchableAgents().some((a) => a.id === id)) return send(res, 400, { error: "「自動提案預設交給」只能選這台電腦裝好、能派工的 agent" });
+						if (!id || !dispatchableAgents().some((a) => a.id === id)) return send(res, 400, { error: tr("「自動提案預設交給」只能選這台電腦裝好、能派工的 agent") });
 						incoming.cards.defaultAgent = id;
 					}
 					if (incoming.access) delete incoming.access.passwordHash; // 密碼只能用 /api/auth/password 改
@@ -587,7 +588,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					if (Array.isArray(incoming.providers)) {
 						const err = checkProviders(incoming.providers);
 						if (err) return send(res, 400, { error: err });
-						incoming.providers = incoming.providers.map((p: ProviderConfig) => ({ ...p, apiKey: p.apiKey ?? before.providers.find((o) => o.id === p.id)?.apiKey }));
+						incoming.providers = incoming.providers.map((p: ProviderConfig) => {
+							const previous = before.providers.find((o) => o.id === p.id);
+							return { ...p, name: previous && p.name === providerLabel(previous) ? previous.name : p.name, apiKey: p.apiKey ?? previous?.apiKey };
+						});
 						updateSettings({ providers: [] }); // 先清空,避免合併時留下已刪除的
 					}
 					// OpenAI 相容接口還沒有模型清單:先抓一次(抓不到就算了,「測試連線」會說原因)
@@ -620,7 +624,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (req.method === "POST" && path === "/api/settings/login") {
 					const id = String((await body(req)).provider ?? "");
 					const label = (LOGIN_PROVIDERS as Record<string, string>)[id];
-					if (!label) return send(res, 400, { error: "這個服務不支援訂閱登入" });
+					if (!label) return send(res, 400, { error: tr("這個服務不支援訂閱登入") });
 					// 先把接口切成「在專案管家登入」;登入失敗或取消就還原
 					const before = settings().providers;
 					const prev = before.find((p) => p.id === id);
@@ -641,8 +645,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				}
 				const ml = path.match(/^\/api\/settings\/login\/([0-9a-f]{24})(\/code|\/cancel)?$/);
 				if (ml) {
-					if (req.method === "GET" && !ml[2]) { const st = loginStatus(ml[1]); return st ? send(res, 200, st) : send(res, 404, { error: "登入流程已經結束,請重新開始" }); }
-					if (req.method === "POST" && ml[2] === "/code") return submitCode(ml[1], String((await body(req)).code ?? "")) ? send(res, 200, { ok: true }) : send(res, 409, { error: "現在不需要貼網址" });
+					if (req.method === "GET" && !ml[2]) { const st = loginStatus(ml[1]); return st ? send(res, 200, st) : send(res, 404, { error: tr("登入流程已經結束,請重新開始") }); }
+					if (req.method === "POST" && ml[2] === "/code") return submitCode(ml[1], String((await body(req)).code ?? "")) ? send(res, 200, { ok: true }) : send(res, 409, { error: tr("現在不需要貼網址") });
 					if (req.method === "POST" && ml[2] === "/cancel") { cancelLogin(ml[1]); return send(res, 200, { ok: true }); }
 				}
 				if (req.method === "POST" && path === "/api/settings/logout-provider") {
@@ -687,11 +691,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				// 路由下拉選單用:每個接口有哪些模型
 				if (req.method === "GET" && path === "/api/settings/models") {
 					return send(res, 200, {
-						providers: settings().providers.map((c) => ({ id: c.id, name: c.name, type: c.type, local: !!c.local || (c.type !== "builtin" && c.type !== "agent-cli"), models: modelIds(c), signedIn: signedIn(c), cli: c.type === "agent-cli" ? c.cli : undefined })),
-						loginProviders: LOGIN_PROVIDERS,
-						cliProviders: detectCliProviders(),
+						providers: settings().providers.map((c) => ({ id: c.id, name: providerLabel(c), type: c.type, local: !!c.local || (c.type !== "builtin" && c.type !== "agent-cli"), models: modelIds(c), signedIn: signedIn(c), cli: c.type === "agent-cli" ? c.cli : undefined })),
+						loginProviders: Object.fromEntries(Object.entries(LOGIN_PROVIDERS).map(([id, label]) => [id, tr(label)])),
+						cliProviders: detectCliProviders().map((c) => ({ ...c, name: providerLabel(c) })),
 						cliNotes: Object.fromEntries(Object.entries(CLI_KINDS).map(([k, v]) => [k, v.note ?? ""])),
-						piProviders: detectPiProviders(),
+						piProviders: detectPiProviders().map((c) => ({ ...c, name: providerLabel(c) })),
 						builtins: BUILTINS,
 					});
 				}
@@ -699,7 +703,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (req.method === "POST" && path === "/api/settings/test-provider") {
 					const b = await body(req);
 					const c = settings().providers.find((x) => x.id === b.id);
-					if (!c) return send(res, 404, { error: "找不到這個接口(先儲存)" });
+					if (!c) return send(res, 404, { error: tr("找不到這個接口(先儲存)") });
 					let list = modelIds(c);
 					if (c.type === "openai-compatible" && c.baseUrl) {
 						try {
@@ -714,12 +718,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						}
 					}
 					const model = b.model && list.includes(b.model) ? b.model : (testModelFor(c) ?? list[0]);
-					if (!model) return send(res, 200, { ok: false, models: list, error: "這個接口沒有可用的模型" });
+					if (!model) return send(res, 200, { ok: false, models: list, error: tr("這個接口沒有可用的模型") });
 					const t0 = Date.now();
 					try {
 						const reply = await Promise.race([
 							steward.oneShotWith("你是連線測試。只回覆「OK」。", "ping", { provider: c.id, modelId: model }, 200),
-							new Promise<string>((_, no) => setTimeout(() => no(new Error("60 秒沒有回應")), 60_000)),
+							new Promise<string>((_, no) => setTimeout(() => no(new Error(tr("60 秒沒有回應"))), 60_000)),
 						]);
 						return send(res, 200, { ok: true, models: list, model, latencyMs: Date.now() - t0, reply: reply.slice(0, 80) });
 					} catch (e) {
@@ -729,7 +733,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 							try {
 								const t1 = Date.now();
 								const [vec] = await embedTexts({ baseUrl: info.baseUrl, apiKey: info.apiKey, model }, ["ping"]);
-								if (vec?.length) return send(res, 200, { ok: true, models: list, model, latencyMs: Date.now() - t1, reply: `這是向量模型(${vec.length} 維),不能聊天;請到 路由 → 記憶搜尋(向量) 選它` });
+								if (vec?.length) return send(res, 200, { ok: true, models: list, model, latencyMs: Date.now() - t1, reply: tr("這是向量模型({n} 維),不能聊天;請到 路由 → 記憶搜尋(向量) 選它", { n: vec.length }) });
 							} catch {
 								/* 也不是向量模型:回報原本的錯誤 */
 							}
@@ -739,7 +743,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				}
 				// Tailscale 遠端存取:開啟時自動設定 https 網址(tailscale serve),關閉時移除
 				if (req.method === "POST" && path === "/api/settings/tailscale") {
-					if (!findTailscale()) return send(res, 400, { error: "這台電腦沒有 Tailscale" });
+					if (!findTailscale()) return send(res, 400, { error: tr("這台電腦沒有 Tailscale") });
 					const { enable } = await body(req);
 					try {
 						if (enable) {
@@ -752,18 +756,20 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						updateSettings({ access: { tailscale: { enabled: false } }, server: { publicUrl: "" } });
 						return send(res, 200, { ok: true, settings: publicSettings() });
 					} catch (e) {
-						return send(res, 500, { error: `Tailscale 設定失敗:${String((e as { stderr?: string }).stderr || (e as Error).message).slice(0, 300)}` });
+						return send(res, 500, { error: tr("Tailscale 設定失敗:{error}", { error: String((e as { stderr?: string }).stderr || (e as Error).message).slice(0, 300) }) });
 					}
 				}
 				if (req.method === "POST" && path === "/api/settings/test-notify") {
-					const ok = await notify(`🔔 專案管家測試推播\n設定成功,之後的提案和卡住提醒會從這裡送來。\n${publicUrl()}`);
-					return send(res, ok ? 200 : 400, ok ? { ok: true } : { error: "推播沒有送出去:檢查設定(Hermes 路由、Telegram token / chat ID、webhook 網址)" });
+					const ok = await notify(tr("🔔 專案管家測試推播\n設定成功,之後的提案和卡住提醒會從這裡送來。\n{url}", { url: publicUrl() }));
+					return send(res, ok ? 200 : 400, ok ? { ok: true } : { error: tr("推播沒有送出去:檢查設定(Hermes 路由、Telegram token / chat ID、webhook 網址)") });
 				}
 			}
 			// ---------- 網頁 ----------
 			if (req.method === "GET" && (path === "/" || path === "/index.html")) {
 				// 從 http 打開時要轉去的 https 網址(設定檔裡的對外網址)
-				return send(res, 200, readFileSync(join(WEB_DIR, "index.html"), "utf8").replace("__STEWARD_PUBLIC_URL__", JSON.stringify(publicUrl()).slice(1, -1)), "text/html; charset=utf-8");
+				const lang = settings().ui.lang;
+				const html = readFileSync(join(WEB_DIR, "index.html"), "utf8").replace("__STEWARD_PUBLIC_URL__", JSON.stringify(publicUrl()).slice(1, -1));
+				return send(res, 200, renderIndex(html, lang, lang === "en" ? readEnTable() : null), "text/html; charset=utf-8");
 			}
 			if (req.method === "GET" && path.startsWith("/web/")) {
 				const f = join(WEB_DIR, path.slice(5).replace(/\.\./g, ""));
@@ -803,7 +809,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (want) {
 					const { p: target, hints } = projectByName(want);
 					const from = url.searchParams.get("cwd") ? resolveProject(store, url.searchParams.get("cwd")!) : undefined;
-					const text = !target ? `找不到「${want}」這個專案。現有的專案:${hints.join("、")}` : target.private && target.id !== from?.id ? PRIVATE_NOTE(target) : brief(store, target);
+					const text = !target ? tr("找不到「{name}」這個專案。現有的專案:{projects}", { name: want, projects: hints.join(tr("、")) }) : target.private && target.id !== from?.id ? PRIVATE_NOTE(target) : brief(store, target);
 					return url.searchParams.get("format") === "json" ? send(res, 200, { project: publicProjectView(target, from), text }) : send(res, 200, text, "text/plain; charset=utf-8");
 				}
 				const p = projectFrom(url.searchParams) ?? ensureSpecial(store, MISC_ROOT);
@@ -811,7 +817,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (url.searchParams.get("format") !== "json") return send(res, 200, text, "text/plain; charset=utf-8");
 				// 這個專案的 herdr space(給 agent 開新分頁用;HERDR_* 環境變數在窗格搬過 space 後會過期)
 				const w = p.kind === "project" ? boundSpace(store, p) : undefined;
-				return send(res, 200, { project: p, text, space: w ? { id: w.workspace_id, label: w.label ?? "" } : null });
+				return send(res, 200, { project: displayProject(p), text, space: w ? { id: w.workspace_id, label: w.label ?? "" } : null });
 			}
 			if (req.method === "POST" && path === "/api/ask") {
 				const b = await body(req);
@@ -819,17 +825,17 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (b.project) {
 					const { p: target, hints } = projectByName(String(b.project));
 					const from = b.cwd ? resolveProject(store, String(b.cwd)) : undefined;
-					if (!target) return send(res, 200, { project: null, answer: `找不到「${b.project}」這個專案。現有的專案:${hints.join("、")}` });
+					if (!target) return send(res, 200, { project: null, answer: tr("找不到「{name}」這個專案。現有的專案:{projects}", { name: b.project, projects: hints.join(tr("、")) }) });
 					if (!from || from.id !== target.id) {
 						if (target.private) return send(res, 200, { project: target.name, answer: PRIVATE_NOTE(target) });
 						const question = String(b.question ?? "").trim();
 						let answer: string;
 						try { answer = await steward.askAbout(target, question, !!from?.private); }
-						catch (e) { answer = `管家沒有回答:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`; }
+						catch (e) { answer = tr("管家沒有回答:{why}", { why: String((e as Error).message ?? e).replace(/^(?:管家沒有回答:|The steward did not answer: )/, "") }); }
 						if (from) {
-							const via = `herdr · ${b.agent || "agent"} 問了「${target.name}」`;
+							const via = tr("herdr · {agent} 問了「{name}」", { agent: b.agent || "agent", name: target.name });
 							appendChat(from.id, { role: "me", text: question, via });
-							appendChat(from.id, { role: "bot", text: answer, via: `回答「${target.name}」的問題` });
+							appendChat(from.id, { role: "bot", text: answer, via: tr("回答「{name}」的問題", { name: target.name }) });
 						}
 						return send(res, 200, { project: target.name, answer });
 					}
@@ -837,13 +843,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const p = projectFrom(b) ?? ensureSpecial(store, OVERVIEW_ROOT);
 				const who = b.agent ? `(提問者:${b.agent})` : "";
 				const answer = await steward.send(p, `【提問】${who}${b.question}`);
-				return send(res, 200, { project: p.name, answer });
+				return send(res, 200, { project: displayProject(p).name, answer });
 			}
 			if (req.method === "POST" && path === "/api/report") {
 				const b = await body(req);
 				const p = projectFrom(b) ?? ensureSpecial(store, MISC_ROOT);
 				const answer = await steward.send(p, `【回報】agent=${b.agent ?? "?"} 來源=主動回報\n\n${b.text}`, { role: "digest" });
-				return send(res, 200, { project: p.name, answer });
+				return send(res, 200, { project: displayProject(p).name, answer });
 			}
 
 			// ---------- 看板 ----------
@@ -858,14 +864,14 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					const inside = w ? panes.filter((x) => x.workspace_id === w.workspace_id) : [];
 					spaceInfo[p.id] = { label: w?.label, nameDiffers: !!w && (w.label ?? "").trim() !== p.name.trim(), strays: w ? strayPanes(store, p, panes).length : 0, panes: inside.length, working: inside.filter((x) => x.agent && (x.agent_status === "working" || x.agent_status === "blocked")).length };
 				}
-				return send(res, 200, { projects: store.projects(), cards: store.cards(), spaceInfo, watcher: watcher.status(), setup: { missing: missingCoreRoutes() } });
+				return send(res, 200, { projects: store.projects().map(displayProject), cards: store.cards(), spaceInfo, watcher: watcher.status(), setup: { missing: missingCoreRoutes() } });
 			}
 			// ---------- 建立專案 / space ----------
 			if (req.method === "GET" && path === "/api/fs") {
 				const root = expandHome(settings().paths.createRoot || "~");
 				const start = existsSync(root) ? root : HOME;
 				const dir = resolvePath((url.searchParams.get("path") || start).replace(/^~(?=\/|$)/, HOME));
-				if (!pathInside(dir, HOME)) return send(res, 400, { error: "只能瀏覽家目錄底下的資料夾" });
+				if (!pathInside(dir, HOME)) return send(res, 400, { error: tr("只能瀏覽家目錄底下的資料夾") });
 				let entries: { name: string; path: string; project?: string; git: boolean }[] = [];
 				try {
 					entries = readdirSync(dir, { withFileTypes: true })
@@ -877,7 +883,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						})
 						.sort((a, b) => a.name.localeCompare(b.name));
 				} catch (e) {
-					return send(res, 400, { error: `讀不到這個資料夾:${String(e).slice(0, 120)}` });
+					return send(res, 400, { error: tr("讀不到這個資料夾:{error}", { error: String(e).slice(0, 120) }) });
 				}
 				const here = store.projectByRoot(dir);
 				return send(res, 200, { path: dir, parent: dir === HOME ? null : dirname(dir), home: HOME, project: here?.status === "active" ? { id: here.id, name: here.name } : null, dirs: entries });
@@ -914,8 +920,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const extra = snap ? { snap: { project: p.id, pane: snapPane } } : {};
 				// 「改用備用模型回答這一題」(舊版網頁送 cloud)
 				const useFallback = b.fallback === true || b.cloud === true;
-				if (useFallback && p.private) return send(res, 400, { error: "隱私專案只用指定的模型,沒有備用" });
-				const message = String(b.message ?? "").trim() || (snap ? "解釋這段內容" : "");
+				if (useFallback && p.private) return send(res, 400, { error: tr("隱私專案只用指定的模型,沒有備用") });
+				const message = String(b.message ?? "").trim() || (snap ? tr("解釋這段內容") : "");
 				const q = b.quote && typeof b.quote.text === "string" ? (b.quote as ChatQuote) : undefined;
 				const quote = q ? { path: q.path ? String(q.path) : undefined, from: Number(q.from) || undefined, to: Number(q.to) || undefined, text: q.text.slice(0, 20000) } : undefined;
 				// 浮動球加進來的檔案:網頁有給內容(編輯器裡還沒存的版本)就用它,否則讀磁碟
@@ -925,12 +931,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					.filter((i: { data?: unknown; mimeType?: unknown }) => typeof i?.data === "string" && /^image\/(png|jpeg|gif|webp)$/.test(String(i.mimeType)) && i.data.length < 8_000_000)
 					.map((i: { data: string; mimeType: string }) => ({ data: i.data, mimeType: i.mimeType }));
 				const thumbs: string[] = (Array.isArray(b.thumbs) ? b.thumbs : []).slice(0, 4).filter((t: unknown) => typeof t === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(t) && t.length < 60_000);
-				if (!message && !quote && !fileReqs.length && !images.length) return send(res, 400, { error: "請輸入問題" });
+				if (!message && !quote && !fileReqs.length && !images.length) return send(res, 400, { error: tr("請輸入問題") });
 				// 圈選一律附截圖;有讀到字、但沒有看得懂圖片的模型時,只用文字回答(不因為附圖整題失敗)
 				const imageRef = images.length ? imageRoute(p.private) : undefined;
 				if (images.length && !imageRef && snap?.text) images = [];
 				// 紀錄裡顯示成一則引用(出處 + 圈到的文字)
-				const shown = snap ? { path: snap.path ?? snap.label, from: snap.from, to: snap.to, text: (snap.text || "(圈到的是圖片)").slice(0, 4000) } : quote;
+				const shown = snap ? { path: snap.path ?? snap.label, from: snap.from, to: snap.to, text: (snap.text || tr("(圈到的是圖片)")).slice(0, 4000) } : quote;
 				// 先記下問題(回答還沒回來時重新整理也看得到);「改用雲端重問」不重複記問題
 				const mine = b.retry ? null : appendChat(p.id, { role: "me", text: message, quote: shown, ...(snap ? { via: "圈選" } : {}), ...(fileReqs.length ? { files: fileReqs.map((f) => f.path) } : {}), ...(thumbs.length ? { images: thumbs } : {}) });
 				let snippet = snap ? snapPrompt(snap, images.length > 0) : quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
@@ -947,7 +953,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					// 有圖片:用看得懂圖片的模型回答這一題(隱私專案只能用隱私模型)
 					const ref = imageRef;
 					if (!ref) {
-						const bot = appendChat(p.id, { role: "bot", text: p.private ? "這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。" : chatUsesCli() ? "聊天室現在用的是電腦上的 agent CLI(例如 Claude Code、Codex),管家沒辦法把圖片交給它看,所以這題沒辦法看圖。要看圖的話,到設定 → AI 接口登入一個看得懂圖片的模型(ChatGPT 或 Claude 訂閱、GitHub Copilot,或 OpenAI、Gemini、OpenRouter 的 API 金鑰),再到路由把它設成聊天室或提案檢查的模型。" : "目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。", error: true });
+						const bot = appendChat(p.id, { role: "bot", text: p.private ? tr("這是隱私專案,只能用「隱私專案」指定的模型,而它看不懂圖片,所以這題沒辦法看圖。可以把圖片內容用文字描述,或到設定 → 路由換一個看得懂圖片的本地模型。") : chatUsesCli() ? tr("聊天室現在用的是電腦上的 agent CLI(例如 Claude Code、Codex),管家沒辦法把圖片交給它看,所以這題沒辦法看圖。要看圖的話,到設定 → AI 接口登入一個看得懂圖片的模型(ChatGPT 或 Claude 訂閱、GitHub Copilot,或 OpenAI、Gemini、OpenRouter 的 API 金鑰),再到路由把它設成聊天室或提案檢查的模型。") : tr("目前路由裡的模型都看不懂圖片(聊天、提案檢查的主要和備用都試過了)。到設定 → 路由選一個看得懂圖片的模型,例如 GPT、Claude 或 Gemini。"), error: true });
 						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 					}
 					try {
@@ -957,7 +963,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						const bot = appendChat(p.id, { role: "bot", text: answer, ...(`${ref.provider}/${ref.modelId}` !== primary ? { alt: `看圖改用 ${modelLabel(ref)}` } : {}) });
 						return send(res, 200, { answer, me: mine, bot, ...extra });
 					} catch (e) {
-						const bot = appendChat(p.id, { role: "bot", text: `「${modelLabel(ref)}」看圖失敗:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`, error: true });
+						const bot = appendChat(p.id, { role: "bot", text: tr("「{model}」看圖失敗:{error}", { model: modelLabel(ref), error: String((e as Error).message ?? e).replace(/^(?:管家沒有回答:|The steward did not answer: )/, "") }), error: true });
 						return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 					}
 				}
@@ -971,10 +977,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					void makeSuggestions(p).catch(() => undefined); // 回答完換一組建議問題(背景)
 					return send(res, 200, { answer, me: mine, bot, ...extra });
 				} catch (e) {
-					const why = String((e as Error).message ?? e).replace(/^管家沒有回答:/, "");
-					let who = "模型";
-					try { who = `「${modelLabel(routeFor("chat", { private: p.private, fallback: useFallback }))}」`; } catch { /* 沒設定路由 */ }
-					const bot = appendChat(p.id, { role: "bot", text: `${who}沒有回應:${why}`, error: true, retryable: !useFallback && !p.private && hasFallback("chat") });
+					const why = String((e as Error).message ?? e).replace(/^(?:管家沒有回答:|The steward did not answer: )/, "");
+					let who = tr("模型");
+					try { who = tr("「{model}」", { model: modelLabel(routeFor("chat", { private: p.private, fallback: useFallback })) }); } catch { /* 沒設定路由 */ }
+					const bot = appendChat(p.id, { role: "bot", text: tr("{who}沒有回應:{why}", { who, why }), error: true, retryable: !useFallback && !p.private && hasFallback("chat") });
 					return send(res, 200, { error: bot.text, me: mine, bot, ...extra });
 				}
 			}
@@ -983,7 +989,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (mdraft && req.method === "POST") {
 				const p = store.project(decodeURIComponent(mdraft[1]));
 				if (!p) return send(res, 404, { error: "unknown project" });
-				if (p.kind !== "project") return send(res, 400, { error: "「雜務」和「總覽」不能開工作卡,請先選一個專案" });
+				if (p.kind !== "project") return send(res, 400, { error: tr("「雜務」和「總覽」不能開工作卡,請先選一個專案") });
 				const b = await body(req);
 				const agents = dispatchableAgents();
 				if (!mdraft[2]) {
@@ -991,20 +997,20 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					const message = String(b.message ?? "").trim();
 					const files: string[] = (Array.isArray(b.files) ? b.files : []).filter((f: unknown) => typeof f === "string").slice(0, 10);
 					const prevEntry = b.reviseOf ? readChat(p.id, undefined, 200).items.find((e) => e.id === b.reviseOf && e.draft) : undefined;
-					const mine = appendChat(p.id, { role: "me", text: `${prevEntry ? "修改工作卡" : "開工作卡"}${message ? `:${message}` : ""}`, ...(files.length ? { files } : {}) });
+					const mine = appendChat(p.id, { role: "me", text: `${prevEntry ? tr("修改工作卡") : tr("開工作卡")}${message ? `:${message}` : ""}`, ...(files.length ? { files } : {}) });
 					try {
 						const d = await steward.draftCard(p, { instruction: message, files, agents, previous: prevEntry?.draft });
-						const bot = appendChat(p.id, { role: "bot", text: `工作卡草稿:${d.title}`, draft: { ...d, status: "draft" } });
+						const bot = appendChat(p.id, { role: "bot", text: tr("工作卡草稿:{title}", { title: d.title }), draft: { ...d, status: "draft" } });
 						return send(res, 200, { me: mine, bot });
 					} catch (e) {
-						const bot = appendChat(p.id, { role: "bot", text: `擬工作卡失敗:${String((e as Error).message ?? e).replace(/^管家沒有回答:/, "")}`, error: true });
+						const bot = appendChat(p.id, { role: "bot", text: tr("擬工作卡失敗:{error}", { error: String((e as Error).message ?? e).replace(/^(?:管家沒有回答:|The steward did not answer: )/, "") }), error: true });
 						return send(res, 200, { error: bot.text, me: mine, bot });
 					}
 				}
 				// 對一張草稿動作:save(只存欄位)/ propose(放進提案)/ dispatch(直接派工)
 				const entry = readChat(p.id, undefined, 200).items.find((e) => e.id === mdraft[2] && e.draft);
-				if (!entry?.draft) return send(res, 404, { error: "找不到這張草稿" });
-				if (entry.draft.status !== "draft") return send(res, 409, { error: "這張草稿已經處理過了" });
+				if (!entry?.draft) return send(res, 404, { error: tr("找不到這張草稿") });
+				if (entry.draft.status !== "draft") return send(res, 409, { error: tr("這張草稿已經處理過了") });
 				const f = b.draft ?? {};
 				const draft = {
 					...entry.draft,
@@ -1013,13 +1019,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					instructions: String(f.instructions ?? entry.draft.instructions).trim(),
 					doneCriteria: String(f.doneCriteria ?? entry.draft.doneCriteria).trim(),
 				};
-				if (!draft.title || !draft.instructions) return send(res, 400, { error: "標題和工作說明不能空白" });
+				if (!draft.title || !draft.instructions) return send(res, 400, { error: tr("標題和工作說明不能空白") });
 				if (b.action === "save") return send(res, 200, { bot: updateChat(p.id, entry.id, { draft }) });
 				if (b.action !== "propose" && b.action !== "dispatch") return send(res, 400, { error: "bad action" });
 				const card = store.addCard({ projectId: p.id, title: draft.title, agent: draft.agent, instructions: draft.instructions, doneCriteria: draft.doneCriteria || "完成上述要求並說明改了什麼" });
 				if (b.action === "dispatch") {
 					// 跟看板上「提案 → 已核准」一樣:派工並追蹤
-					store.updateCard(card.id, { column: "approved", note: "派工中…" });
+					store.updateCard(card.id, { column: "approved", note: tr("派工中…") });
 					void startDispatch(card.id);
 				}
 				const bot = updateChat(p.id, entry.id, { draft: { ...draft, status: b.action === "dispatch" ? "dispatched" : "proposed", cardId: card.id } });
@@ -1046,8 +1052,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (req.method === "POST" && path === "/api/projects") {
 				const b = await body(req);
 				const root = typeof b.root === "string" ? resolvePath(b.root.trim().replace(/^~(?=\/|$)/, HOME)).replace(/\/$/, "") : "";
-				if (!root || !existsSync(root) || !statSync(root).isDirectory()) return send(res, 400, { error: "資料夾不存在" });
-				if (MISC_ROOTS.includes(root)) return send(res, 400, { error: "家目錄、桌面、下載這類資料夾不能當專案" });
+				if (!root || !existsSync(root) || !statSync(root).isDirectory()) return send(res, 400, { error: tr("資料夾不存在") });
+				if (MISC_ROOTS.includes(root)) return send(res, 400, { error: tr("家目錄、桌面、下載這類資料夾不能當專案") });
 				const name = typeof b.name === "string" && b.name.trim() ? b.name.trim() : basename(root);
 				const existing = store.projectByRoot(root);
 				const project = existing
@@ -1063,7 +1069,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const p = store.project(ms[1]);
 				if (!p) return send(res, 404, { error: "unknown project" });
 				const w = boundSpace(store, p);
-				if (!w) return send(res, 409, { error: "這個專案還沒有綁定 space" });
+				if (!w) return send(res, 409, { error: tr("這個專案還沒有綁定 space") });
 				const moved: string[] = [];
 				for (const pane of strayPanes(store, p)) moved.push(await movePane(store, pane, w.workspace_id));
 				return send(res, 200, { moved: moved.length, space: w.label });
@@ -1073,7 +1079,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				// space 名稱和專案不同時:use=space 用 space 的名字改專案;use=project 把 space 改回專案名
 				const p = store.project(ms[1]);
 				const w = p ? boundSpace(store, p) : undefined;
-				if (!p || !w) return send(res, 404, { error: "沒有綁定的 space" });
+				if (!p || !w) return send(res, 404, { error: tr("沒有綁定的 space") });
 				const { use } = await body(req);
 				if (use === "space" && w.label) store.updateProject(p.id, { name: w.label });
 				else herdrCli(["workspace", "rename", w.workspace_id, p.name]);
@@ -1114,9 +1120,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						const w = boundSpace(store, p);
 						if (w) {
 							const r = herdrCli(["workspace", "close", w.workspace_id]);
-							if (r?.error) return send(res, 502, { error: `herdr 的 space 沒關成:${String(r.error.message ?? "").slice(0, 200)}` });
+							if (r?.error) return send(res, 502, { error: tr("herdr 的 space 沒關成:{error}", { error: String(r.error.message ?? "").slice(0, 200) }) });
 							closedSpace = w.label ?? w.workspace_id;
-							for (const c of store.cards(p.id)) if (c.column === "running") store.updateCard(c.id, { column: "blocked", note: `停止追蹤時一起關掉了 space「${closedSpace}」,agent 已經停止。` });
+							for (const c of store.cards(p.id)) if (c.column === "running") store.updateCard(c.id, { column: "blocked", note: tr("停止追蹤時一起關掉了 space「{space}」,agent 已經停止。", { space: closedSpace }) });
 						}
 					}
 					Object.assign(patch, { spaceId: undefined, spaceLabel: undefined, closedAt: undefined });
@@ -1133,15 +1139,15 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						store.updateProject(p.id, { spaceLabel: patch.name });
 					}
 				}
-				return send(res, 200, { ...store.project(p.id), closedSpace });
+				return send(res, 200, { ...displayProject(store.project(p.id)!), closedSpace });
 			}
 			// 使用者自己建的工作卡(例如在編輯器選一段程式碼「建立工作卡」):一律進「提案」,等核准
 			if (req.method === "POST" && path === "/api/cards") {
 				const b = await body(req);
 				const p = store.project(String(b.projectId ?? ""));
-				if (!p || p.kind !== "project") return send(res, 404, { error: "找不到專案" });
+				if (!p || p.kind !== "project") return send(res, 404, { error: tr("找不到專案") });
 				const title = String(b.title ?? "").trim();
-				if (!title) return send(res, 400, { error: "請填標題" });
+				if (!title) return send(res, 400, { error: tr("請填標題") });
 				return send(res, 200, store.addCard({ projectId: p.id, title, agent: chooseCardAgent(typeof b.agent === "string" ? b.agent : undefined, { available: dispatchableAgents(), defaultAgent: settings().cards.defaultAgent }).agent, instructions: String(b.instructions ?? ""), doneCriteria: String(b.doneCriteria ?? "完成上述要求並說明改了什麼") }));
 			}
 			// 資訊卡「在終端機看這個窗格」:用 terminalId 找(窗格搬過 space 也找得到)
@@ -1151,9 +1157,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (!card) return send(res, 404, { error: "unknown card" });
 				const panes = listPanes() ?? [];
 				const pane = panes.find((x) => card.terminalId && x.terminal_id === card.terminalId) ?? panes.find((x) => x.pane_id === card.paneId);
-				if (!pane) return send(res, 404, { error: "這張卡的窗格已經不在了" });
+				if (!pane) return send(res, 404, { error: tr("這張卡的窗格已經不在了") });
 				const r = pane.agent ? herdrCli(["agent", "focus", pane.pane_id]) : herdrCli(["tab", "focus", pane.tab_id]);
-				if (r?.error) return send(res, 500, { error: String(r.error.message ?? "herdr 拒絕切換") });
+				if (r?.error) return send(res, 500, { error: String(r.error.message ?? tr("herdr 拒絕切換")) });
 				currentCache.clear();
 				return send(res, 200, { ok: true, pane: pane.pane_id });
 			}
@@ -1192,14 +1198,14 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (rule.action === "dispatch" || rule.action === "redispatch") {
 					// 核准(提案→已核准)= 派工;卡住/完成→已核准 = 重新派工,把上次結果附進指示
 					const previous = rule.action === "redispatch" ? { column: card.column, note: card.note, paneId: card.paneId } : undefined;
-					store.updateCard(card.id, { column: "approved", note: previous ? "重新派工中…" : "派工中…", paneId: undefined });
+					store.updateCard(card.id, { column: "approved", note: previous ? tr("重新派工中…") : tr("派工中…"), paneId: undefined });
 					send(res, 202, store.card(card.id));
 					void startDispatch(card.id, previous);
 					return;
 				}
 				const patch: Partial<Card> = { column };
-				if (column === "proposed") Object.assign(patch, { paneId: undefined, note: "已退回,等待重新考慮" });
-				if (column === "rejected") Object.assign(patch, { note: "不要了" });
+				if (column === "proposed") Object.assign(patch, { paneId: undefined, note: tr("已退回,等待重新考慮") });
+				if (column === "rejected") Object.assign(patch, { note: tr("不要了") });
 				return send(res, 200, store.updateCard(card.id, patch));
 			}
 			m = path.match(/^\/api\/cards\/([^/]+)$/);
@@ -1209,9 +1215,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const b = await body(req);
 				const patch: Record<string, string> = {};
 				if (typeof b.agent === "string") {
-					if (card.column === "running" || card.column === "approved") return send(res, 409, { error: "派工中或進行中的卡不能換 agent" });
+					if (card.column === "running" || card.column === "approved") return send(res, 409, { error: tr("派工中或進行中的卡不能換 agent") });
 					const id = agentIdOf(b.agent);
-					if (!id || !dispatchableAgents().some((a) => a.id === id)) return send(res, 400, { error: "這台電腦沒有裝這個 agent" });
+					if (!id || !dispatchableAgents().some((a) => a.id === id)) return send(res, 400, { error: tr("這台電腦沒有裝這個 agent") });
 					patch.agent = id;
 				}
 				for (const k of ["title", "instructions", "doneCriteria", "note"]) if (typeof b[k] === "string") patch[k] = b[k];
@@ -1236,9 +1242,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const auth = await authorizeTerminal(req);
 				if (!auth.ok) return send(res, auth.status, { error: auth.reason });
 				const { pane } = await body(req);
-				if (typeof pane !== "string" || !/^[\w:-]+$/.test(pane)) return send(res, 400, { error: "缺少窗格" });
+				if (typeof pane !== "string" || !/^[\w:-]+$/.test(pane)) return send(res, 400, { error: tr("缺少窗格") });
 				const r = herdrCli(["agent", "focus", pane]);
-				if (r?.error) return send(res, 409, { error: String(r.error.message ?? "那個窗格已經不在了").slice(0, 200) });
+				if (r?.error) return send(res, 409, { error: String(r.error.message ?? tr("那個窗格已經不在了")).slice(0, 200) });
 				return send(res, 200, { ok: true });
 			}
 			// 終端機貼圖片:存成檔案,回傳路徑讓網頁貼進終端機(和終端機同一套身分檢查)
@@ -1277,7 +1283,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 							else {
 								const p = b.cwd ? resolveProject(store, String(b.cwd)) : undefined;
 								workspace = p?.kind === "project" ? boundSpace(store, p)?.workspace_id : undefined;
-								if (!workspace) throw new BranchError("認不出你在哪個窗格(窗格可能被搬過 space,herdr 記的位置過期了),請指定窗格 ID:steward branch <窗格>");
+								if (!workspace) throw new BranchError(tr("認不出你在哪個窗格(窗格可能被搬過 space,herdr 記的位置過期了),請指定窗格 ID:steward branch <窗格>"));
 							}
 						}
 						const main = pickMainPane({ pane, workspace }, panes);
@@ -1294,7 +1300,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						const cwd = url.searchParams.get("cwd") ?? undefined;
 						const pane = session || cwd ? callerPane(store, { pane: id, session, cwd }, panes) : panes.find((x) => x.pane_id === id);
 						const branch = pane ? store.branchOfPane(pane) : undefined;
-						return branch ? send(res, 200, { branch }) : send(res, 404, { error: "這個窗格不是支線" });
+						return branch ? send(res, 200, { branch }) : send(res, 404, { error: tr("這個窗格不是支線") });
 					}
 					const mb = path.match(/^\/api\/branch\/([0-9a-f]{8})\/(draft|handoff|close)$/);
 					if (mb && req.method === "POST") {
@@ -1335,10 +1341,10 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					return send(res, 200, { ok: true });
 				}
 				if (req.method === "POST" && path === "/api/push/test") {
-					if (!pushConfigured()) return send(res, 400, { error: "管家還沒設定推播金鑰(APNs)" });
+					if (!pushConfigured()) return send(res, 400, { error: tr("管家還沒設定推播金鑰(APNs)") });
 					const token = String((await body(req)).token ?? "");
-					const ok = await pushAll({ title: "🔔 專案管家測試推播", body: "設定成功:提案、工作卡卡住、工作完成會推到這支 iPhone。" }, token || undefined);
-					return send(res, ok ? 200 : 502, ok ? { ok: true } : { error: "推播沒送出去,看管家的紀錄(steward.log)" });
+					const ok = await pushAll({ title: tr("🔔 專案管家測試推播"), body: tr("設定成功:提案、工作卡卡住、工作完成會推到這支 iPhone。") }, token || undefined);
+					return send(res, ok ? 200 : 502, ok ? { ok: true } : { error: tr("推播沒送出去,看管家的紀錄(steward.log)") });
 				}
 				return send(res, 404, { error: "not found" });
 			}
@@ -1349,7 +1355,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			}
 			if (req.method === "PUT" && path === "/api/code-prefs") {
 				const { autoFetch } = await body(req);
-				if (!["ask", "on", "off"].includes(autoFetch)) return send(res, 400, { error: "自動抓取的設定值不對" });
+				if (!["ask", "on", "off"].includes(autoFetch)) return send(res, 400, { error: tr("自動抓取的設定值不對") });
 				const { code } = updateSettings({ code: { autoFetch } });
 				return send(res, 200, { autoFetch: code.autoFetch, autoFetchMinutes: code.autoFetchMinutes });
 			}
@@ -1375,9 +1381,9 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (req.method === "POST" && path === "/api/ingest") {
 				const { pane } = await body(req);
 				const target = (listPanes() ?? []).find((p) => p.pane_id === pane);
-				if (!target?.agent) return send(res, 404, { error: "找不到這個 agent 窗格" });
+				if (!target?.agent) return send(res, 404, { error: tr("找不到這個 agent 窗格") });
 				const answer = await watcher.report(target);
-				return send(res, 200, { answer: answer ?? "(沒有新內容)" });
+				return send(res, 200, { answer: answer ?? tr("(沒有新內容)") });
 			}
 			return send(res, 404, { error: "not found" });
 		} catch (e) {
@@ -1403,7 +1409,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	const proxyHttp = (req: IncomingMessage, res: ServerResponse) => {
 		proxyHttpInner(req, res).catch((e) => {
 			console.error("[terminal] 轉接失敗", e);
-			if (!res.headersSent) send(res, 502, "終端機轉接失敗", "text/plain; charset=utf-8");
+			if (!res.headersSent) send(res, 502, tr("終端機轉接失敗"), "text/plain; charset=utf-8");
 			else res.destroy();
 		});
 	};
@@ -1420,7 +1426,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			res.writeHead(r.statusCode ?? 502, r.headers);
 			r.pipe(res);
 		});
-		up.on("error", () => send(res, 502, `終端機服務沒有在跑(${serviceHint("terminal")})`, "text/plain; charset=utf-8"));
+		up.on("error", () => send(res, 502, tr("終端機服務沒有在跑({hint})", { hint: process.platform === "win32" ? tr("工作排程器裡的「{name}」", { name: SERVICE.terminal }) : serviceHint("terminal") }), "text/plain; charset=utf-8"));
 		req.pipe(up);
 	};
 	const proxyUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {

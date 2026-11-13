@@ -1,6 +1,7 @@
 // 程式碼頁的 LaTeX 編譯:用 latexmk 編譯 .tex,回傳 PDF 位置與整理過的錯誤 / 警告。
 // 引擎:檔案開頭的「% !TEX program = xelatex」優先;有中日韓文字或 xeCJK / ctex / fontspec 用 xelatex;其他用 pdflatex。
 // 「% !TEX root = main.tex」會改編譯主檔。不開 shell-escape。中間檔放在 .latexmk/。
+import { tr } from "./i18n.ts";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -26,13 +27,13 @@ const running = new Map<string, Promise<LatexResult>>();
 
 export function buildLatex(p: Project, rel: string): Promise<LatexResult> {
 	let abs = inProject(p, rel);
-	if (!/\.tex$/i.test(abs)) throw new CodeError(400, "只能編譯 .tex 檔");
+	if (!/\.tex$/i.test(abs)) throw new CodeError(400, tr("只能編譯 .tex 檔"));
 	// % !TEX root = ../main.tex
 	const root = magic(readFileSync(abs, "utf8"), "root");
 	if (root) {
 		const r = resolve(dirname(abs), root);
 		inProject(p, relative(inProject(p, ""), r)); // 不能跑出專案
-		if (!existsSync(r)) throw new CodeError(400, `找不到 % !TEX root 指定的主檔:${root}`);
+		if (!existsSync(r)) throw new CodeError(400, tr("找不到 % !TEX root 指定的主檔:{root}", { root }));
 		abs = r;
 	}
 	const mainRel = relative(inProject(p, ""), abs).split(sep).join("/");
@@ -88,7 +89,7 @@ async function tlmgrFind(bin: string, file: string): Promise<string[]> {
 
 function run(p: Project, abs: string, mainRel: string, force = false): Promise<LatexResult> {
 	const exe = latexmkPath();
-	if (!exe) throw new CodeError(400, "這台電腦找不到 latexmk:請先安裝 TeX Live / MacTeX(macOS 可以用 brew install --cask mactex-no-gui)");
+	if (!exe) throw new CodeError(400, tr("這台電腦找不到 latexmk:請先安裝 TeX Live / MacTeX(macOS 可以用 brew install --cask mactex-no-gui)"));
 	const src = readFileSync(abs, "utf8");
 	let engine = (magic(src, "program") ?? "").toLowerCase();
 	if (!["pdflatex", "xelatex", "lualatex"].includes(engine)) engine = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|\\usepackage(\[[^\]]*\])?\{(xeCJK|ctex|fontspec)\}|\\documentclass(\[[^\]]*\])?\{ctex/.test(src) ? "xelatex" : "pdflatex";
@@ -105,7 +106,7 @@ function run(p: Project, abs: string, mainRel: string, force = false): Promise<L
 			const issues = parseLog(Buffer.from(log, "latin1").toString("utf8"), cwd, inProject(p, ""));
 			const pdfAbs = join(cwd, `${job}.pdf`);
 			const pdf = existsSync(pdfAbs) ? relative(inProject(p, ""), pdfAbs).split(sep).join("/") : undefined;
-			if ((err as { killed?: boolean } | null)?.killed) issues.unshift({ message: "編譯超過 3 分鐘,已經停止", level: "error" });
+			if ((err as { killed?: boolean } | null)?.killed) issues.unshift({ message: tr("編譯超過 3 分鐘,已經停止"), level: "error" });
 			const hasError = issues.some((i) => i.level === "error");
 			ok({ ok: !hasError && !!pdf, engine, main: mainRel, pdf, issues: issues.slice(0, 200), log: Buffer.from(log, "latin1").toString("utf8").split("\n").slice(-300).join("\n"), seconds: Math.round((Date.now() - t0) / 100) / 10 });
 		});

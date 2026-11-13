@@ -1,5 +1,6 @@
 // 檢查更新 / 一鍵更新:看 GitHub 上最新的 release,更新時在背景重跑安裝程式(install.sh / scripts/install-windows.ps1)。
 // 安裝程式會換掉 ~/.agent-steward/app 並重啟服務,所以要用獨立的程序跑(不能是管家的子程序)。
+import { tr } from "./i18n.ts";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
@@ -27,8 +28,8 @@ let cache: { at: number; latest: string; url: string; notes: string } | undefine
 export interface UpdateInfo { current: string; latest?: string; hasUpdate: boolean; dev: boolean; url?: string; notes?: string; error?: string; running: boolean; desktop: boolean; downloadUrl: string }
 
 export function updateRequestError(info: UpdateInfo, tag: unknown): string | undefined {
-	if (!info.hasUpdate || !info.latest) return info.error ?? (info.dev ? "開發版不能自動更新" : "已經是最新版");
-	if (typeof tag !== "string" || tag !== info.latest) return "有更新的版本了,請重新檢查更新後再按一次";
+	if (!info.hasUpdate || !info.latest) return info.error ?? (info.dev ? tr("開發版不能自動更新") : tr("已經是最新版"));
+	if (typeof tag !== "string" || tag !== info.latest) return tr("有更新的版本了,請重新檢查更新後再按一次");
 	return undefined;
 }
 
@@ -39,14 +40,14 @@ export async function checkUpdate(force = false): Promise<UpdateInfo> {
 	try {
 		if (force || !cache || Date.now() - cache.at > 3600_000) {
 			const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { accept: "application/vnd.github+json", "user-agent": "agent-steward" }, signal: AbortSignal.timeout(10_000) });
-			if (r.status === 404) return { ...mode, current, dev, hasUpdate: false, running: updating(), error: "還沒有發布任何版本" };
-			if (!r.ok) throw new Error(`GitHub 回應 ${r.status}`);
+			if (r.status === 404) return { ...mode, current, dev, hasUpdate: false, running: updating(), error: tr("還沒有發布任何版本") };
+			if (!r.ok) throw new Error(tr("GitHub 回應 {status}", { status: r.status }));
 			const j = (await r.json()) as { tag_name: string; html_url: string; body?: string };
 			cache = { at: Date.now(), latest: j.tag_name, url: j.html_url, notes: (j.body ?? "").slice(0, 2000) };
 		}
 		return { ...mode, current, dev, latest: cache.latest, url: cache.url, notes: cache.notes, hasUpdate: !dev && newer(cache.latest, current), running: updating() };
 	} catch (e) {
-		return { ...mode, current, dev, hasUpdate: false, running: updating(), error: `查不到最新版本:${(e as Error).message}` };
+		return { ...mode, current, dev, hasUpdate: false, running: updating(), error: tr("查不到最新版本:{error}", { error: (e as Error).message }) };
 	}
 }
 
@@ -62,28 +63,28 @@ export function checkSums(content: Buffer, sumsText: string, name: string): stri
 		const match = /^([a-fA-F0-9]{64})[ \t]+\*?(.+)$/.exec(line);
 		if (match?.[2] !== name) continue;
 		return createHash("sha256").update(content).digest("hex") === match[1].toLowerCase()
-			? undefined : "下載的安裝程式檢查碼不符,沒有更新";
+			? undefined : tr("下載的安裝程式檢查碼不符,沒有更新");
 	}
-	return MISSING_SUMS;
+	return tr(MISSING_SUMS);
 }
 
 async function downloadHTTPS(url: string): Promise<Response> {
 	for (let redirects = 0; redirects <= 10; redirects++) {
-		if (new URL(url).protocol !== "https:") throw new Error("下載網址必須使用 HTTPS");
+		if (new URL(url).protocol !== "https:") throw new Error(tr("下載網址必須使用 HTTPS"));
 		const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
 		if (![301, 302, 303, 307, 308].includes(response.status)) return response;
 		const location = response.headers.get("location");
-		if (!location) throw new Error("下載重新導向沒有網址");
+		if (!location) throw new Error(tr("下載重新導向沒有網址"));
 		url = new URL(location, url).href;
 	}
-	throw new Error("下載重新導向次數過多");
+	throw new Error(tr("下載重新導向次數過多"));
 }
 
 /** 下載安裝程式、在背景執行;回傳後管家大約十幾秒內會被重啟 */
 export async function applyUpdate(tag: string): Promise<void> {
-	if (process.env.STEWARD_DESKTOP === "1") throw new Error("App 版請到 GitHub 下載新版 App");
-	if (!/^v[\w.-]+$/.test(tag)) throw new Error("版本格式不對");
-	if (updating()) throw new Error("已經在更新了");
+	if (process.env.STEWARD_DESKTOP === "1") throw new Error(tr("App 版請到 GitHub 下載新版 App"));
+	if (!/^v[\w.-]+$/.test(tag)) throw new Error(tr("版本格式不對"));
+	if (updating()) throw new Error(tr("已經在更新了"));
 	const dir = join(DATA_DIR, "update");
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(join(DATA_DIR, "logs"), { recursive: true });
@@ -91,15 +92,15 @@ export async function applyUpdate(tag: string): Promise<void> {
 	const file = join(dir, name);
 	const release = `https://github.com/${REPO}/releases/download/${tag}`;
 	const r = await downloadHTTPS(`${release}/${name}`);
-	if (!r.ok) throw new Error(`下載安裝程式失敗(${r.status})`);
+	if (!r.ok) throw new Error(tr("下載安裝程式失敗({status})", { status: r.status }));
 	const content = Buffer.from(await r.arrayBuffer());
 	let sumsText: string;
 	try {
 		const sums = await downloadHTTPS(`${release}/SHA256SUMS`);
-		if (!sums.ok) throw new Error(MISSING_SUMS);
+		if (!sums.ok) throw new Error(tr(MISSING_SUMS));
 		sumsText = await sums.text();
 	} catch {
-		throw new Error(MISSING_SUMS);
+		throw new Error(tr(MISSING_SUMS));
 	}
 	const error = checkSums(content, sumsText, name);
 	if (error) throw new Error(error);
@@ -108,7 +109,7 @@ export async function applyUpdate(tag: string): Promise<void> {
 	writeFileSync(file, IS_WIN && !text.startsWith("\uFEFF") ? `\uFEFF${text}` : text);
 	writeFileSync(LOCK, String(Date.now()));
 	const out = openSync(LOG, "a");
-	writeFileSync(LOG, `\n===== ${new Date().toISOString()} 更新到 ${tag} =====\n`, { flag: "a" });
+	writeFileSync(LOG, `\n===== ${new Date().toISOString()} ${tr("更新到 {tag}", { tag })} =====\n`, { flag: "a" });
 	let cmd: string, args: string[];
 	if (IS_WIN) {
 		cmd = "powershell.exe";

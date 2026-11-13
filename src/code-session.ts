@@ -1,5 +1,6 @@
 // 程式碼模式的「工作階段」:每個專案開了哪些分頁、怎麼分割、游標在哪、檔案樹展開哪些資料夾。
 // 存在伺服器上,換專案再切回來、或換一台電腦打開,都能還原。
+import { tr } from "./i18n.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CodeError } from "./code.ts";
@@ -34,8 +35,8 @@ export function getSession(pid: string): { layout: unknown; updatedAt: string } 
 }
 
 export function putSession(pid: string, layout: unknown): { updatedAt: string } {
-	if (!layout || typeof layout !== "object") throw new CodeError(400, "版面格式不對");
-	if (JSON.stringify(layout).length > MAX_BYTES) throw new CodeError(413, "版面資料太大");
+	if (!layout || typeof layout !== "object") throw new CodeError(400, tr("版面格式不對"));
+	if (JSON.stringify(layout).length > MAX_BYTES) throw new CodeError(413, tr("版面資料太大"));
 	const s = load();
 	const updatedAt = new Date().toISOString();
 	s.projects[pid] = { layout, updatedAt };

@@ -1,3 +1,4 @@
+import { tr } from "./i18n.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -24,7 +25,7 @@ export function findSteward(serve: any, port: number): string | undefined {
 
 export function serveOn(port: number): { url: string; login: string } {
 	const bin = findTailscale();
-	if (!bin) throw new Error("這台電腦沒有 Tailscale");
+	if (!bin) throw new Error(tr("這台電腦沒有 Tailscale"));
 	const st = JSON.parse(run(bin, ["status", "--json"]));
 	const dns = String(st.Self?.DNSName ?? "").replace(/\.$/, "");
 	const serve = serveStatus(bin);

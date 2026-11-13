@@ -24,7 +24,7 @@
 	const wtApi = async (path, opts = {}) => {
 		const r = await fetch(`/api/code/${cm.pid}/worktrees${path ? `/${path}` : ""}`, { ...opts, headers: { "content-type": "application/json", ...(opts.headers || {}) } });
 		const data = (r.headers.get("content-type") || "").includes("json") ? await r.json() : null;
-		if (!r.ok) { const err = new Error(data?.error || `錯誤 ${r.status}`); err.status = r.status; err.data = data; throw err; }
+		if (!r.ok) { const err = new Error(data?.error || tr("錯誤 {status}", { status: r.status })); err.status = r.status; err.data = data; throw err; }
 		return data;
 	};
 
@@ -34,7 +34,7 @@
 		const ct = r.headers.get("content-type") || "";
 		const data = ct.includes("json") ? await r.json() : null;
 		if (!r.ok) {
-			const err = new Error(data?.error || `錯誤 ${r.status}`);
+			const err = new Error(data?.error || tr("錯誤 {status}", { status: r.status }));
 			err.status = r.status; err.data = data;
 			throw err;
 		}
@@ -50,7 +50,7 @@
 
 	function dialog({ title, html, buttons }) {
 		const wrap = el("div", "modal");
-		wrap.innerHTML = `<div class="box" role="dialog"><div class="mhead"><h3>${esc(title)}</h3><button class="small" data-x>關閉</button></div><div class="mbody">${html}</div><div class="mfoot"></div></div>`;
+		wrap.innerHTML = `<div class="box" role="dialog"><div class="mhead"><h3>${esc(title)}</h3><button class="small" data-x>${tr("關閉")}</button></div><div class="mbody">${html}</div><div class="mfoot"></div></div>`;
 		const close = () => wrap.remove();
 		wrap.querySelector("[data-x]").onclick = close;
 		wrap.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
@@ -64,14 +64,14 @@
 		setTimeout(() => wrap.querySelector("input,textarea")?.focus(), 30);
 		return wrap;
 	}
-	function askName(title, value = "", label = "名稱") {
+	function askName(title, value = "", label = tr("名稱")) {
 		return new Promise((resolve) => {
-			const d = dialog({ title, html: `<label class="field">${esc(label)}<input type="text" data-v value="${esc(value)}"></label>`, buttons: [{ label: "確定", primary: true, onClick: (w) => resolve(w.querySelector("[data-v]").value.trim() || null) }] });
+			const d = dialog({ title, html: `<label class="field">${esc(label)}<input type="text" data-v value="${esc(value)}"></label>`, buttons: [{ label: tr("確定"), primary: true, onClick: (w) => resolve(w.querySelector("[data-v]").value.trim() || null) }] });
 			d.querySelector("[data-x]").addEventListener("click", () => resolve(null));
 			d.querySelector("[data-v]").addEventListener("keydown", (e) => { if (e.key === "Enter") d.querySelector(".mfoot button").click(); });
 		});
 	}
-	function confirmBox(title, text, okLabel = "確定") {
+	function confirmBox(title, text, okLabel = tr("確定")) {
 		return new Promise((resolve) => {
 			const d = dialog({ title, html: `<p style="white-space:pre-line">${esc(text)}</p>`, buttons: [{ label: okLabel, primary: true, onClick: () => resolve(true) }] });
 			d.querySelector("[data-x]").addEventListener("click", () => resolve(false));
@@ -106,7 +106,7 @@
 			window.MonacoEnvironment = { getWorkerUrl: () => `data:text/javascript;charset=utf-8,${encodeURIComponent(`self.MonacoEnvironment={baseUrl:'${MONACO}/'};importScripts('${MONACO}/vs/base/worker/workerMain.js');`)}` };
 			const s = el("script");
 			s.src = `${MONACO}/vs/loader.js`;
-			s.onerror = () => reject(new Error("載入編輯器失敗(需要能連上 cdn.jsdelivr.net)"));
+			s.onerror = () => reject(new Error(tr("載入編輯器失敗(需要能連上 cdn.jsdelivr.net)")));
 			s.onload = () => {
 				window.require.config({ paths: { vs: `${MONACO}/vs` } });
 				window.require(["vs/editor/editor.main"], () => {
@@ -129,7 +129,7 @@
 		if (mdLib) return mdLib;
 		mdLib = loadMonaco().then(() => new Promise((ok, no) => {
 			window.require.config({ paths: { "md-marked": "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min", "md-purify": "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min" } });
-			window.require(["md-marked", "md-purify"], (marked, purify) => ok({ marked, purify }), () => no(new Error("載入 Markdown 預覽失敗(需要能連上 cdn.jsdelivr.net)")));
+			window.require(["md-marked", "md-purify"], (marked, purify) => ok({ marked, purify }), () => no(new Error(tr("載入 Markdown 預覽失敗(需要能連上 cdn.jsdelivr.net)"))));
 		})).catch((e) => { mdLib = null; throw e; });
 		return mdLib;
 	}
@@ -170,7 +170,7 @@
 		g.editorEl = el("div", "cv-surface"); g.editorEl.hidden = true;
 		g.diffEl = el("div", "cv-surface"); g.diffEl.hidden = true;
 		g.previewEl = el("div", "cv-surface cv-preview"); g.previewEl.hidden = true;
-		g.emptyEl = el("div", "cv-surface cv-empty", "從左邊選一個檔案,或到 Git 看變更<br><span class=\"hint\">分頁可以拖到旁邊分割編輯區</span>");
+		g.emptyEl = el("div", "cv-surface cv-empty", `${tr("從左邊選一個檔案,或到 Git 看變更")}<br><span class="hint">${tr("分頁可以拖到旁邊分割編輯區")}</span>`);
 		g.dropEl = el("div", "cv-drop"); g.dropEl.hidden = true;
 		g.barEl = el("div", "cv-bar"); g.barEl.hidden = true;
 		g.stageEl.append(g.editorEl, g.diffEl, g.previewEl, g.emptyEl, g.dropEl);
@@ -191,7 +191,7 @@
 		g.diff = m.editor.createDiffEditor(g.diffEl, { automaticLayout: true, fontSize: 13, readOnly: true, originalEditable: false, renderSideBySide: !mobile(), minimap: { enabled: false } });
 		for (const ed of [g.editor, g.diff.getModifiedEditor()]) {
 			// addCommand 會被最後建立的編輯器蓋掉(全域),所以用 addAction 綁快捷鍵
-			ed.addAction({ id: "steward.save", label: "存檔", keybindings: [m.KeyMod.CtrlCmd | m.KeyCode.KeyS], run: () => save(g) });
+			ed.addAction({ id: "steward.save", label: tr("存檔"), keybindings: [m.KeyMod.CtrlCmd | m.KeyCode.KeyS], run: () => save(g) });
 			ed.onDidFocusEditorText(() => setActiveGroup(g));
 		}
 		g.editor.onDidChangeCursorPosition(() => saveSoon(3000));
@@ -208,11 +208,11 @@
 		}
 		g.editor.onDidScrollChange(() => saveSoon(3000));
 		const pick = (ed) => { const r = ed.getSelection(); return { text: ed.getModel().getValueInRange(r), from: r.startLineNumber, to: r.endLineNumber, path: g.active?.path }; };
-		g.editor.addAction({ id: "steward.ask", label: "問管家", contextMenuGroupId: "1_steward", contextMenuOrder: 1, run: (ed) => askSteward(pick(ed)) });
-		g.editor.addAction({ id: "steward.card", label: "建立工作卡", contextMenuGroupId: "1_steward", contextMenuOrder: 2, run: (ed) => newCard(pick(ed)) });
-		g.editor.addAction({ id: "steward.mdPreview", label: "預覽 Markdown", contextMenuGroupId: "2_layout", contextMenuOrder: 0, precondition: undefined, run: () => isMd(g.active?.path) ? openPreview(g.active.path) : toast("這不是 Markdown 檔") });
-		g.editor.addAction({ id: "steward.splitRight", label: "向右分割", contextMenuGroupId: "2_layout", run: () => g.active && splitWith(g.active, g, "right") });
-		g.editor.addAction({ id: "steward.splitDown", label: "向下分割", contextMenuGroupId: "2_layout", run: () => g.active && splitWith(g.active, g, "bottom") });
+		g.editor.addAction({ id: "steward.ask", label: tr("問管家"), contextMenuGroupId: "1_steward", contextMenuOrder: 1, run: (ed) => askSteward(pick(ed)) });
+		g.editor.addAction({ id: "steward.card", label: tr("建立工作卡"), contextMenuGroupId: "1_steward", contextMenuOrder: 2, run: (ed) => newCard(pick(ed)) });
+		g.editor.addAction({ id: "steward.mdPreview", label: tr("預覽 Markdown"), contextMenuGroupId: "2_layout", contextMenuOrder: 0, precondition: undefined, run: () => isMd(g.active?.path) ? openPreview(g.active.path) : toast(tr("這不是 Markdown 檔")) });
+		g.editor.addAction({ id: "steward.splitRight", label: tr("向右分割"), contextMenuGroupId: "2_layout", run: () => g.active && splitWith(g.active, g, "right") });
+		g.editor.addAction({ id: "steward.splitDown", label: tr("向下分割"), contextMenuGroupId: "2_layout", run: () => g.active && splitWith(g.active, g, "bottom") });
 		if (g.active) activate(g, g.active);
 	}
 	function disposeGroup(g) {
@@ -340,8 +340,8 @@
 	/** 拖到群組邊緣:分割出新群組(左右=新的一欄,上下=同一欄多一個群組) */
 	function newGroupAt(target, zone) {
 		const col = colOf(target);
-		if ((zone === "left" || zone === "right") && cm.cols.length >= MAX_COLS) { toast(`最多 ${MAX_COLS} 欄`); return null; }
-		if ((zone === "top" || zone === "bottom") && col.groups.length >= MAX_ROWS) { toast(`每欄最多 ${MAX_ROWS} 個`); return null; }
+		if ((zone === "left" || zone === "right") && cm.cols.length >= MAX_COLS) { toast(tr("最多 {n} 欄", { n: MAX_COLS })); return null; }
+		if ((zone === "top" || zone === "bottom") && col.groups.length >= MAX_ROWS) { toast(tr("每欄最多 {n} 個", { n: MAX_ROWS })); return null; }
 		const g = newGroup();
 		if (zone === "left" || zone === "right") {
 			const ci = cm.cols.indexOf(col) + (zone === "right" ? 1 : 0);
@@ -363,8 +363,8 @@
 
 	// ---------- 分頁 ----------
 	function renderTabs(g) {
-		const back = mobile() ? '<button class="small cv-back" data-back>← 返回</button>' : "";
-		g.tabsEl.innerHTML = back + g.tabs.map((t) => `<div class="cv-tab${t === g.active ? " on" : ""}${t.dirty ? " dirty" : ""}" data-key="${esc(t.key)}" title="${esc(t.title)}" draggable="${!mobile()}">${esc(t.label)}<button class="x" data-close title="關閉"><span>×</span></button></div>`).join("");
+		const back = mobile() ? `<button class="small cv-back" data-back>${tr("← 返回")}</button>` : "";
+		g.tabsEl.innerHTML = back + g.tabs.map((t) => `<div class="cv-tab${t === g.active ? " on" : ""}${t.dirty ? " dirty" : ""}" data-key="${esc(t.key)}" title="${esc(t.title)}" draggable="${!mobile()}">${esc(t.label)}<button class="x" data-close title="${esc(tr("關閉"))}"><span>×</span></button></div>`).join("");
 	}
 	function findTab(key) { return allTabs().find((t) => t.key === key); }
 	function wireGroupEvents(g) {
@@ -383,10 +383,10 @@
 			if (!t) return;
 			e.preventDefault();
 			menu(e.clientX, e.clientY, [
-				{ label: "向右分割", run: () => splitWith(t, g, "right") },
-				{ label: "向下分割", run: () => splitWith(t, g, "bottom") },
-				{ label: "關閉", run: () => closeTab(t) },
-				{ label: "關閉其他分頁", run: () => g.tabs.filter((x) => x !== t).forEach((x) => closeTab(x)) },
+				{ label: tr("向右分割"), run: () => splitWith(t, g, "right") },
+				{ label: tr("向下分割"), run: () => splitWith(t, g, "bottom") },
+				{ label: tr("關閉"), run: () => closeTab(t) },
+				{ label: tr("關閉其他分頁"), run: () => g.tabs.filter((x) => x !== t).forEach((x) => closeTab(x)) },
 			]);
 		});
 		// 拖拉:分頁列(換順序 / 搬到這個群組)
@@ -459,7 +459,7 @@
 				return;
 			}
 			if (z === "center") moveTab(t, g, g.tabs.length);
-			else if (t.group === g && g.tabs.length === 1) toast("只有一個分頁,沒辦法分割自己");
+			else if (t.group === g && g.tabs.length === 1) toast(tr("只有一個分頁,沒辦法分割自己"));
 			else splitWith(t, g, z);
 		}, true);
 		// 編輯器區域內的提示列按鈕
@@ -496,7 +496,7 @@
 		t.pv.querySelector(":scope > .cv-fullx")?.remove();
 		if (on) {
 			const x = el("button", "cv-fullx", "✕");
-			x.type = "button"; x.title = "關閉全螢幕";
+			x.type = "button"; x.title = tr("關閉全螢幕");
 			x.onclick = () => setFull(t, false);
 			t.pv.appendChild(x);
 		}
@@ -550,8 +550,8 @@
 	function texBar(g, t) {
 		const r = t.tex;
 		const nErr = r?.issues?.filter((i) => i.level === "error").length || 0, nWarn = r?.issues?.filter((i) => i.level === "warning").length || 0;
-		const state = t.texBusy ? "編譯中…" : !r ? "LaTeX" : r.ok ? `✓ 編譯成功(${esc(r.engine)},${r.seconds} 秒)` : r.pdf ? `有錯誤,PDF 可能不完整(${esc(r.engine)})` : "✗ 編譯失敗";
-		bar(g, `<span class="tex-state${r && !r.ok && !t.texBusy ? " bad" : ""}">${state}</span>${r && (nErr || nWarn) ? `<button class="small" data-bar="texissues">${nErr ? `✗ ${nErr} 個錯誤` : ""}${nErr && nWarn ? " · " : ""}${nWarn ? `⚠ ${nWarn} 個警告` : ""}</button>` : ""}<span class="sp"></span><label class="tex-auto" title="按 ⌘/Ctrl+S 存檔時自動編譯"><input type="checkbox" data-texauto ${texAuto() ? "checked" : ""}> 存檔時編譯</label><button class="small primary" data-bar="texbuild" ${t.texBusy ? "disabled" : ""}>編譯</button>`);
+		const state = t.texBusy ? tr("編譯中…") : !r ? "LaTeX" : r.ok ? tr("✓ 編譯成功({engine},{seconds} 秒)", { engine: esc(r.engine), seconds: r.seconds }) : r.pdf ? tr("有錯誤,PDF 可能不完整({engine})", { engine: esc(r.engine) }) : tr("✗ 編譯失敗");
+		bar(g, `<span class="tex-state${r && !r.ok && !t.texBusy ? " bad" : ""}">${state}</span>${r && (nErr || nWarn) ? `<button class="small" data-bar="texissues">${nErr ? tr("✗ {n} 個錯誤", { n: nErr }) : ""}${nErr && nWarn ? " · " : ""}${nWarn ? tr("⚠ {n} 個警告", { n: nWarn }) : ""}</button>` : ""}<span class="sp"></span><label class="tex-auto" title="${esc(tr("按 ⌘/Ctrl+S 存檔時自動編譯"))}"><input type="checkbox" data-texauto ${texAuto() ? "checked" : ""}> ${tr("存檔時編譯")}</label><button class="small primary" data-bar="texbuild" ${t.texBusy ? "disabled" : ""}>${tr("編譯")}</button>`);
 		g.barEl?.querySelector("[data-texauto]")?.addEventListener("change", (e) => pref(`steward.texAuto:${cm.pid}`, e.target.checked ? "1" : "0"));
 	}
 	async function texBuild(t) {
@@ -568,7 +568,7 @@
 		if (t.group.active === t) texBar(t.group, t);
 		if (r.pdf) await texShowPdf(t, r.pdf);
 		const nErr = r.issues.filter((i) => i.level === "error").length;
-		toast(`${r.installed?.length ? `自動安裝了 ${r.installed.join("、")};` : ""}${r.ok ? "編譯完成" : nErr ? `編譯有 ${nErr} 個錯誤` : "編譯失敗,看看完整紀錄"}`);
+		const result = r.ok ? tr("編譯完成") : nErr ? tr("編譯有 {n} 個錯誤", { n: nErr }) : tr("編譯失敗,看看完整紀錄"); toast(r.installed?.length ? tr("自動安裝了 {packages};{result}", { packages: r.installed.join(tr("、")), result }) : result);
 	}
 	/** 編輯器裡把錯誤 / 警告畫成波浪線 */
 	function texMarkers(r) {
@@ -584,7 +584,7 @@
 		const ex = findTab(`file:${pdf}`);
 		if (ex) { texReloadPdf(ex); return; }
 		const g = t.group;
-		if (mobile()) return toast("PDF 已經產生,從檔案列表打開");
+		if (mobile()) return toast(tr("PDF 已經產生,從檔案列表打開"));
 		const ci = cm.cols.indexOf(colOf(g));
 		const target = cm.cols[ci + 1]?.groups[0] || (cm.cols.length < MAX_COLS ? newGroupAt(g, "right") : null);
 		await openFile(pdf, target || g);
@@ -600,10 +600,10 @@
 		if (!r) return;
 		const row = (i, k) => `<button type="button" class="tex-issue ${i.level}" data-ti="${k}"><b>${i.level === "error" ? "✗" : "⚠"}</b> ${esc(i.file || r.main)}${i.line ? `:${i.line}` : ""} — ${esc(i.message)}</button>`;
 		const d = dialog({
-			title: `編譯結果 · ${baseName(r.main)}`,
-			html: `<div class="hint">引擎 ${esc(r.engine)} · ${r.seconds} 秒${r.pdf ? ` · PDF:${esc(r.pdf)}` : ""}。點一項跳到那一行。</div>
-				<div class="tex-list">${r.issues.map(row).join("") || '<div class="hint">沒有錯誤或警告</div>'}</div>
-				<details><summary class="hint">完整編譯紀錄(最後 300 行)</summary><pre class="tex-log">${esc(r.log)}</pre></details>`,
+			title: tr("編譯結果 · {name}", { name: baseName(r.main) }),
+			html: `<div class="hint">${tr("引擎 {engine} · {seconds} 秒{pdf}。點一項跳到那一行。", { engine: esc(r.engine), seconds: r.seconds, pdf: r.pdf ? ` · PDF:${esc(r.pdf)}` : "" })}</div>
+				<div class="tex-list">${r.issues.map(row).join("") || `<div class="hint">${tr("沒有錯誤或警告")}</div>`}</div>
+				<details><summary class="hint">${tr("完整編譯紀錄(最後 300 行)")}</summary><pre class="tex-log">${esc(r.log)}</pre></details>`,
 			buttons: [],
 		});
 		d.querySelector(".box")?.classList.add("ov-box");
@@ -625,7 +625,7 @@
 		if (officeLibs[which]) return officeLibs[which];
 		officeLibs[which] = loadMonaco().then(() => new Promise((ok, no) => {
 			window.require.config({ paths: { jszip: "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min", "docx-preview": "https://cdn.jsdelivr.net/npm/docx-preview@0.3.3/dist/docx-preview.min", xlsx: "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min" } });
-			window.require([which === "word" ? "docx-preview" : "xlsx"], (lib) => ok(lib), () => no(new Error("載入 Office 預覽元件失敗(需要能連上 cdn.jsdelivr.net)")));
+			window.require([which === "word" ? "docx-preview" : "xlsx"], (lib) => ok(lib), () => no(new Error(tr("載入 Office 預覽元件失敗(需要能連上 cdn.jsdelivr.net)"))));
 		})).catch((e) => { delete officeLibs[which]; throw e; });
 		return officeLibs[which];
 	}
@@ -633,7 +633,7 @@
 	const OFFICE_SCHEME = { word: "ms-word", excel: "ms-excel", powerpoint: "ms-powerpoint" };
 	function officeBar(g, t) {
 		const app = OFFICE_NAME[t.app] || "Office";
-		bar(g, `<span class="office-state">${t.editing ? `<b>正在 Office 編輯中</b>${t.editOwner && t.editOwner !== "Office" ? `(${esc(t.editOwner)})` : ""} · 存檔後這裡會自動更新` : `${app} 檔 · 預覽`}</span><span class="sp"></span>${cm.plugins.office ? `<button class="small" data-bar="officehist">歷史版本</button><button class="small primary" data-bar="officeedit">用 ${app} 編輯</button>` : '<span class="hint">要用 Office 編輯,請到 設定 → 外掛 開啟</span>'}`);
+		bar(g, `<span class="office-state">${t.editing ? `<b>${tr("正在 Office 編輯中")}</b>${t.editOwner && t.editOwner !== "Office" ? `(${esc(t.editOwner)})` : ""}${tr(" · 存檔後這裡會自動更新")}` : tr("{app} 檔 · 預覽", { app })}</span><span class="sp"></span>${cm.plugins.office ? `<button class="small" data-bar="officehist">${tr("歷史版本")}</button><button class="small primary" data-bar="officeedit">${tr("用 {app} 編輯", { app })}</button>` : `<span class="hint">${tr("要用 Office 編輯,請到 設定 → 外掛 開啟")}</span>`}`);
 	}
 	/** 用這台電腦上的 Office 打開(WebDAV 專用連結),存檔直接寫回專案裡的原檔 */
 	async function officeEdit(t) {
@@ -643,7 +643,7 @@
 		const a = document.createElement("a");
 		a.href = `${OFFICE_SCHEME[t.app] || "ms-word"}:ofe|u|${url}`;
 		document.body.appendChild(a); a.click(); a.remove();
-		toast(`正在用 ${OFFICE_NAME[t.app] || "Office"} 打開…沒反應的話,這台電腦可能沒有裝 Office`);
+		toast(tr("正在用 {app} 打開…沒反應的話,這台電腦可能沒有裝 Office", { app: OFFICE_NAME[t.app] || "Office" }));
 	}
 	async function officeInfo(t) {
 		const r = await api(`office/info?path=${encodeURIComponent(t.path)}`).catch(() => null);
@@ -656,12 +656,12 @@
 	async function officeHistory(t) {
 		const r = await officeInfo(t);
 		const vs = r?.versions || [];
-		const fmt = (ms) => new Date(ms).toLocaleString("zh-TW", { hour12: false });
+		const fmt = (ms) => new Date(ms).toLocaleString(LANG === "en" ? "en-US" : "zh-TW", { hour12: false });
 		const d = dialog({
-			title: `歷史版本 · ${baseName(t.path)}`,
+			title: tr("歷史版本 · {name}", { name: baseName(t.path) }),
 			html: vs.length
-				? `<div class="hint">每次從 Office 存檔前會留下舊版本(最近 20 版、30 天內)。還原時,目前的版本也會先留一份。</div><div class="ov-list">${vs.map((v) => `<div class="ov-row"><span>${fmt(v.at)}</span><span class="hint">${fmtSize(v.size)}</span><span class="sp"></span><button class="small" data-ovp="${esc(v.id)}">預覽</button><button class="small" data-ovr="${esc(v.id)}">還原</button></div>`).join("")}</div><div class="ov-pv" hidden></div>`
-				: '<p class="hint">還沒有歷史版本。從 Office 存檔之後,每次存檔前的版本會留在這裡。</p>',
+				? `<div class="hint">${tr("每次從 Office 存檔前會留下舊版本(最近 20 版、30 天內)。還原時,目前的版本也會先留一份。")}</div><div class="ov-list">${vs.map((v) => `<div class="ov-row"><span>${fmt(v.at)}</span><span class="hint">${fmtSize(v.size)}</span><span class="sp"></span><button class="small" data-ovp="${esc(v.id)}">${tr("預覽")}</button><button class="small" data-ovr="${esc(v.id)}">${tr("還原")}</button></div>`).join("")}</div><div class="ov-pv" hidden></div>`
+				: `<p class="hint">${tr("還沒有歷史版本。從 Office 存檔之後,每次存檔前的版本會留在這裡。")}</p>`,
 			buttons: [],
 		});
 		d.querySelector(".box")?.classList.add("ov-box");
@@ -672,11 +672,11 @@
 				box.hidden = false;
 				buildOffice({ ...t, label: `${baseName(t.path)}(${fmt(Number(pv.split(".")[0]))})` }, box, `/api/code/${cp()}/office/version?path=${encodeURIComponent(t.path)}&id=${encodeURIComponent(pv)}`);
 			}
-			if (rs && (await confirmBox("還原這個版本", `把「${baseName(t.path)}」還原成 ${fmt(Number(rs.split(".")[0]))} 的版本?目前的版本會先留一份在歷史版本裡。${t.editing ? "注意:這個檔案正在 Office 編輯中,還原後請在 Office 重新打開,否則 Office 存檔時會蓋掉還原的內容。" : ""}`, "還原"))) {
+			if (rs && (await confirmBox(tr("還原這個版本"), tr("把「{name}」還原成 {time} 的版本?目前的版本會先留一份在歷史版本裡。{warning}", { name: baseName(t.path), time: fmt(Number(rs.split(".")[0])), warning: t.editing ? tr("注意:這個檔案正在 Office 編輯中,還原後請在 Office 重新打開,否則 Office 存檔時會蓋掉還原的內容。") : "" }), tr("還原")))) {
 				const x = await api("office/restore", { method: "POST", body: JSON.stringify({ path: t.path, id: rs }) }).catch((err) => ({ error: err.message }));
 				if (x.error) return toast(x.error);
 				d.remove();
-				toast("已還原");
+				toast(tr("已還原"));
 				if (t.pv) buildOffice(t, t.pv, `/api/code/${cp()}/raw?path=${encodeURIComponent(t.path)}`);
 			}
 		});
@@ -687,13 +687,13 @@
 		const canWord = t.app === "word" && ext === "docx";
 		const canExcel = t.app === "excel";
 		if (!canWord && !canExcel) {
-			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><div class="hint">${esc(OFFICE_NAME[t.app] || "Office")} 檔 · ${fmtSize(t.size || 0)}</div><p class="hint">這種檔案網頁上沒辦法預覽,按上面的「用 ${esc(OFFICE_NAME[t.app] || "Office")} 編輯」在你這台電腦打開。</p></div>`;
+			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><div class="hint">${tr("{app} 檔 · {size}", { app: esc(OFFICE_NAME[t.app] || "Office"), size: fmtSize(t.size || 0) })}</div><p class="hint">${tr("這種檔案網頁上沒辦法預覽,按上面的「用 {app} 編輯」在你這台電腦打開。", { app: esc(OFFICE_NAME[t.app] || "Office") })}</p></div>`;
 			return;
 		}
-		n.innerHTML = '<div class="nb-msg">讀取中…</div>';
+		n.innerHTML = `<div class="nb-msg">${tr("讀取中…")}</div>`;
 		try {
 			const [lib, r] = await Promise.all([loadOfficeLib(canWord ? "word" : "excel"), fetch(`${src}&_=${Date.now()}`)]);
-			if (!r.ok) throw new Error(`讀不到這個檔案(${r.status})`);
+			if (!r.ok) throw new Error(tr("讀不到這個檔案({status})", { status: r.status }));
 			const buf = await r.arrayBuffer();
 			if (canWord) {
 				n.innerHTML = '<div class="office-word"></div>';
@@ -711,12 +711,12 @@
 					if (ws?.["!ref"]) {
 						const rg = lib.utils.decode_range(ws["!ref"]);
 						if (rg.e.r - rg.s.r > 2000 || rg.e.c - rg.s.c > 200) {
-							note = `<div class="hint xl-note">工作表很大(${rg.e.r - rg.s.r + 1} 列 × ${rg.e.c - rg.s.c + 1} 欄),只顯示前 2000 列、200 欄。</div>`;
+							note = `<div class="hint xl-note">${tr("工作表很大({rows} 列 × {cols} 欄),只顯示前 2000 列、200 欄。", { rows: rg.e.r - rg.s.r + 1, cols: rg.e.c - rg.s.c + 1 })}</div>`;
 							rg.e.r = Math.min(rg.e.r, rg.s.r + 1999); rg.e.c = Math.min(rg.e.c, rg.s.c + 199);
 							ws["!ref"] = lib.utils.encode_range(rg);
 						}
 					}
-					const html = ws ? lib.utils.sheet_to_html(ws, { header: "", footer: "" }) : "<p>(空的工作表)</p>";
+					const html = ws ? lib.utils.sheet_to_html(ws, { header: "", footer: "" }) : `<p>${tr("(空的工作表)")}</p>`;
 					n.innerHTML = `${names.length > 1 ? `<div class="xl-tabs">${names.map((nm) => `<button type="button" class="small${nm === t.sheet ? " on" : ""}" data-sheet="${esc(nm)}">${esc(nm)}</button>`).join("")}</div>` : ""}${note}<div class="office-xl">${html}</div>`;
 					n.querySelectorAll("[data-sheet]").forEach((b) => (b.onclick = () => { t.sheet = b.dataset.sheet; if (n === t.pv) { t.pos = { sheet: t.sheet, top: 0, left: 0 }; saveSoon(1500); } draw(); }));
 				};
@@ -724,7 +724,7 @@
 				if (n === t.pv) applyPos(t);
 			}
 		} catch (e) {
-			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><p class="hint">預覽失敗:${esc(e.message || String(e))}</p></div>`;
+			n.innerHTML = `<div class="office-info"><div class="oi-name">${esc(t.label)}</div><p class="hint">${tr("預覽失敗:{error}", { error: esc(e.message || String(e)) })}</p></div>`;
 		}
 	}
 	/**
@@ -782,10 +782,10 @@
 	let pdfjsP = null;
 	const loadPdfjs = () => (pdfjsP ||= import(`${PDFJS}/pdf.min.mjs`).then((m) => { m.GlobalWorkerOptions.workerSrc = `${PDFJS}/pdf.worker.min.mjs`; return m; }).catch((e) => { pdfjsP = null; throw e; }));
 	async function buildPdfjs(t, n, src) {
-		n.innerHTML = '<div class="zoomwrap pdfpages"><div class="empty" style="padding:20px">載入 PDF…</div></div>';
+		n.innerHTML = `<div class="zoomwrap pdfpages"><div class="empty" style="padding:20px">${tr("載入 PDF…")}</div></div>`;
 		const wrap = n.firstChild;
 		try {
-			const [lib, data] = await Promise.all([loadPdfjs(), fetch(src).then((r) => { if (!r.ok) throw new Error(`讀取失敗 ${r.status}`); return r.arrayBuffer(); })]);
+			const [lib, data] = await Promise.all([loadPdfjs(), fetch(src).then((r) => { if (!r.ok) throw new Error(tr("讀取失敗 {status}", { status: r.status })); return r.arrayBuffer(); })]);
 			const doc = await lib.getDocument({ data }).promise;
 			t.pdfDoc = doc;
 			wrap.innerHTML = "";
@@ -874,7 +874,7 @@
 			});
 			ro.observe(n);
 		} catch (e) {
-			wrap.innerHTML = `<div class="empty" style="padding:20px">PDF 顯示失敗:${esc(e.message || String(e))}</div>`;
+			wrap.innerHTML = `<div class="empty" style="padding:20px">${tr("PDF 顯示失敗:{error}", { error: esc(e.message || String(e)) })}</div>`;
 		}
 	}
 	/** 每一頁在捲動區裡的實際位置(含縮放) */
@@ -901,7 +901,7 @@
 		const at = pdfWhere(t);
 		t.page = (at?.page ?? 0) + 1;
 		const lab = t.group.barEl?.querySelector(".pdf-page");
-		if (lab && t.group.active === t) lab.textContent = `第 ${t.page} / ${pages.length} 頁`;
+		if (lab && t.group.active === t) lab.textContent = tr("第 {page} / {total} 頁", { page: t.page, total: pages.length });
 	}
 	function surface(g, which) {
 		for (const k of ["editorEl", "diffEl", "previewEl", "emptyEl"]) g[k].hidden = k !== which;
@@ -920,14 +920,14 @@
 				g.editor.setModel(null);
 				g.diff.updateOptions({ readOnly: false, originalEditable: false });
 				g.diff.setModel({ original: t.conflict.model, modified: t.model });
-				bar(g, `<b>這個檔案在你開啟之後被改過了</b><span>左邊是磁碟上的新版本,右邊是你的版本(可以繼續改)</span><span class="sp"></span><button class="small primary" data-bar="mine">用我的覆蓋</button><button class="small" data-bar="theirs">放棄我的,用磁碟版本</button>`);
+				bar(g, `<b>${tr("這個檔案在你開啟之後被改過了")}</b><span>${tr("左邊是磁碟上的新版本,右邊是你的版本(可以繼續改)")}</span><span class="sp"></span><button class="small primary" data-bar="mine">${tr("用我的覆蓋")}</button><button class="small" data-bar="theirs">${tr("放棄我的,用磁碟版本")}</button>`);
 			} else {
 				surface(g, "editorEl");
 				g.diff.setModel(null);
 				g.editor.setModel(t.model);
 				g.editor.updateOptions({ readOnly: !!t.readonly });
 				if (isTex(t.path) && !t.truncated && !t.readonly && cm.plugins.latex) texBar(g, t);
-				else bar(g, t.truncated ? `<span>大檔(${fmtSize(t.size)})唯讀:只顯示開頭和結尾各 ${t.truncated.shown} 行,共 ${t.truncated.total} 行</span><span class="sp"></span><button class="small" data-bar="more">多載入 2000 行</button><button class="small" data-bar="term">在終端機開啟</button>` : t.readonly ? "<span>唯讀</span>" : isMd(t.path) ? `<span class="sp"></span><button class="small" data-bar="mdprev">${mobile() ? "預覽" : "在旁邊預覽"}</button>` : "");
+				else bar(g, t.truncated ? `<span>${tr("大檔({size})唯讀:只顯示開頭和結尾各 {shown} 行,共 {total} 行", { size: fmtSize(t.size), shown: t.truncated.shown, total: t.truncated.total })}</span><span class="sp"></span><button class="small" data-bar="more">${tr("多載入 2000 行")}</button><button class="small" data-bar="term">${tr("在終端機開啟")}</button>` : t.readonly ? `<span>${tr("唯讀")}</span>` : isMd(t.path) ? `<span class="sp"></span><button class="small" data-bar="mdprev">${mobile() ? tr("預覽") : tr("在旁邊預覽")}</button>` : "");
 				if (t.viewState) g.editor.restoreViewState(t.viewState);
 				// 手機:切分頁不自動聚焦編輯器(會跳鍵盤、iOS 還會放大);要打字點一下內容就好
 				if (!mobile() && !matchMedia("(pointer: coarse)").matches) g.editor.focus();
@@ -938,7 +938,7 @@
 			g.diff.updateOptions({ readOnly: true });
 			g.diff.setModel({ original: t.orig, modified: t.mod });
 			if (t.viewState) g.diff.restoreViewState(t.viewState);
-			bar(g, `<span>${esc(t.caption)}</span><span class="sp"></span>${t.which !== "commit" ? '<button class="small" data-bar="openfile">開啟檔案編輯</button>' : ""}`);
+			bar(g, `<span>${esc(t.caption)}</span><span class="sp"></span>${t.which !== "commit" ? `<button class="small" data-bar="openfile">${tr("開啟檔案編輯")}</button>` : ""}`);
 		} else if (t.kind === "nb") {
 			surface(g, "previewEl");
 			const fresh = !t.pv || t.pv.parentNode !== g.previewEl;
@@ -948,7 +948,7 @@
 			const src = findTab(`file:${t.path}`);
 			const ver = src?.model && !src.model.isDisposed() ? src.model.getAlternativeVersionId() : null;
 			if (fresh || (ver !== null && ver !== t.srcVer && !t.dirty)) renderNb(t);
-			bar(g, `<span>${t.readonly ? "Notebook(檔案太大,唯讀)" : "Notebook · 點程式碼編輯,Shift+Enter 執行"}</span><span class="sp"></span><button class="small" data-bar="nbreload">重新載入</button><button class="small" data-bar="nbraw">${mobile() ? "原始 JSON" : "編輯原始 JSON"}</button>`);
+			bar(g, `<span>${t.readonly ? tr("Notebook(檔案太大,唯讀)") : tr("Notebook · 點程式碼編輯,Shift+Enter 執行")}</span><span class="sp"></span><button class="small" data-bar="nbreload">${tr("重新載入")}</button><button class="small" data-bar="nbraw">${mobile() ? tr("原始 JSON") : tr("編輯原始 JSON")}</button>`);
 		} else if (t.kind === "wtmap") {
 			surface(g, "previewEl");
 			const fresh = !t.pv || t.pv.parentNode !== g.previewEl;
@@ -956,13 +956,13 @@
 			if (fresh) wireWtMap(t);
 			showPv(g, t);
 			renderWtMap(t);
-			bar(g, `<span>分支圖:${esc(cm.wts?.repoName || "")} 的 worktree 與 agent 留下的分支</span>`);
+			bar(g, `<span>${tr("分支圖:{repo} 的 worktree 與 agent 留下的分支", { repo: esc(cm.wts?.repoName || "") })}</span>`);
 		} else if (t.kind === "md") {
 			surface(g, "previewEl");
 			pvNode(g, t).classList.add("md");
 			showPv(g, t);
 			renderMd(t);
-			bar(g, `<span>預覽 ${esc(t.path)}(跟著編輯即時更新)</span><span class="sp"></span><button class="small" data-bar="openfile">${mobile() ? "回到編輯" : "開啟原始檔"}</button>`);
+			bar(g, `<span>${tr("預覽 {path}(跟著編輯即時更新)", { path: esc(t.path) })}</span><span class="sp"></span><button class="small" data-bar="openfile">${mobile() ? tr("回到編輯") : tr("開啟原始檔")}</button>`);
 		} else {
 			surface(g, "previewEl");
 			const fresh = !t.pv || t.pv.parentNode !== g.previewEl;
@@ -970,8 +970,8 @@
 			if (fresh) buildPreview(t, n); // 只有第一次(或搬到別的群組)才建立,切回來沿用
 			showPv(g, t);
 			if (t.kind === "office") officeBar(g, t);
-			else if (t.kind === "pdf") bar(g, `<span class="pdf-page">${t.pdfPages ? `第 ${t.page || 1} / ${t.pdfPages.length} 頁` : "PDF"}</span><span class="sp"></span><button class="small" data-bar="zoomout" title="縮小">−</button><button class="small" data-bar="zoomin" title="放大">＋</button>${touch() ? '<button class="small" data-bar="fullview">全螢幕</button>' : ""}<button class="small" data-bar="openraw" title="在瀏覽器的新分頁用內建檢視器打開(可以搜尋文字)">用瀏覽器開啟</button>`);
-			else bar(g, (t.kind === "pdf" || t.kind === "image") && touch() ? '<span>雙指縮放、點兩下放大/還原</span><span class="sp"></span><button class="small" data-bar="fullview">全螢幕</button>' : "");
+			else if (t.kind === "pdf") bar(g, `<span class="pdf-page">${t.pdfPages ? tr("第 {page} / {total} 頁", { page: t.page || 1, total: t.pdfPages.length }) : "PDF"}</span><span class="sp"></span><button class="small" data-bar="zoomout" title="${esc(tr("縮小"))}">−</button><button class="small" data-bar="zoomin" title="${esc(tr("放大"))}">${tr("＋")}</button>${touch() ? `<button class="small" data-bar="fullview">${tr("全螢幕")}</button>` : ""}<button class="small" data-bar="openraw" title="${esc(tr("在瀏覽器的新分頁用內建檢視器打開(可以搜尋文字)"))}">${tr("用瀏覽器開啟")}</button>`);
+			else bar(g, (t.kind === "pdf" || t.kind === "image") && touch() ? `<span>${tr("雙指縮放、點兩下放大/還原")}</span><span class="sp"></span><button class="small" data-bar="fullview">${tr("全螢幕")}</button>` : "");
 		}
 		renderTabs(g);
 		saveSoon();
@@ -993,7 +993,7 @@
 		if (a === "openfile") return openFile(t.path);
 		if (a === "mdprev") return openPreview(t.path);
 		if (a === "nbreload") {
-			if (t.dirty && !(await confirmBox("重新載入", "網頁上還沒存的修改會不見,確定嗎?", "重新載入"))) return;
+			if (t.dirty && !(await confirmBox(tr("重新載入"), tr("網頁上還沒存的修改會不見,確定嗎?"), tr("重新載入")))) return;
 			return renderNb(t, true);
 		}
 		if (a === "nbraw") return openFile(t.path, g, { raw: true });
@@ -1031,7 +1031,7 @@
 					if (d !== t.dirty) { t.dirty = d; renderTabs(t.group); renderProjSelect(); }
 				});
 			} else if (t.kind === "info") {
-				t.info = f.kind === "toolarge" ? `檔案太大(${fmtSize(f.size)}),不在網頁開啟。<br><br><button class="small" onclick="setMode('term');jumpTo('${cm.pid}')">在終端機開啟</button>` : `這是二進位檔(${fmtSize(f.size)}),無法顯示。`;
+				t.info = f.kind === "toolarge" ? `${tr("檔案太大({size}),不在網頁開啟。", { size: fmtSize(f.size) })}<br><br><button class="small" onclick="setMode('term');jumpTo('${cm.pid}')">${tr("在終端機開啟")}</button>` : tr("這是二進位檔({size}),無法顯示。", { size: fmtSize(f.size) });
 			}
 			g.tabs.push(t);
 			// 預覽分頁先開著的話,接上即時更新
@@ -1063,7 +1063,7 @@
 				g = cm.cols[ci + 1]?.groups[0] || (cm.cols.length < MAX_COLS ? newGroupAt(g, "right") : g);
 			}
 		}
-		const t = { key, group: g, kind: "md", path: rel, label: `預覽 ${baseName(rel)}`, title: `${rel}(預覽)`, text, ...(pos ? { pos } : {}) };
+		const t = { key, group: g, kind: "md", path: rel, label: tr("預覽 {name}", { name: baseName(rel) }), title: tr("{path}(預覽)", { path: rel }), text, ...(pos ? { pos } : {}) };
 		if (srcTab?.model) t.sub = watchMd(t, srcTab.model);
 		g.tabs.push(t);
 		setActiveGroup(g);
@@ -1136,7 +1136,7 @@
 			if (f.kind === "text" && !f.truncated) { text = f.content; t.hash = f.hash; }
 			else {
 				const r = await fetch(`/api/code/${cp()}/raw?path=${encodeURIComponent(t.path)}`).catch(() => null);
-				if (!r?.ok) throw new Error(`讀不到這個檔案${r ? `(${r.status})` : ""}`);
+				if (!r?.ok) throw new Error(tr("讀不到這個檔案{status}", { status: r ? `(${r.status})` : "" }));
 				text = await r.text();
 				t.readonly = true;
 			}
@@ -1151,9 +1151,9 @@
 	}
 	async function renderNb(t, force = false) {
 		const box = pvNode(t.group, t);
-		if (!box.childElementCount) box.innerHTML = '<div class="nb-msg">讀取中…</div>';
+		if (!box.childElementCount) box.innerHTML = `<div class="nb-msg">${tr("讀取中…")}</div>`;
 		try { await loadNb(t, force); }
-		catch (e) { box.innerHTML = `<div class="nb-msg">${e instanceof SyntaxError ? `這不是有效的 Notebook(JSON 格式錯誤:${esc(e.message)})。可以用「編輯原始 JSON」修正。` : esc(e.message || String(e))}</div>`; return; }
+		catch (e) { box.innerHTML = `<div class="nb-msg">${e instanceof SyntaxError ? tr("這不是有效的 Notebook(JSON 格式錯誤:{error})。可以用「編輯原始 JSON」修正。", { error: esc(e.message) }) : esc(e.message || String(e))}</div>`; return; }
 		[t.mdLib, t.math] = await Promise.all([loadMd().catch(() => null), loadMath()]);
 		drawNb(t);
 		if (cm.plugins.notebook) { nbConnect(t); nbLoadPythons(t); }
@@ -1168,7 +1168,7 @@
 		const body = el("article", "nb-body");
 		for (const c of t.nb.cells) body.appendChild(nbCellEl(t, c));
 		const add = el("div", "nb-addrow");
-		add.innerHTML = '<button class="small" data-nbadd="code">+ 程式碼</button><button class="small" data-nbadd="markdown">+ Markdown</button>';
+		add.innerHTML = `<button class="small" data-nbadd="code">${tr("+ 程式碼")}</button><button class="small" data-nbadd="markdown">+ Markdown</button>`;
 		add.onclick = (e) => { const k = e.target.closest("[data-nbadd]")?.dataset.nbadd; if (k) nbInsert(t, t.nb.cells.length, k); };
 		body.appendChild(add);
 		root.appendChild(body);
@@ -1184,7 +1184,7 @@
 		cell.dataset.id = c._id;
 		c._el = cell;
 		const tools = el("div", "nb-celltools");
-		tools.innerHTML = `${c.cell_type === "code" ? '<button class="small" data-ct="run" title="執行(Shift+Enter)">▶ 執行</button>' : '<button class="small" data-ct="edit">編輯</button>'}<button class="small" data-ct="up" title="上移">↑</button><button class="small" data-ct="down" title="下移">↓</button><button class="small" data-ct="addcode" title="在下面加程式碼">+ 程式碼</button><button class="small" data-ct="addmd" title="在下面加 Markdown">+ MD</button><button class="small" data-ct="del" title="刪除">刪除</button>`;
+		tools.innerHTML = `${c.cell_type === "code" ? `<button class="small" data-ct="run" title="${esc(tr("執行(Shift+Enter)"))}">${tr("▶ 執行")}</button>` : `<button class="small" data-ct="edit">${tr("編輯")}</button>`}<button class="small" data-ct="up" title="${esc(tr("上移"))}">↑</button><button class="small" data-ct="down" title="${esc(tr("下移"))}">↓</button><button class="small" data-ct="addcode" title="${esc(tr("在下面加程式碼"))}">${tr("+ 程式碼")}</button><button class="small" data-ct="addmd" title="${esc(tr("在下面加 Markdown"))}">+ MD</button><button class="small" data-ct="del" title="${esc(tr("刪除"))}">${tr("刪除")}</button>`;
 		tools.onclick = (e) => {
 			const a = e.target.closest("[data-ct]")?.dataset.ct;
 			const i = t.nb.cells.indexOf(c);
@@ -1237,7 +1237,7 @@
 			const mime = a && Object.keys(a)[0];
 			return mime ? `src="data:${mime};base64,${nbText(a[mime]).replace(/\s/g, "")}"` : m;
 		});
-		box.innerHTML = h || '<span class="nb-empty">(空白的 Markdown,點兩下編輯)</span>';
+		box.innerHTML = h || `<span class="nb-empty">${tr("(空白的 Markdown,點兩下編輯)")}</span>`;
 		for (const img of box.querySelectorAll("img[src]")) {
 			const u = img.getAttribute("src");
 			if (u && !/^([a-z]+:|\/\/|#|\/)/i.test(u)) {
@@ -1323,7 +1323,7 @@
 		if (d["text/latex"]) { box.classList.add("nb-latex"); box.textContent = nbText(d["text/latex"]); nbMath(t, box); return box; }
 		if (d["text/plain"]) { const pre = el("pre", "nb-out nb-stream"); pre.textContent = stripAnsi(nbText(d["text/plain"])); return pre; }
 		const kinds = Object.keys(d);
-		if (kinds.length) { box.classList.add("nb-note"); box.textContent = `(互動式輸出 ${kinds.join(", ")},網頁無法顯示)`; return box; }
+		if (kinds.length) { box.classList.add("nb-note"); box.textContent = tr("(互動式輸出 {kinds},網頁無法顯示)", { kinds: kinds.join(", ") }); return box; }
 		return null;
 	}
 	function nbAppendOutput(t, outs, o) {
@@ -1404,42 +1404,42 @@
 		try { await t.kernelSwitch; }
 		finally { t.kernelSwitch = null; nbToolbar(t); }
 	}
-	const KSTATE = { off: "kernel 未啟動", starting: "kernel 啟動中…", idle: "kernel 閒置", busy: "執行中…", dead: "kernel 停止了" };
+	const KSTATE = { off: tr("kernel 未啟動"), starting: tr("kernel 啟動中…"), idle: tr("kernel 閒置"), busy: tr("執行中…"), dead: tr("kernel 停止了") };
 	function nbToolbar(t) {
 		const bar = t.pv?.querySelector(".nb-toolbar");
 		if (!bar) return;
 		const env = t.envs?.find((e) => e.id === t.kernelId);
-		const groups = [["kernel", "Jupyter 核心"], ["project", "專案環境"], ["conda", "conda"], ["pyenv", "pyenv"], ["custom", "自己加的"], ["own", "專案管家的 Jupyter 環境"], ["system", "系統"]];
+		const groups = [["kernel", tr("Jupyter 核心")], ["project", tr("專案環境")], ["conda", "conda"], ["pyenv", "pyenv"], ["custom", tr("自己加的")], ["own", tr("專案管家的 Jupyter 環境")], ["system", tr("系統")]];
 		const opts = groups.map(([group, label]) => {
 			const items = (t.envs || []).filter((e) => e.group === group);
-			return items.length ? `<optgroup label="${esc(label)}">${items.map((e) => `<option value="${esc(e.id)}" ${e.id === t.kernelId ? "selected" : ""}>${esc(e.label)}${e.kind === "python" ? (e.version ? ` · Python ${esc(e.version)}` : "") : (e.language ? ` · ${esc(e.language)}` : "")}${e.ready ? "" : ` (${esc(e.why || "不能用")})`}</option>`).join("")}</optgroup>` : "";
+			return items.length ? `<optgroup label="${esc(label)}">${items.map((e) => `<option value="${esc(e.id)}" ${e.id === t.kernelId ? "selected" : ""}>${esc(e.label)}${e.kind === "python" ? (e.version ? ` · Python ${esc(e.version)}` : "") : (e.language ? ` · ${esc(e.language)}` : "")}${e.ready ? "" : ` (${esc(e.why || tr("不能用"))})`}</option>`).join("")}</optgroup>` : "";
 		}).join("");
 		const busy = t.kstate === "busy" || t.kstate === "starting";
 		const switching = !!t.kernelSwitch;
 		const language = env?.kind === "python" ? `Python${env.version ? ` ${env.version}` : ""}` : (t.kernelLanguage || env?.language || "");
-		const install = env && !env.ready && (env.kind === "python" || env.why === "需要一個有 jupyter_client 的 Python 才能啟動這個核心");
+		const install = env && !env.ready && (env.kind === "python" || env.needsBridge);
 		if (!cm.plugins.notebook) {
-			bar.innerHTML = `<span class="hint">要在網頁上執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」(可以照常檢視與編輯)</span><span class="sp"></span><button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled" : ""}>${t.dirty ? "● 存檔" : "存檔"}</button>`;
+			bar.innerHTML = `<span class="hint">${tr("要在網頁上執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」(可以照常檢視與編輯)")}</span><span class="sp"></span><button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled" : ""}>${t.dirty ? tr("● 存檔") : tr("存檔")}</button>`;
 			bar.onclick = (e) => { if (e.target.closest("[data-nb=save]")) saveNb(t); };
 			return;
 		}
-		bar.innerHTML = `<select class="nb-py" title="選擇執行核心或 Python 環境" ${switching ? "disabled" : ""}>${opts || '<option value="">沒有可用的環境</option>'}<option value="nb:add">＋ 指定其他 Python 直譯器…</option><option value="nb:refresh">↻ 重新整理清單</option></select>
-			${env?.group === "custom" ? `<button class="small" data-nb="remove" ${switching ? "disabled" : ""}>移除</button>` : ""}
-			${install ? `<button class="small primary" data-nb="install" ${switching ? "disabled" : ""}>${env.kind === "kernelspec" ? "在管家自己的環境安裝核心橋接套件" : (env.own ? "建立並安裝 ipykernel" : "在這個環境安裝 ipykernel")}</button>` : ""}
+		bar.innerHTML = `<select class="nb-py" title="${esc(tr("選擇執行核心或 Python 環境"))}" ${switching ? "disabled" : ""}>${opts || `<option value="">${tr("沒有可用的環境")}</option>`}<option value="nb:add">${tr("＋ 指定其他 Python 直譯器…")}</option><option value="nb:refresh">${tr("↻ 重新整理清單")}</option></select>
+			${env?.group === "custom" ? `<button class="small" data-nb="remove" ${switching ? "disabled" : ""}>${tr("移除")}</button>` : ""}
+			${install ? `<button class="small primary" data-nb="install" ${switching ? "disabled" : ""}>${env.kind === "kernelspec" ? tr("在管家自己的環境安裝核心橋接套件") : (env.own ? tr("建立並安裝 ipykernel") : tr("在這個環境安裝 ipykernel"))}</button>` : ""}
 			<span class="nb-kstate nb-k-${t.kstate}">${KSTATE[t.kstate] || t.kstate}</span>${language ? `<span class="hint">${esc(language)}</span>` : ""}
 			<span class="sp"></span>
-			<button class="small" data-nb="runall" ${t.readonly || switching ? "disabled" : ""}>▶ 全部執行</button>
-			<button class="small" data-nb="interrupt" ${busy && !switching ? "" : "disabled"}>■ 中斷</button>
-			<button class="small" data-nb="restart" ${t.kstate === "off" || switching ? "disabled" : ""}>↻ 重新啟動</button>
-			<button class="small" data-nb="clear" ${t.readonly ? "disabled" : ""}>清除輸出</button>
-			<button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? "disabled title=\"檔案太大,唯讀\"" : ""}>${t.dirty ? "● 存檔" : "存檔"}</button>`;
+			<button class="small" data-nb="runall" ${t.readonly || switching ? "disabled" : ""}>${tr("▶ 全部執行")}</button>
+			<button class="small" data-nb="interrupt" ${busy && !switching ? "" : "disabled"}>${tr("■ 中斷")}</button>
+			<button class="small" data-nb="restart" ${t.kstate === "off" || switching ? "disabled" : ""}>${tr("↻ 重新啟動")}</button>
+			<button class="small" data-nb="clear" ${t.readonly ? "disabled" : ""}>${tr("清除輸出")}</button>
+			<button class="small ${t.dirty ? "primary" : ""}" data-nb="save" ${t.readonly ? `disabled title="${esc(tr("檔案太大,唯讀"))}"` : ""}>${t.dirty ? tr("● 存檔") : tr("存檔")}</button>`;
 		bar.querySelector(".nb-py").onchange = async (e) => {
 			const id = e.target.value;
 			e.target.value = t.kernelId || "";
 			try {
 				if (id === "nb:refresh") return await nbLoadPythons(t, true);
 				if (id === "nb:add") {
-					const path = await askName("指定其他 Python 直譯器", "", "Python 直譯器的絕對路徑");
+					const path = await askName(tr("指定其他 Python 直譯器"), "", tr("Python 直譯器的絕對路徑"));
 					if (!path) return;
 					const r = await nbApi("add-python", { path });
 					if (r.error) return toast(r.error);
@@ -1456,7 +1456,7 @@
 			const a = e.target.closest("[data-nb]")?.dataset.nb;
 			if (!a) return;
 			if (a === "remove") {
-				if (!env || !(await confirmBox("移除自訂 Python", `只從清單移除,不會刪除直譯器：\n${env.python}`, "移除"))) return;
+				if (!env || !(await confirmBox(tr("移除自訂 Python"), tr("只從清單移除,不會刪除直譯器：\n{path}", { path: env.python }), tr("移除")))) return;
 				try {
 					if (t.kernelSwitch) await t.kernelSwitch;
 					const remove = async () => {
@@ -1473,11 +1473,11 @@
 				return;
 			}
 			if (a === "install") {
-				e.target.disabled = true; e.target.textContent = "安裝中(約 1 分鐘)…";
+				e.target.disabled = true; e.target.textContent = tr("安裝中(約 1 分鐘)…");
 				const r = await nbApi("install", { path: t.path, id: t.kernelId }).catch((err) => ({ error: err.message }));
 				if (r.error) toast(r.error);
 				else {
-					toast(env.kind === "kernelspec" ? "已安裝核心橋接套件" : "已安裝 ipykernel");
+					toast(env.kind === "kernelspec" ? tr("已安裝核心橋接套件") : tr("已安裝 ipykernel"));
 					t.kernelId = env.kind === "kernelspec" ? env.id : (r.id || env.id);
 					t.python = r.python || env.python;
 					nbRememberKernel(t);
@@ -1487,7 +1487,7 @@
 			if (a === "runall") return nbRun(t, t.nb.cells.filter((c) => c.cell_type === "code"));
 			if (a === "interrupt") return nbApi("interrupt", { path: t.path }).catch(fail);
 			if (a === "restart") {
-				if (!(await confirmBox("重新啟動 kernel", "所有變數都會清空,確定嗎?", "重新啟動"))) return;
+				if (!(await confirmBox(tr("重新啟動 kernel"), tr("所有變數都會清空,確定嗎?"), tr("重新啟動")))) return;
 				t.kstate = "starting"; nbToolbar(t);
 				for (const [, c] of t.runs) nbFinishRun(t, c, true);
 				return nbApi("restart", { path: t.path }).catch(fail);
@@ -1505,18 +1505,18 @@
 		if (t.kernelSwitch) { try { await t.kernelSwitch; } catch { return false; } }
 		if (t.kstate !== "off" && t.kstate !== "dead") return true;
 		const env = t.envs?.find((e) => e.id === t.kernelId);
-		if (!env) { toast("找不到可以用的執行核心或 Python 環境"); return false; }
-		if (!env.ready) { toast(env.why || "這個環境目前不能用"); return false; }
+		if (!env) { toast(tr("找不到可以用的執行核心或 Python 環境")); return false; }
+		if (!env.ready) { toast(env.why || tr("這個環境目前不能用")); return false; }
 		t.kstate = "starting"; nbToolbar(t);
 		const ready = new Promise((ok) => { t.onReady = ok; });
 		const r = await nbApi("start", { path: t.path, id: t.kernelId }).catch((e) => ({ error: e.message }));
 		if (r.error) { t.onReady?.(false); t.onReady = null; t.kstate = "off"; nbToolbar(t); toast(r.error); return false; }
 		const ok = await Promise.race([ready, new Promise((x) => setTimeout(() => x(false), 120_000))]);
-		if (!ok) { toast("kernel 啟動失敗或太久沒回應"); t.kstate = "off"; nbToolbar(t); }
+		if (!ok) { toast(tr("kernel 啟動失敗或太久沒回應")); t.kstate = "off"; nbToolbar(t); }
 		return !!ok;
 	}
 	async function nbRun(t, cells) {
-		if (!cm.plugins.notebook) return toast("要執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」");
+		if (!cm.plugins.notebook) return toast(tr("要執行 Notebook,請到 設定 → 外掛 開啟「Notebook 執行」"));
 		cells = cells.filter((c) => c.cell_type === "code");
 		if (!cells.length || t.readonly) return;
 		for (const c of cells) if (c._editing) c._el.querySelector("textarea.nb-edit")?.blur();
@@ -1547,7 +1547,7 @@
 		if (pr) pr.textContent = c.execution_count != null ? `[${c.execution_count}]` : "[ ]";
 		if ((aborted || !c._started) && c._el && !c.outputs?.length) {
 			const outs = c._el.querySelector(".nb-outs");
-			outs?.appendChild(el("div", "nb-row nb-outrow", `<div class="nb-prompt"></div><div class="nb-out nb-note">${aborted ? "沒有執行" : "沒有執行(前面的儲存格出錯或被中斷)"}</div>`));
+			outs?.appendChild(el("div", "nb-row nb-outrow", `<div class="nb-prompt"></div><div class="nb-out nb-note">${aborted ? tr("沒有執行") : tr("沒有執行(前面的儲存格出錯或被中斷)")}</div>`));
 		}
 	}
 	function nbEvent(t, ev) {
@@ -1560,7 +1560,7 @@
 			}
 			nbToolbar(t); return;
 		}
-		if (ev.ev === "ready") { t.kstate = "idle"; t.kernelLanguage = ev.language || null; t.onReady?.(true); t.onReady = null; nbToolbar(t); if (ev.restarted) toast("kernel 已重新啟動"); return; }
+		if (ev.ev === "ready") { t.kstate = "idle"; t.kernelLanguage = ev.language || null; t.onReady?.(true); t.onReady = null; nbToolbar(t); if (ev.restarted) toast(tr("kernel 已重新啟動")); return; }
 		if (ev.ev === "status") {
 			if (!ev.id && ev.state) { t.kstate = ev.state === "starting" ? "starting" : t.kstate; }
 			else if (ev.state === "busy" || ev.state === "idle") t.kstate = ev.state === "busy" ? "busy" : (t.runs.size > 1 ? "busy" : "idle");
@@ -1571,11 +1571,11 @@
 			for (const [, rc] of t.runs) nbFinishRun(t, rc, true);
 			t.kstate = ev.ev === "dead" ? "dead" : "off";
 			t.onReady?.(false); t.onReady = null;
-			if (ev.message) toast(`kernel 結束了:${ev.message}`);
+			if (ev.message) toast(tr("kernel 結束了:{message}", { message: ev.message }));
 			nbToolbar(t);
 			return;
 		}
-		if (ev.ev === "error" && !c) { toast(ev.message || "kernel 發生錯誤"); return; }
+		if (ev.ev === "error" && !c) { toast(ev.message || tr("kernel 發生錯誤")); return; }
 		if (!c) return; // 別的瀏覽器跑的
 		if (ev.ev === "started") {
 			c._started = true; c.execution_count = ev.execution_count;
@@ -1598,7 +1598,7 @@
 		} else if (ev.ev === "done") {
 			nbFinishRun(t, c);
 			if (!t.runs.size) { t.kstate = "idle"; nbToolbar(t); }
-		} else if (ev.ev === "error") { toast(ev.message || "執行失敗"); nbFinishRun(t, c, true); }
+		} else if (ev.ev === "error") { toast(ev.message || tr("執行失敗")); nbFinishRun(t, c, true); }
 	}
 	/** 存檔:輸出、執行編號都寫回 .ipynb(跟 Jupyter 存的格式一樣) */
 	async function saveNb(t, force = false) {
@@ -1616,12 +1616,12 @@
 			const r = await api("file", { method: "PUT", body: JSON.stringify({ path: t.path, content: `${JSON.stringify(clean, null, 1)}\n`, baseHash: t.hash, force }) });
 			t.hash = r.hash; t.dirty = false;
 			renderTabs(t.group); nbToolbar(t);
-			toast("已存檔");
+			toast(tr("已存檔"));
 			cm.dirs = {}; renderFiles(); refreshGit();
 			return true;
 		} catch (e) {
 			if (e.status === 409) {
-				if (await confirmBox("檔案在外面被改過", "這個 notebook 在你開啟之後被別的程式改過了。要用網頁上的版本覆蓋嗎?(取消就保留磁碟上的版本,你可以按「重新載入」看最新內容)", "用網頁的版本覆蓋")) return saveNb(t, true);
+				if (await confirmBox(tr("檔案在外面被改過"), tr("這個 notebook 在你開啟之後被別的程式改過了。要用網頁上的版本覆蓋嗎?(取消就保留磁碟上的版本,你可以按「重新載入」看最新內容)"), tr("用網頁的版本覆蓋"))) return saveNb(t, true);
 			} else fail(e);
 			return false;
 		}
@@ -1649,7 +1649,7 @@
 			t.savedVersion = t.model.getAlternativeVersionId(); t.dirty = false;
 			if (g.active === t) activate(g, t); else renderTabs(g);
 			renderProjSelect();
-			toast("已存檔");
+			toast(tr("已存檔"));
 			cm.dirs = {}; renderFiles(); refreshGit();
 			if (isTex(t.path) && texAuto()) texBuild(t);
 			return true;
@@ -1668,12 +1668,12 @@
 		if (t.dirty && !force) {
 			const canSave = !t.readonly && (t.kind === "nb" ? !!t.nb : !!t.model);
 			const d = dialog({
-				title: "還沒存檔",
-				html: `<p>「${esc(t.label)}」有還沒存的修改。</p>`,
+				title: tr("還沒存檔"),
+				html: `<p>${tr("「{name}」有還沒存的修改。", { name: esc(t.label) })}</p>`,
 				buttons: [
-					{ label: "取消" },
-					{ label: "不存直接關閉", onClick: () => closeTab(t, true) },
-					...(canSave ? [{ label: "存檔並關閉", primary: true, onClick: async () => { if (await saveTab(t)) closeTab(t, true); } }] : []),
+					{ label: tr("取消") },
+					{ label: tr("不存直接關閉"), onClick: () => closeTab(t, true) },
+					...(canSave ? [{ label: tr("存檔並關閉"), primary: true, onClick: async () => { if (await saveTab(t)) closeTab(t, true); } }] : []),
 				],
 			});
 			// Enter = 存檔並關閉(沒辦法存就是「不存直接關閉」)
@@ -1724,7 +1724,7 @@
 		for (const t of watch) {
 			const s = stamps[t.path];
 			if (!s) continue;
-			if (s.gone) { if (!t.label.endsWith("(已刪除)")) { t.label += "(已刪除)"; renderTabs(t.group); } continue; }
+			if (s.gone) { if (!t.label.endsWith(tr("(已刪除)"))) { t.label += tr("(已刪除)"); renderTabs(t.group); } continue; }
 			if (s.hash && s.hash !== t.hash && !t.dirty && !t.conflict) await reloadTab(t);
 		}
 	}, 4000);
@@ -1874,8 +1874,8 @@
 		// 只顯示目前專案;換專案用左上角標題(或點這裡)滑出的專案清單
 		const p = state.projects.find((x) => x.id === cm.pid);
 		const others = [...new Set([...cm.stash.keys()].map((k) => k.split("@")[0]))].filter((id) => id !== cm.pid).map((id) => state.projects.find((x) => x.id === id)?.name).filter(Boolean);
-		const wtPill = cm.wt ? `<span class="wtpill" title="${esc(cm.wt.path)}"><span class="b">⑂ 正在看 worktree:${esc(cm.wt.branch || "(沒有分支)")}</span><button class="small" data-wtexit title="回到專案的主資料夾">回主資料夾</button></span>` : "";
-		$("cvProject").innerHTML = `<span class="nm">${hasUnsaved(cm.pid) ? "● " : ""}${esc(p?.name ?? "(沒有專案)")}</span>${wtPill}${others.length ? `<span class="hint" title="${esc(others.join("、"))}">另有 ${others.length} 個專案沒存</span>` : ""}`;
+		const wtPill = cm.wt ? `<span class="wtpill" title="${esc(cm.wt.path)}"><span class="b">${tr("⑂ 正在看 worktree:{branch}", { branch: esc(cm.wt.branch || tr("(沒有分支)")) })}</span><button class="small" data-wtexit title="${esc(tr("回到專案的主資料夾"))}">${tr("回主資料夾")}</button></span>` : "";
+		$("cvProject").innerHTML = `<span class="nm">${hasUnsaved(cm.pid) ? "● " : ""}${esc(p?.name ?? tr("(沒有專案)"))}</span>${wtPill}${others.length ? `<span class="hint" title="${esc(others.join(tr("、")))}">${tr("另有 {n} 個專案沒存", { n: others.length })}</span>` : ""}`;
 		document.body.classList.toggle("inwt", !!cm.wt);
 		window.renderNav?.();
 	}
@@ -1889,7 +1889,7 @@
 	}
 	async function renderFiles() {
 		const root = $("cvFiles");
-		if (!cm.pid) { root.innerHTML = '<div class="empty" style="padding:12px">先在看板建立或選一個專案</div>'; return; }
+		if (!cm.pid) { root.innerHTML = `<div class="empty" style="padding:12px">${tr("先在看板建立或選一個專案")}</div>`; return; }
 		const rows = [];
 		const walk = async (rel, depth) => {
 			const entries = cm.dirs[rel] ?? (await loadDir(rel).catch((e) => { rows.push(`<div class="hint" style="padding:6px 10px">${esc(e.message)}</div>`); return []; }));
@@ -1897,12 +1897,12 @@
 				const open = e.type === "dir" && cm.expanded.has(e.rel);
 				const g = e.git ? `<span class="g g-${e.git === "•" ? "dot" : e.git}">${e.git}</span>` : '<span class="g"></span>';
 				rows.push(`<div class="tree-row${e.ignored ? " ign" : ""}${cm.selRow === e.rel ? " sel" : ""}" data-rel="${esc(e.rel)}" data-type="${e.type}" style="padding-left:${8 + depth * 14}px" title="${esc(e.rel)}${e.type === "file" ? ` · ${fmtSize(e.size)}` : ""}" ${e.type === "file" && !mobile() ? 'draggable="true"' : ""}>
-					<span class="tw">${e.type === "dir" ? (open ? "▾" : "▸") : ""}</span><span class="nm">${esc(e.name)}</span>${g}<button class="more" data-more title="更多">⋯</button></div>`);
+					<span class="tw">${e.type === "dir" ? (open ? "▾" : "▸") : ""}</span><span class="nm">${esc(e.name)}</span>${g}<button class="more" data-more title="${esc(tr("更多"))}">⋯</button></div>`);
 				if (open) await walk(e.rel, depth + 1);
 			}
 		};
 		await walk("", 0);
-		root.innerHTML = `<div class="cv-tools"><button data-act="newfile" title="新增檔案">＋檔案</button><button data-act="newdir" title="新增資料夾">＋資料夾</button><button data-act="upload" title="從這台電腦上傳檔案或資料夾(也可以直接把檔案拖到下面的檔案樹)">⇪ 上傳</button><button data-act="collapse" title="全部收合">收合</button><button data-act="hidden" title="顯示/隱藏 . 開頭的檔案">${cm.hidden ? "隱藏 ." : "顯示 ."}</button><button data-act="reload" title="重新整理">↻</button><button data-act="term" title="在終端機開啟這個專案">終端機</button></div>${rows.join("") || '<div class="empty" style="padding:12px">空的資料夾</div>'}`;
+		root.innerHTML = `<div class="cv-tools"><button data-act="newfile" title="${esc(tr("新增檔案"))}">${tr("＋檔案")}</button><button data-act="newdir" title="${esc(tr("新增資料夾"))}">${tr("＋資料夾")}</button><button data-act="upload" title="${esc(tr("從這台電腦上傳檔案或資料夾(也可以直接把檔案拖到下面的檔案樹)"))}">${tr("⇪ 上傳")}</button><button data-act="collapse" title="${esc(tr("全部收合"))}">${tr("收合")}</button><button data-act="hidden" title="${esc(tr("顯示/隱藏 . 開頭的檔案"))}">${cm.hidden ? tr("隱藏 .") : tr("顯示 .")}</button><button data-act="reload" title="${esc(tr("重新整理"))}">↻</button><button data-act="term" title="${esc(tr("在終端機開啟這個專案"))}">${tr("終端機")}</button></div>${rows.join("") || `<div class="empty" style="padding:12px">${tr("空的資料夾")}</div>`}`;
 	}
 	$("cvFiles").addEventListener("click", async (e) => {
 		const act = e.target.closest("[data-act]")?.dataset.act;
@@ -1939,14 +1939,14 @@
 	});
 	function rowMenu(rel, type, x, y) {
 		const items = [
-			{ label: "重新命名", run: () => renameItem(rel) },
-			{ label: "刪除(移到垃圾桶)", run: () => trashItem(rel, type) },
-			{ label: "複製路徑", run: () => navigator.clipboard?.writeText(rel).then(() => toast("已複製路徑"), () => toast(rel)) },
+			{ label: tr("重新命名"), run: () => renameItem(rel) },
+			{ label: tr("刪除(移到垃圾桶)"), run: () => trashItem(rel, type) },
+			{ label: tr("複製路徑"), run: () => navigator.clipboard?.writeText(rel).then(() => toast(tr("已複製路徑")), () => toast(rel)) },
 		];
-		if (type === "file" && !mobile()) items.unshift({ label: "在右邊開啟", run: () => openToSide(rel) });
-		if (type === "file" && isMd(rel)) items.unshift({ label: "預覽 Markdown", run: () => openPreview(rel) });
-		if (type === "file" && isNb(rel)) items.unshift({ label: "以原始 JSON 開啟", run: () => openFile(rel, cm.activeGroup, { raw: true }) });
-		if (type === "dir") items.unshift({ label: "上傳檔案到這裡", run: () => pickAndUpload(rel, false) }, { label: "上傳資料夾到這裡", run: () => pickAndUpload(rel, true) }, { label: "在這裡新增檔案", run: () => toolAct("newfile", rel) }, { label: "在這裡新增資料夾", run: () => toolAct("newdir", rel) });
+		if (type === "file" && !mobile()) items.unshift({ label: tr("在右邊開啟"), run: () => openToSide(rel) });
+		if (type === "file" && isMd(rel)) items.unshift({ label: tr("預覽 Markdown"), run: () => openPreview(rel) });
+		if (type === "file" && isNb(rel)) items.unshift({ label: tr("以原始 JSON 開啟"), run: () => openFile(rel, cm.activeGroup, { raw: true }) });
+		if (type === "dir") items.unshift({ label: tr("上傳檔案到這裡"), run: () => pickAndUpload(rel, false) }, { label: tr("上傳資料夾到這裡"), run: () => pickAndUpload(rel, true) }, { label: tr("在這裡新增檔案"), run: () => toolAct("newfile", rel) }, { label: tr("在這裡新增資料夾"), run: () => toolAct("newdir", rel) });
 		menu(x, y, items);
 	}
 	async function openToSide(rel) {
@@ -1963,8 +1963,8 @@
 	const UPLOAD_LIMIT = 500 * 1024 * 1024;
 	function uploadMenu(base, x, y) {
 		menu(x, y, [
-			{ label: `上傳檔案${base ? `到 ${base}/` : "到專案根目錄"}`, run: () => pickAndUpload(base, false) },
-			{ label: `上傳整個資料夾${base ? `到 ${base}/` : ""}`, run: () => pickAndUpload(base, true) },
+			{ label: base ? tr("上傳檔案到 {path}/", { path: base }) : tr("上傳檔案到專案根目錄"), run: () => pickAndUpload(base, false) },
+			{ label: base ? tr("上傳整個資料夾到 {path}/", { path: base }) : tr("上傳整個資料夾"), run: () => pickAndUpload(base, true) },
 		]);
 	}
 	function pickAndUpload(base, folder) {
@@ -2002,19 +2002,19 @@
 			x.open("PUT", `/api/code/${cp()}/upload?path=${encodeURIComponent(path)}&overwrite=${overwrite ? 1 : 0}`);
 			x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
 			x.onload = () => { let d = null; try { d = JSON.parse(x.responseText); } catch {} resolve({ status: x.status, data: d }); };
-			x.onerror = () => resolve({ status: 0, data: { error: "連線中斷" } });
+			x.onerror = () => resolve({ status: 0, data: { error: tr("連線中斷") } });
 			x.send(file);
 		});
 	}
 	function askConflict(path, remaining) {
 		return new Promise((resolve) => {
 			const d = dialog({
-				title: "已經有同名的檔案",
-				html: `<p>「${esc(path)}」已經存在。覆蓋的話,舊的檔案會先移到 Mac 的垃圾桶。</p>`,
+				title: tr("已經有同名的檔案"),
+				html: `<p>${tr("「{path}」已經存在。覆蓋的話,舊的檔案會先移到 Mac 的垃圾桶。", { path: esc(path) })}</p>`,
 				buttons: [
-					...(remaining > 0 ? [{ label: `之後全部略過`, onClick: () => resolve("skipAll") }, { label: `之後全部覆蓋`, onClick: () => resolve("overwriteAll") }] : []),
-					{ label: "略過", onClick: () => resolve("skip") },
-					{ label: "覆蓋", primary: true, onClick: () => resolve("overwrite") },
+					...(remaining > 0 ? [{ label: tr("之後全部略過"), onClick: () => resolve("skipAll") }, { label: tr("之後全部覆蓋"), onClick: () => resolve("overwriteAll") }] : []),
+					{ label: tr("略過"), onClick: () => resolve("skip") },
+					{ label: tr("覆蓋"), primary: true, onClick: () => resolve("overwrite") },
 				],
 			});
 			d.querySelector("[data-x]").addEventListener("click", () => resolve("cancel"));
@@ -2023,10 +2023,10 @@
 	let uploading = false;
 	async function uploadFiles(list, base = "") {
 		if (!list.length || !cm.pid) return;
-		if (uploading) return toast("還有檔案在上傳,等它傳完");
+		if (uploading) return toast(tr("還有檔案在上傳,等它傳完"));
 		const tooBig = list.filter((x) => x.file.size > UPLOAD_LIMIT);
 		list = list.filter((x) => x.file.size <= UPLOAD_LIMIT);
-		if (tooBig.length) toast(`${tooBig.length} 個檔案超過 500 MB,略過`);
+		if (tooBig.length) toast(tr("{n} 個檔案超過 500 MB,略過", { n: tooBig.length }));
 		uploading = true;
 		const bar = el("div", "cv-upload");
 		document.body.appendChild(bar);
@@ -2037,7 +2037,7 @@
 				if (cm.pid !== pid) break; // 換專案就停
 				const { file, rel } = list[i];
 				const path = base ? `${base}/${rel}` : rel;
-				const show = (frac) => { bar.textContent = `上傳中 ${i + 1}/${list.length} · ${rel} · ${Math.round(frac * 100)}%`; };
+				const show = (frac) => { bar.textContent = tr("上傳中 {current}/{total} · {path} · {percent}%", { current: i + 1, total: list.length, path: rel, percent: Math.round(frac * 100) }); };
 				show(0);
 				let r = await uploadOne(file, path, policy === "overwrite", show);
 				if (r.status === 409 && r.data?.exists) {
@@ -2049,13 +2049,13 @@
 					r = await uploadOne(file, path, true, show);
 				}
 				if (r.status === 200) ok++;
-				else { failed++; lastErr = r.data?.error || `錯誤 ${r.status}`; }
+				else { failed++; lastErr = r.data?.error || tr("錯誤 {status}", { status: r.status }); }
 			}
 		} finally {
 			uploading = false;
 			bar.remove();
 		}
-		toast(`已上傳 ${ok} 個檔案${skipped ? `,略過 ${skipped} 個` : ""}${failed ? `,失敗 ${failed} 個(${lastErr})` : ""}`);
+		const counts = { ok, skipped, failed, error: lastErr }; toast(failed ? (skipped ? tr("已上傳 {ok} 個檔案,略過 {skipped} 個,失敗 {failed} 個({error})", counts) : tr("已上傳 {ok} 個檔案,失敗 {failed} 個({error})", counts)) : skipped ? tr("已上傳 {ok} 個檔案,略過 {skipped} 個", counts) : tr("已上傳 {n} 個檔案", { n: ok }));
 		if (base) { let d = base; while (d) { cm.expanded.add(d); d = dirOf(d); } }
 		cm.dirs = {};
 		renderFiles();
@@ -2093,7 +2093,7 @@
 		e.preventDefault();
 		e.stopPropagation();
 		const g = allGroups().find((x) => x.el.contains(e.target));
-		if (!g) return toast("把檔案拖到左邊的檔案樹就能上傳");
+		if (!g) return toast(tr("把檔案拖到左邊的檔案樹就能上傳"));
 		const base = g.active?.path ? dirOf(g.active.path) : "";
 		uploadFiles(await droppedFiles(e.dataTransfer), base);
 	}, true);
@@ -2103,7 +2103,7 @@
 		if (act === "collapse") { cm.expanded = new Set([""]); return renderFiles(); }
 		if (act === "hidden") { cm.hidden = !cm.hidden; cm.dirs = {}; return renderFiles(); }
 		if (act === "term") { setMode("term"); return jumpTo(cm.pid); }
-		const name = await askName(act === "newfile" ? "新增檔案" : "新增資料夾", "", base ? `在 ${base}/ 底下` : "在專案根目錄");
+		const name = await askName(act === "newfile" ? tr("新增檔案") : tr("新增資料夾"), "", base ? tr("在 {path}/ 底下", { path: base }) : tr("在專案根目錄"));
 		if (!name) return;
 		const rel = base ? `${base}/${name}` : name;
 		try {
@@ -2115,53 +2115,53 @@
 		} catch (e) { fail(e); }
 	}
 	async function renameItem(rel) {
-		const name = await askName("重新命名", baseName(rel));
+		const name = await askName(tr("重新命名"), baseName(rel));
 		if (!name || name === baseName(rel)) return;
 		const to = dirOf(rel) ? `${dirOf(rel)}/${name}` : name;
 		try {
 			await api("fs", { method: "POST", body: JSON.stringify({ op: "rename", path: rel, to }) });
-			for (const t of allTabs()) if (t.path === rel || t.path?.startsWith(rel + "/")) { t.path = to + t.path.slice(rel.length); t.key = `${t.key.split(":")[0]}:${t.path}`; t.label = t.kind === "md" ? `預覽 ${baseName(t.path)}` : baseName(t.path); }
+			for (const t of allTabs()) if (t.path === rel || t.path?.startsWith(rel + "/")) { t.path = to + t.path.slice(rel.length); t.key = `${t.key.split(":")[0]}:${t.path}`; t.label = t.kind === "md" ? tr("預覽 {name}", { name: baseName(t.path) }) : baseName(t.path); }
 			cm.dirs = {}; renderFiles(); for (const g of allGroups()) renderTabs(g);
 		} catch (e) { fail(e); }
 	}
 	async function trashItem(rel, type) {
-		if (!(await confirmBox("刪除", `把「${rel}」${type === "dir" ? "(整個資料夾)" : ""}移到垃圾桶?之後可以從 Mac 的垃圾桶救回來。`, "移到垃圾桶"))) return;
+		if (!(await confirmBox(tr("刪除"), type === "dir" ? tr("把「{path}」(整個資料夾)移到垃圾桶?之後可以從 Mac 的垃圾桶救回來。", { path: rel }) : tr("把「{path}」移到垃圾桶?之後可以從 Mac 的垃圾桶救回來。", { path: rel }), tr("移到垃圾桶")))) return;
 		try {
 			await api("fs", { method: "POST", body: JSON.stringify({ op: "trash", path: rel }) });
 			for (const t of allTabs()) if (t.path === rel || t.path?.startsWith(rel + "/")) closeTab(t, true);
 			cm.dirs = {}; renderFiles(); refreshGit();
-			toast("已移到垃圾桶");
+			toast(tr("已移到垃圾桶"));
 		} catch (e) { fail(e); }
 	}
 
 	// ---------- 分支(worktree)總覽:在 git 面板最上面 ----------
-	const WT_SRC = { claude: "Claude Code", steward: "管家支線", manual: "手動", main: "主資料夾" };
+	const WT_SRC = { claude: "Claude Code", steward: tr("管家支線"), manual: tr("手動"), main: tr("主資料夾") };
 	const agentName = (a) => ({ claude: "Claude", pi: "pi", codex: "Codex" })[a] || a;
 	function wtRow(x) {
 		const viewing = (cm.wt?.id ?? null) === (x.source === "main" ? null : x.id);
 		if (x.source === "main") {
-			return `<div class="wt-row main${viewing ? " cur" : ""}" data-wtid="${x.id}"><div class="l1"><span class="src">主資料夾</span><b>${esc(x.branch || "(detached)")}</b>${viewing ? '<span class="hint">正在看</span>' : ""}</div>
-				${viewing ? "" : '<div class="acts"><button class="small" data-wa="home">回主資料夾</button></div>'}</div>`;
+			return `<div class="wt-row main${viewing ? " cur" : ""}" data-wtid="${x.id}"><div class="l1"><span class="src">${tr("主資料夾")}</span><b>${esc(x.branch || "(detached)")}</b>${viewing ? `<span class="hint">${tr("正在看")}</span>` : ""}</div>
+				${viewing ? "" : `<div class="acts"><button class="small" data-wa="home">${tr("回主資料夾")}</button></div>`}</div>`;
 		}
 		const s = x.session;
-		const who = s ? `${esc(agentName(s.agent))} · ${s.alive ? `窗格 ${esc(s.pane?.paneId || "")}(開著)` : "窗格已關閉"}` : "開它的 session 不明(手動開的或紀錄已不在)";
+		const who = s ? `${esc(agentName(s.agent))} · ${s.alive ? tr("窗格 {pane}(開著)", { pane: esc(s.pane?.paneId || "") }) : tr("窗格已關閉")}` : tr("開它的 session 不明(手動開的或紀錄已不在)");
 		const bits = [
-			x.ahead || x.behind ? `↑${x.ahead} ↓${x.behind}` : "和主線一樣",
-			x.dirty ? `${x.dirty} 個沒 commit` : "",
-			x.changed ? `改到這裡 ${x.changed} 個檔` : "",
+			x.ahead || x.behind ? `↑${x.ahead} ↓${x.behind}` : tr("和主線一樣"),
+			x.dirty ? tr("{n} 個沒 commit", { n: x.dirty }) : "",
+			x.changed ? tr("改到這裡 {n} 個檔", { n: x.changed }) : "",
 			x.lastModified ? ago(x.lastModified) : "",
-			x.locked ? "🔒 鎖住" : "",
-			x.exists ? "" : "⚠ 資料夾不在",
+			x.locked ? tr("🔒 鎖住") : "",
+			x.exists ? "" : tr("⚠ 資料夾不在"),
 		].filter(Boolean).join(" · ");
 		return `<div class="wt-row${viewing ? " cur" : ""}" data-wtid="${x.id}" title="${esc(x.path)}">
-			<div class="l1"><span class="src src-${x.source}">${WT_SRC[x.source]}</span><b>${esc(x.branch || "(detached)")}</b>${viewing ? '<span class="hint">正在看</span>' : ""}</div>
+			<div class="l1"><span class="src src-${x.source}">${WT_SRC[x.source]}</span><b>${esc(x.branch || "(detached)")}</b>${viewing ? `<span class="hint">${tr("正在看")}</span>` : ""}</div>
 			<div class="l2">${who}</div><div class="l2">${bits}</div>
-			<div class="acts"><button class="small" data-wa="chat" ${x.exists ? "" : "disabled"}>跟它對話</button><button class="small" data-wa="files" ${x.exists && !viewing ? "" : "disabled"}>看/改檔案</button><button class="small" data-wa="merge" ${x.branch && x.ahead ? "" : "disabled"} title="${x.ahead ? "" : "沒有比主線多的 commit"}">合併回主線</button><button class="small" data-wa="remove">移除</button></div></div>`;
+			<div class="acts"><button class="small" data-wa="chat" ${x.exists ? "" : "disabled"}>${tr("跟它對話")}</button><button class="small" data-wa="files" ${x.exists && !viewing ? "" : "disabled"}>${tr("看/改檔案")}</button><button class="small" data-wa="merge" ${x.branch && x.ahead ? "" : "disabled"} title="${x.ahead ? "" : esc(tr("沒有比主線多的 commit"))}">${tr("合併回主線")}</button><button class="small" data-wa="remove">${tr("移除")}</button></div></div>`;
 	}
 	function leftRow(l) {
-		const who = l.session ? `${esc(agentName(l.session.agent))} 開的` : "開它的 session 不明";
+		const who = l.session ? tr("{agent} 開的", { agent: esc(agentName(l.session.agent)) }) : tr("開它的 session 不明");
 		return `<div class="wt-row left" title="${esc(l.branch)}"><div class="l1"><span class="src src-${l.source}">${WT_SRC[l.source]}</span><b>${esc(l.branch)}</b></div>
-			<div class="l2">worktree 已移除 · ${l.merged ? `✔ 已合併${l.savedOnRemove ? `(移除時另存了 ${l.savedOnRemove.files.length} 個沒 commit 的檔案)` : ""}` : `還沒合併 · ↑${l.ahead}`} · ${who}${l.lastModified ? ` · ${ago(l.lastModified)}` : ""}</div></div>`;
+			<div class="l2">${tr("worktree 已移除 · {status} · {who}{time}", { status: l.merged ? tr("✔ 已合併{saved}", { saved: l.savedOnRemove ? tr("(移除時另存了 {n} 個沒 commit 的檔案)", { n: l.savedOnRemove.files.length }) : "" }) : tr("還沒合併 · ↑{n}", { n: l.ahead }), who, time: l.lastModified ? ` · ${ago(l.lastModified)}` : "" })}</div></div>`;
 	}
 	/** 資料夾樹:repo → 子專案資料夾 → worktree(可操作)/ 留下的分支(只顯示)。目前的子專案預設展開;不屬於任何子專案的直接掛在 repo 底下 */
 	function folderTree(t) {
@@ -2172,25 +2172,25 @@
 			const n = items.length + lefts.filter((x) => !x.merged).length;
 			const stored = gitFold(`wtf:${t.repoRoot}:${f.path}`);
 			const folded = stored ?? !f.current;
-			const kids = folded ? "" : `<div class="wt-kids">${under(f.path).join("") || '<div class="hint wt-none">沒有分支</div>'}</div>`;
-			return `<div class="wt-folder${f.current ? " cur" : ""}"><div class="wt-fh" data-wtfold="${esc(f.path)}"><span class="tw">${folded ? "▸" : "▾"}</span>📂 ${esc(f.name)}${f.current ? '<span class="hint">目前</span>' : ""}${n ? `<span class="wtb">⑂${n}</span>` : ""}</div>${kids}</div>`;
+			const kids = folded ? "" : `<div class="wt-kids">${under(f.path).join("") || `<div class="hint wt-none">${tr("沒有分支")}</div>`}</div>`;
+			return `<div class="wt-folder${f.current ? " cur" : ""}"><div class="wt-fh" data-wtfold="${esc(f.path)}"><span class="tw">${folded ? "▸" : "▾"}</span>📂 ${esc(f.name)}${f.current ? `<span class="hint">${tr("目前")}</span>` : ""}${n ? `<span class="wtb">⑂${n}</span>` : ""}</div>${kids}</div>`;
 		}).join("");
 		const direct = under("");
 		const main = t.items.find((x) => x.source === "main");
-		const empty = !rows && !direct.length ? '<div class="hint wt-none" style="margin-left:14px">沒有另外開的分支</div>' : "";
-		return `<div class="wt-tree"><div class="wt-repo">🗂 ${esc(t.repoName)}<span class="hint">主線 ${esc(t.target || "(detached)")}</span>${cm.wt && main ? '<button class="small" data-wa="home">回主資料夾</button>' : ""}</div>${rows}${direct.length ? `<div class="wt-kids wt-direct">${direct.join("")}</div>` : ""}${empty}</div>`;
+		const empty = !rows && !direct.length ? `<div class="hint wt-none" style="margin-left:14px">${tr("沒有另外開的分支")}</div>` : "";
+		return `<div class="wt-tree"><div class="wt-repo">🗂 ${esc(t.repoName)}<span class="hint">${tr("主線 {branch}", { branch: esc(t.target || "(detached)") })}</span>${cm.wt && main ? `<button class="small" data-wa="home">${tr("回主資料夾")}</button>` : ""}</div>${rows}${direct.length ? `<div class="wt-kids wt-direct">${direct.join("")}</div>` : ""}${empty}</div>`;
 	}
 	function wtWarn(t) {
-		if (t.warnings.gitlinks.length) return `<div class="wt-warn">⚠ 這些 worktree 已經被誤 commit 成子專案,之後的 commit 會一直卡住:${t.warnings.gitlinks.map(esc).join("、")}<div class="acts"><button class="small" data-wfix="untrack">從版本控制移除</button></div></div>`;
-		if (t.warnings.unignored.length) return `<div class="wt-warn">⚠ ${t.warnings.unignored.length} 個 worktree 放在 repo 裡、沒被 .gitignore 排除,一次「全部加入」就會被誤 commit。<div class="acts"><button class="small" data-wfix="ignore">加入 .gitignore</button></div></div>`;
+		if (t.warnings.gitlinks.length) return `<div class="wt-warn">${tr("⚠ 這些 worktree 已經被誤 commit 成子專案,之後的 commit 會一直卡住:{paths}", { paths: t.warnings.gitlinks.map(esc).join(tr("、")) })}<div class="acts"><button class="small" data-wfix="untrack">${tr("從版本控制移除")}</button></div></div>`;
+		if (t.warnings.unignored.length) return `<div class="wt-warn">${tr("⚠ {n} 個 worktree 放在 repo 裡、沒被 .gitignore 排除,一次「全部加入」就會被誤 commit。", { n: t.warnings.unignored.length })}<div class="acts"><button class="small" data-wfix="ignore">${tr("加入 .gitignore")}</button></div></div>`;
 		return "";
 	}
 	function wtSection() {
 		const w = cm.wts;
-		if (!w) return '<div class="hint" style="padding:6px 14px">分支(worktree)讀取中…</div>';
-		if (w.error || !w.repo) return w.error ? `<div class="hint" style="padding:6px 14px">分支總覽讀不到:${esc(w.error)}</div>` : "";
+		if (!w) return `<div class="hint" style="padding:6px 14px">${tr("分支(worktree)讀取中…")}</div>`;
+		if (w.error || !w.repo) return w.error ? `<div class="hint" style="padding:6px 14px">${tr("分支總覽讀不到:{error}", { error: esc(w.error) })}</div>` : "";
 		const total = w.items.filter((x) => x.source !== "main").length + w.leftovers.filter((x) => !x.merged).length;
-		return sec("wt", "分支(worktree)", total, '<button data-wa="map" title="在編輯區開「分支圖」:資料夾樹和分岔圖">開大圖</button><button data-wa="reload" title="重新整理">⟳</button>', wtWarn(w) + folderTree(w));
+		return sec("wt", tr("分支(worktree)"), total, `<button data-wa="map" title="${esc(tr("在編輯區開「分支圖」:資料夾樹和分岔圖"))}">${tr("開大圖")}</button><button data-wa="reload" title="${esc(tr("重新整理"))}">⟳</button>`, wtWarn(w) + folderTree(w));
 	}
 
 	// ---------- 分支圖分頁(編輯區):資料夾樹 / 分岔圖 ----------
@@ -2200,7 +2200,7 @@
 		const existing = findTab("wtmap");
 		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
 		const g = cm.activeGroup || allGroups()[0];
-		const t = { key: "wtmap", group: g, kind: "wtmap", label: "分支圖", title: "分支圖:資料夾樹 / 分岔圖", mode: "graph", sel: null };
+		const t = { key: "wtmap", group: g, kind: "wtmap", label: tr("分支圖"), title: tr("分支圖:資料夾樹 / 分岔圖"), mode: "graph", sel: null };
 		g.tabs.push(t);
 		setActiveGroup(g);
 		activate(g, t);
@@ -2208,7 +2208,7 @@
 	/** 分岔圖(SVG):主線一條線,關鍵 commit 依序排開;每條分支一列,從分岔點長出來,有合併就畫回主線 */
 	function graphSvg(t, sel) {
 		const g = t.graph;
-		if (!g.nodes.length) return '<div class="hint" style="padding:12px">沒有分支可以畫</div>';
+		if (!g.nodes.length) return `<div class="hint" style="padding:12px">${tr("沒有分支可以畫")}</div>`;
 		const X0 = 130, DX = 190, MAINY = 50, ROW = 58, LX = 16;
 		const xs = [];
 		let x = X0;
@@ -2227,7 +2227,7 @@
 		g.nodes.forEach((n, i) => {
 			if (n.gapBefore) {
 				const gx = i ? (xs[i - 1] + xs[i]) / 2 : (LX + X0) / 2;
-				mainSvg += `<text x="${gx}" y="${MAINY - 8}" class="gl-gap" text-anchor="middle">⋯ ${n.gapBefore} 個 commit</text>`;
+				mainSvg += `<text x="${gx}" y="${MAINY - 8}" class="gl-gap" text-anchor="middle">${tr("⋯ {n} 個 commit", { n: n.gapBefore })}</text>`;
 			}
 			mainSvg += `<g><title>${esc(n.short)} ${esc(n.subject)}\n${esc(n.date)}</title><circle cx="${xs[i]}" cy="${MAINY}" r="6" class="gl-node"/>
 				<text x="${xs[i]}" y="${MAINY + 22}" class="gl-c" text-anchor="middle">${esc(n.short)}</text>
@@ -2244,13 +2244,13 @@
 			const ex = merged ? xs[b.mergedAt] - 26 : Math.max(fx + 120, xs[xs.length - 1] + 70);
 			const on = sel === b.key ? " on" : "";
 			const who = it?.session ? agentName(it.session.agent) + (it.session.alive ? `·${it.session.pane?.paneId || ""}` : "") : "";
-			const saved = b.savedOnRemove ? `(另存 ${b.savedOnRemove.files.length} 個檔)` : "";
-			const tag = it && !("id" in it) ? (merged ? `✔ 已合併${saved} · worktree 已移除` : "worktree 已移除") : merged ? `✔ 已合併${saved}` : "";
+			const saved = b.savedOnRemove ? tr("(另存 {n} 個檔)", { n: b.savedOnRemove.files.length }) : "";
+			const tag = it && !("id" in it) ? (merged ? tr("✔ 已合併{saved} · worktree 已移除", { saved }) : tr("worktree 已移除")) : merged ? tr("✔ 已合併{saved}", { saved }) : "";
 			brSvg += `<g class="gl-br${on}" data-gkey="${esc(b.key)}" style="color:${col}">
 				<path d="M${fx} ${MAINY} C ${fx} ${y}, ${fx} ${y}, ${fx + 24} ${y} L ${ex} ${y}${merged ? ` C ${ex + 26} ${y}, ${ex + 26} ${y}, ${ex + 26} ${MAINY}` : ""}" class="gl-path${merged ? " merged" : ""}"/>
 				${merged ? "" : `<circle cx="${ex}" cy="${y}" r="6" class="gl-tip"/>`}
 				<text x="${fx + 30}" y="${y - 8}" class="gl-b">${esc(b.branch || "(detached)")}</text>
-				<text x="${fx + 30}" y="${y + 16}" class="gl-s">↑${b.ahead} commit${who ? ` · ${esc(who)}` : ""}${tag ? ` · ${tag}` : ""}</text>
+				<text x="${fx + 30}" y="${y + 16}" class="gl-s">${tr("↑{n} commit", { n: b.ahead })}${who ? ` · ${esc(who)}` : ""}${tag ? ` · ${tag}` : ""}</text>
 				<rect x="${fx}" y="${y - 24}" width="${Math.max(ex - fx + 30, 220)}" height="48" class="gl-hit"/></g>`;
 		});
 		svg += brSvg + mainSvg;
@@ -2260,16 +2260,16 @@
 		const pv = tab?.pv;
 		if (!pv) return;
 		const t = cm.wts;
-		if (!t || t.error || !t.repo) { pv.innerHTML = `<div class="hint" style="padding:16px">${esc(t?.error || "這個專案不是 git repo")}</div>`; return; }
-		const head = `<div class="wt-maphead"><b>🗂 ${esc(t.repoName)}</b><span class="hint">主線 ${esc(t.target || "(detached)")}</span><span class="sp"></span>
-			<div class="seg"><button class="small${tab.mode === "tree" ? " on" : ""}" data-mapmode="tree">資料夾樹</button><button class="small${tab.mode === "graph" ? " on" : ""}" data-mapmode="graph">分岔圖</button></div><button class="small" data-wa="reload">⟳</button></div>`;
+		if (!t || t.error || !t.repo) { pv.innerHTML = `<div class="hint" style="padding:16px">${esc(t?.error || tr("這個專案不是 git repo"))}</div>`; return; }
+		const head = `<div class="wt-maphead"><b>🗂 ${esc(t.repoName)}</b><span class="hint">${tr("主線 {branch}", { branch: esc(t.target || "(detached)") })}</span><span class="sp"></span>
+			<div class="seg"><button class="small${tab.mode === "tree" ? " on" : ""}" data-mapmode="tree">${tr("資料夾樹")}</button><button class="small${tab.mode === "graph" ? " on" : ""}" data-mapmode="graph">${tr("分岔圖")}</button></div><button class="small" data-wa="reload">⟳</button></div>`;
 		let body;
 		if (tab.mode === "tree") body = wtWarn(t) + folderTree(t);
 		else {
 			const b = tab.sel ? t.graph.branches.find((x) => x.key === tab.sel) : null;
 			const it = b ? (b.key.startsWith("branch:") ? t.leftovers.find((l) => `branch:${l.branch}` === b.key) : t.items.find((i) => i.id === b.key)) : null;
-			const detail = it ? `<div class="wt-detail">${"id" in it ? wtRow(it) : leftRow(it)}</div>` : '<div class="hint wt-detail">點一條分支看詳細資料和操作(跟它對話、看/改檔案、合併、移除)</div>';
-			body = `${wtWarn(t)}<div class="wt-graphwrap">${graphSvg(t, tab.sel)}</div>${detail}${t.graph.truncated ? '<div class="hint" style="padding:4px 16px">主線太長,只畫最近 5000 個 commit</div>' : ""}`;
+			const detail = it ? `<div class="wt-detail">${"id" in it ? wtRow(it) : leftRow(it)}</div>` : `<div class="hint wt-detail">${tr("點一條分支看詳細資料和操作(跟它對話、看/改檔案、合併、移除)")}</div>`;
+			body = `${wtWarn(t)}<div class="wt-graphwrap">${graphSvg(t, tab.sel)}</div>${detail}${t.graph.truncated ? `<div class="hint" style="padding:4px 16px">${tr("主線太長,只畫最近 5000 個 commit")}</div>` : ""}`;
 		}
 		const sx = pv.querySelector(".wt-graphwrap")?.scrollLeft;
 		pv.innerHTML = head + `<div class="wt-mapbody">${body}</div>`;
@@ -2312,7 +2312,7 @@
 	async function wtChat(x) {
 		try {
 			const r = await wtApi(`${x.id}/chat`, { method: "POST", body: "{}" });
-			toast(r.kind === "focus" ? `已跳到 ${r.paneId}` : r.kind === "resume" ? `已在新 tab「${r.label}」接回原本的對話` : `已在 worktree 裡開新的 ${agentName(r.agent)}(找不到原本的對話)`);
+			toast(r.kind === "focus" ? tr("已跳到 {where}", { where: r.paneId }) : r.kind === "resume" ? tr("已在新 tab「{label}」接回原本的對話", { label: r.label }) : tr("已在 worktree 裡開新的 {agent}(找不到原本的對話)", { agent: agentName(r.agent) }));
 			if (r.note) toast(r.note);
 			setMode("term");
 		} catch (e) { fail(e); }
@@ -2320,20 +2320,20 @@
 	async function wtMerge(x) {
 		let pv;
 		try { pv = await wtApi(`${x.id}/merge`); } catch (e) { return fail(e); }
-		const html = `<p>把 <b>${esc(pv.branch)}</b> 合併進主資料夾的 <b>${esc(pv.target)}</b>(一般合併,會多一個合併 commit,分支保留)。</p>
+		const html = `<p>${tr("把 <b>{branch}</b> 合併進主資料夾的 <b>{target}</b>(一般合併,會多一個合併 commit,分支保留)。", { branch: esc(pv.branch), target: esc(pv.target) })}</p>
 			${pv.blocker ? `<p class="wt-warn">${esc(pv.blocker)}</p>` : ""}
-			${pv.uncommitted ? `<p class="hint">worktree 裡還有 ${pv.uncommitted} 個沒 commit 的改動,不會一起合併。</p>` : ""}
-			<p class="hint">${pv.commits.length} 個 commit:</p><ul class="wt-list">${pv.commits.map((c) => `<li><code>${esc(c.hash)}</code> ${esc(c.subject)}</li>`).join("")}</ul>
-			<p class="hint">${pv.files.length} 個檔案:</p><ul class="wt-list">${pv.files.map((f) => `<li><span class="g g-${esc(f.status[0])}">${esc(f.status[0])}</span> ${esc(f.path)}</li>`).join("")}</ul>
-			<details><summary>看完整 diff</summary><pre class="wt-diff">${esc(pv.diff.slice(0, 120_000))}</pre></details>`;
-		dialog({ title: "合併回主線", html, buttons: pv.blocker ? [] : [{ label: `合併到 ${pv.target}`, primary: true, onClick: async () => {
+			${pv.uncommitted ? `<p class="hint">${tr("worktree 裡還有 {n} 個沒 commit 的改動,不會一起合併。", { n: pv.uncommitted })}</p>` : ""}
+			<p class="hint">${tr("{n} 個 commit:", { n: pv.commits.length })}</p><ul class="wt-list">${pv.commits.map((c) => `<li><code>${esc(c.hash)}</code> ${esc(c.subject)}</li>`).join("")}</ul>
+			<p class="hint">${tr("{n} 個檔案:", { n: pv.files.length })}</p><ul class="wt-list">${pv.files.map((f) => `<li><span class="g g-${esc(f.status[0])}">${esc(f.status[0])}</span> ${esc(f.path)}</li>`).join("")}</ul>
+			<details><summary>${tr("看完整 diff")}</summary><pre class="wt-diff">${esc(pv.diff.slice(0, 120_000))}</pre></details>`;
+		dialog({ title: tr("合併回主線"), html, buttons: pv.blocker ? [] : [{ label: tr("合併到 {branch}", { branch: pv.target }), primary: true, onClick: async () => {
 			const r = await wtApi(`${x.id}/merge`, { method: "POST", body: "{}" });
 			await afterWtChange();
-			dialog({ title: "已合併", html: `<p>已把 ${esc(r.branch)} 合併到 ${esc(r.target)}(commit ${esc(r.commit)})。</p><label class="field"><span><input type="checkbox" data-rm> 也移除這個 worktree(分支保留)</span></label>`, buttons: [{ label: "完成", primary: true, onClick: async (w) => { if (w.querySelector("[data-rm]").checked) await wtRemove(x, { asked: true }); } }] });
+			dialog({ title: tr("已合併"), html: `<p>${tr("已把 {branch} 合併到 {target}(commit {commit})。", { branch: esc(r.branch), target: esc(r.target), commit: esc(r.commit) })}</p><label class="field"><span><input type="checkbox" data-rm> ${tr("也移除這個 worktree(分支保留)")}</span></label>`, buttons: [{ label: tr("完成"), primary: true, onClick: async (w) => { if (w.querySelector("[data-rm]").checked) await wtRemove(x, { asked: true }); } }] });
 		} }] });
 	}
 	async function wtRemove(x, { asked = false } = {}) {
-		if (!asked && !(await confirmBox("移除 worktree", `移除「${x.branch || x.path}」的資料夾?分支會保留,之後還能合併或重新開。`, "移除"))) return;
+		if (!asked && !(await confirmBox(tr("移除 worktree"), tr("移除「{name}」的資料夾?分支會保留,之後還能合併或重新開。", { name: x.branch || x.path }), tr("移除")))) return;
 		const confirm = {};
 		for (;;) {
 			try {
@@ -2344,11 +2344,11 @@
 				if (e.status === 409 && code === "dirty" && !confirm.dirty) {
 					// 沒 commit 的改動:列出檔案,讓使用者選捨棄或存進分支(已合併的分支建議捨棄)
 					const d = e.data.detail || {};
-					const files = (d.files || []).map((f) => `<li>${esc(f)}</li>`).join("") + (d.total > (d.files || []).length ? `<li>…共 ${d.total} 個</li>` : "");
+					const files = (d.files || []).map((f) => `<li>${esc(f)}</li>`).join("") + (d.total > (d.files || []).length ? `<li>${tr("…共 {n} 個", { n: d.total })}</li>` : "");
 					const choice = await new Promise((resolve) => {
-						const btns = [{ label: "捨棄這些改動", primary: d.suggest === "discard", onClick: () => resolve("discard") }];
-						if (d.canCommit !== false) btns.push({ label: "存進分支再移除", primary: d.suggest !== "discard", onClick: () => resolve("commit") });
-						const w = dialog({ title: "還有沒 commit 的改動", html: `<p>${esc(e.message)}</p><ul class="wt-list">${files}</ul>`, buttons: btns });
+						const btns = [{ label: tr("捨棄這些改動"), primary: d.suggest === "discard", onClick: () => resolve("discard") }];
+						if (d.canCommit !== false) btns.push({ label: tr("存進分支再移除"), primary: d.suggest !== "discard", onClick: () => resolve("commit") });
+						const w = dialog({ title: tr("還有沒 commit 的改動"), html: `<p>${esc(e.message)}</p><ul class="wt-list">${files}</ul>`, buttons: btns });
 						w.querySelector("[data-x]").addEventListener("click", () => resolve(null));
 					});
 					if (!choice) return;
@@ -2356,14 +2356,14 @@
 					continue;
 				}
 				if (e.status === 409 && ["alive", "locked"].includes(code) && !confirm[code]) {
-					if (!(await confirmBox("還要確認一下", e.message, "繼續移除"))) return;
+					if (!(await confirmBox(tr("還要確認一下"), e.message, tr("繼續移除")))) return;
 					confirm[code] = true;
 					continue;
 				}
 				return fail(e);
 			}
 		}
-		toast(`已移除 worktree${x.branch ? `(分支 ${x.branch} 保留)` : ""}`);
+		toast(x.branch ? tr("已移除 worktree(分支 {branch} 保留)", { branch: x.branch }) : tr("已移除 worktree"));
 		if (cm.wt?.id === x.id) await switchView(cm.pid, null);
 		await afterWtChange();
 	}
@@ -2386,11 +2386,11 @@
 		if (act === "remove") return wtRemove(x);
 	}
 	async function wtFix(kind) {
-		const msg = kind === "ignore" ? "在 repo 的 .gitignore 加上 worktree 的資料夾(例如 .claude/worktrees/),之後「全部加入」就不會把它們 commit 進去。只改 .gitignore,不會 commit。" : "把被誤 commit 的 worktree 從版本控制拿掉(git rm --cached,資料夾和檔案都不刪),並加進 .gitignore。會放進暫存區,你再到下面 commit 就完成了。";
-		if (!(await confirmBox(kind === "ignore" ? "加入 .gitignore" : "從版本控制移除", msg, "好"))) return;
+		const msg = kind === "ignore" ? tr("在 repo 的 .gitignore 加上 worktree 的資料夾(例如 .claude/worktrees/),之後「全部加入」就不會把它們 commit 進去。只改 .gitignore,不會 commit。") : tr("把被誤 commit 的 worktree 從版本控制拿掉(git rm --cached,資料夾和檔案都不刪),並加進 .gitignore。會放進暫存區,你再到下面 commit 就完成了。");
+		if (!(await confirmBox(kind === "ignore" ? tr("加入 .gitignore") : tr("從版本控制移除"), msg, tr("好")))) return;
 		try {
 			const r = await wtApi(kind, { method: "POST", body: "{}" });
-			toast(kind === "ignore" ? (r.added.length ? `已在 .gitignore 加上 ${r.added.join("、")}` : ".gitignore 已經有了") : r.note);
+			toast(kind === "ignore" ? (r.added.length ? tr("已在 .gitignore 加上 {paths}", { paths: r.added.join(tr("、")) }) : tr(".gitignore 已經有了")) : r.note);
 		} catch (e) { fail(e); }
 		await afterWtChange();
 	}
@@ -2451,7 +2451,7 @@
 		if (await wts && cp() === key && cm.view === "git") renderGit();
 	}
 	function gitRow(path, code, which) {
-		const acts = which === "staged" ? '<button data-g="unstage" title="取消暫存">−</button>' : `<button data-g="discard" title="捨棄變更">↺</button><button data-g="stage" title="暫存">＋</button>`;
+		const acts = which === "staged" ? `<button data-g="unstage" title="${esc(tr("取消暫存"))}">−</button>` : `<button data-g="discard" title="${esc(tr("捨棄變更"))}">↺</button><button data-g="stage" title="${esc(tr("暫存"))}">${tr("＋")}</button>`;
 		return `<div class="git-row" data-path="${esc(path)}" data-which="${which}" title="${esc(path)}"><span class="nm">${esc(baseName(path))}<span class="dir">${esc(dirOf(path))}</span></span><span class="ra">${acts}</span><span class="g g-${code === "?" ? "U" : code}">${code === "?" ? "U" : code}</span></div>`;
 	}
 	const gitRepoChoice = (pid) => { try { return JSON.parse(localStorage.getItem("steward.gitRepo") || "{}")[pid]; } catch { return undefined; } };
@@ -2465,12 +2465,12 @@
 	async function renderGit() {
 		const root = $("cvGit");
 		const g = cm.git;
-		if (!g) { root.innerHTML = '<div class="empty" style="padding:12px">讀取中…</div>'; return; }
+		if (!g) { root.innerHTML = `<div class="empty" style="padding:12px">${tr("讀取中…")}</div>`; return; }
 		if (g.error) { root.innerHTML = `<div class="hint" style="padding:12px">${esc(g.error)}</div>`; return; }
 		const nested = cm.wt ? [] : (cm.gitMain?.nested || []);
 		const main = cm.gitMain;
-		const mainLabel = main?.repo === false ? "這個資料夾(不是 git repo)" : main?.prefix ? `這個資料夾(在 ${main.repoName} 裡)` : "這個資料夾";
-		const repoSelect = nested.length ? `<div class="git-branch"><span class="hint">Git</span><select id="cvGitRepo" title="切換要看的 git repo"><option value="" ${!cm.gitRepo ? "selected" : ""}>${esc(mainLabel + (main?.empty ? ",還沒有 commit" : ""))}</option>${nested.map((x) => `<option value="${esc(x.rel)}" ${cm.gitRepo === x.rel ? "selected" : ""}>${esc(`${x.rel}(${x.branch || "沒有分支"})`)}</option>`).join("")}</select></div>` : "";
+		const mainLabel = main?.repo === false ? tr("這個資料夾(不是 git repo)") : main?.prefix ? tr("這個資料夾(在 {repo} 裡)", { repo: main.repoName }) : tr("這個資料夾");
+		const repoSelect = nested.length ? `<div class="git-branch"><span class="hint">Git</span><select id="cvGitRepo" title="${esc(tr("切換要看的 git repo"))}"><option value="" ${!cm.gitRepo ? "selected" : ""}>${esc(main?.empty ? tr("{label},還沒有 commit", { label: mainLabel }) : mainLabel)}</option>${nested.map((x) => `<option value="${esc(x.rel)}" ${cm.gitRepo === x.rel ? "selected" : ""}>${esc(`${x.rel}(${x.branch || tr("沒有分支")})`)}</option>`).join("")}</select></div>` : "";
 		const wireRepo = () => {
 			if (!nested.length) return;
 			$("cvGitRepo").onchange = (e) => {
@@ -2481,41 +2481,41 @@
 			};
 		};
 		if (!g.repo) {
-			root.innerHTML = nested.length ? `${repoSelect}<div class="hint" style="padding:12px">這個資料夾不是 git repo,可以從上面的選單切到裡面的 repo</div>` : '<div class="empty" style="padding:12px">這個專案不是 git repo</div>';
+			root.innerHTML = nested.length ? `${repoSelect}<div class="hint" style="padding:12px">${tr("這個資料夾不是 git repo,可以從上面的選單切到裡面的 repo")}</div>` : `<div class="empty" style="padding:12px">${tr("這個專案不是 git repo")}</div>`;
 			wireRepo(); return;
 		}
-		const repoNote = cm.gitRepo ? `<div class="hint git-sub">下面是「${esc(cm.gitRepo)}」這個 repo 的變更與歷史;分支、拉取、推送、提交都在這個 repo 裡。</div>` : "";
+		const repoNote = cm.gitRepo ? `<div class="hint git-sub">${tr("下面是「{repo}」這個 repo 的變更與歷史;分支、拉取、推送、提交都在這個 repo 裡。", { repo: esc(cm.gitRepo) })}</div>` : "";
 		const wtHtml = cm.gitRepo ? "" : wtSection();
 		const changes = [...g.unstaged.map((x) => ({ ...x, which: "unstaged" })), ...g.untracked.map((x) => ({ ...x, code: "?", which: "untracked" }))];
 		const anyStaged = g.staged.length > 0;
-		const sync = g.upstream ? `↓${g.behind} ↑${g.ahead}` : "尚未連到遠端";
+		const sync = g.upstream ? `↓${g.behind} ↑${g.ahead}` : tr("尚未連到遠端");
 		const minutes = cm.fetchPrefs?.autoFetchMinutes ?? 3;
-		const fetchPrompt = cm.fetchPrefs?.autoFetch === "ask" && g.upstream && !cm.askLater ? `<div class="hint git-sub">要讓管家每 ${minutes} 分鐘自動抓取遠端，遠端有新的 commit 時提醒你嗎？（只抓不合併，不會動到檔案）<br><button class="small primary" data-gb="afOn">好</button><button class="small" data-gb="afOff">不要</button><button class="small" data-gb="afLater">之後再問</button></div>` : "";
-		const behindNote = g.upstream && g.behind > 0 ? `<div class="hint git-sub"><b>遠端有 ${g.behind} 個新的 commit</b>，按「拉取」更新${g.unstaged.length || g.staged.length ? "（有還沒提交的變更時，拉取可能會失敗）" : ""}</div>` : "";
-		const authNote = g.autoFetch?.authFailed ? `<div class="hint git-sub">自動抓取已停止：登入遠端失敗（${esc(g.autoFetch.authFailed)}）。手動按「抓取」成功後會恢復。</div>` : "";
+		const fetchPrompt = cm.fetchPrefs?.autoFetch === "ask" && g.upstream && !cm.askLater ? `<div class="hint git-sub">${tr("要讓管家每 {minutes} 分鐘自動抓取遠端，遠端有新的 commit 時提醒你嗎？（只抓不合併，不會動到檔案）", { minutes })}<br><button class="small primary" data-gb="afOn">${tr("好")}</button><button class="small" data-gb="afOff">${tr("不要")}</button><button class="small" data-gb="afLater">${tr("之後再問")}</button></div>` : "";
+		const behindNote = g.upstream && g.behind > 0 ? `<div class="hint git-sub">${tr("<b>遠端有 {n} 個新的 commit</b>，按「拉取」更新{warning}", { n: g.behind, warning: g.unstaged.length || g.staged.length ? tr("（有還沒提交的變更時，拉取可能會失敗）") : "" })}</div>` : "";
+		const authNote = g.autoFetch?.authFailed ? `<div class="hint git-sub">${tr("自動抓取已停止：登入遠端失敗（{error}）。手動按「抓取」成功後會恢復。", { error: esc(g.autoFetch.authFailed) })}</div>` : "";
 		const fetchedMinutes = g.autoFetch?.at ? Math.floor((Date.now() - new Date(g.autoFetch.at).getTime()) / 60000) : null;
-		const syncTitle = fetchedMinutes === null ? "" : `上次抓取：${fetchedMinutes < 1 ? "剛剛" : `${fetchedMinutes} 分鐘前`}`;
+		const syncTitle = fetchedMinutes === null ? "" : tr("上次抓取：{time}", { time: fetchedMinutes < 1 ? tr("剛剛") : tr("{n} 分鐘前", { n: fetchedMinutes }) });
 		let branches = [];
 		const key = cp();
 		try { branches = (await gitPost("branches")).out.filter((b) => !b.name.startsWith("origin/") && !b.name.startsWith("remotes/")); } catch {}
 		if (cp() !== key || cm.git !== g) return; // 等的時候換了專案或有更新的狀態:交給那一次畫
-		const subNote = !cm.gitRepo && g.prefix ? `<div class="hint git-sub" title="git 是以 ${esc(g.repoName)} 整個資料夾為單位">這個專案是 repo「${esc(g.repoName)}」裡的 ${esc(g.prefix)} 資料夾:下面只列 ${esc(g.prefix)} 的變更與歷史,「全部暫存」也只加 ${esc(g.prefix)};分支、拉取、推送是整個 repo 共用的。${g.outsideStaged?.length ? `<br><b>⚠ 暫存區還有 ${g.outsideStaged.length} 個其他資料夾的檔案</b>(提交時會問你要不要一起提交)` : ""}</div>` : "";
+		const subNote = !cm.gitRepo && g.prefix ? `<div class="hint git-sub" title="${esc(tr("git 是以 {repo} 整個資料夾為單位", { repo: g.repoName }))}">${tr("這個專案是 repo「{repo}」裡的 {prefix} 資料夾:下面只列 {prefix} 的變更與歷史,「全部暫存」也只加 {prefix};分支、拉取、推送是整個 repo 共用的。", { repo: esc(g.repoName), prefix: esc(g.prefix) })}${g.outsideStaged?.length ? `<br>${tr("<b>⚠ 暫存區還有 {n} 個其他資料夾的檔案</b>(提交時會問你要不要一起提交)", { n: g.outsideStaged.length })}` : ""}</div>` : "";
 		root.innerHTML = `${repoSelect}${repoNote}${wtHtml}${subNote}
-			<div class="git-branch"><select id="cvBranch" title="切換分支">${branches.map((b) => `<option ${b.current ? "selected" : ""}>${esc(b.name)}</option>`).join("") || `<option>${esc(g.branch)}</option>`}</select>
-				<button class="small" data-gb="new" title="建立新分支">＋分支</button></div>
+			<div class="git-branch"><select id="cvBranch" title="${esc(tr("切換分支"))}">${branches.map((b) => `<option ${b.current ? "selected" : ""}>${esc(b.name)}</option>`).join("") || `<option>${esc(g.branch)}</option>`}</select>
+				<button class="small" data-gb="new" title="${esc(tr("建立新分支"))}">${tr("＋分支")}</button></div>
 			${fetchPrompt}${behindNote}${authNote}
 			<div class="git-branch"><span class="hint" title="${esc(syncTitle)}">${esc(sync)}</span><span style="flex:1"></span>
-				<button class="small" data-gb="fetch" title="抓取遠端">抓取</button><button class="small${g.upstream && g.behind > 0 ? " primary" : ""}" data-gb="pull" title="拉取(只快轉)">拉取${g.upstream && g.behind > 0 ? ` ↓${g.behind}` : ""}</button><button class="small" data-gb="push" title="推送">推送${g.ahead ? ` ${g.ahead}` : ""}</button></div>
-			<div class="git-commit"><textarea id="cvMsg" placeholder="提交訊息(⌘/Ctrl+Enter 提交)">${esc(cm.msgDraft || "")}</textarea>
-				<div class="row"><button class="small" data-gb="genmsg">產生提交訊息</button><button class="small primary" data-gb="commit">${anyStaged ? "提交" : changes.length ? "全部暫存並提交" : "提交"}</button></div></div>
-			${g.conflicted.length ? sec("conflict", "衝突", g.conflicted.length, "", `<div class="hint" style="padding:4px 14px 8px">合併衝突請到終端機處理</div>${g.conflicted.map((x) => gitRow(x.path, "!", "unstaged")).join("")}`) : ""}
-			${sec("staged", "已暫存", g.staged.length, anyStaged ? '<button data-ga="unstageAll" title="全部取消暫存">−</button>' : "", g.staged.map((x) => gitRow(x.path, x.code, "staged")).join(""))}
-			${sec("changes", "變更", changes.length, changes.length ? '<button data-ga="discardAll" title="捨棄全部變更">↺</button><button data-ga="stageAll" title="全部暫存">＋</button>' : "", changes.map((x) => gitRow(x.path, x.code, x.which)).join(""))}
-			<div class="git-sec"><div class="h" data-ga="history">${cm.history ? "▾" : "▸"} 歷史(最近 50 筆)</div>${cm.history ? cm.history.map((c) => `<div class="git-row" data-commit="${c.hash}" title="${esc(c.author)} · ${esc(c.date)}"><span class="nm">${esc(c.subject)}<span class="dir">${c.short}</span></span></div>${cm.openCommit?.hash === c.hash ? cm.openCommit.files.map((f) => `<div class="git-row" data-cfile="${esc(f.path)}" data-commit="${c.hash}" style="padding-left:28px"><span class="nm">${esc(baseName(f.path))}<span class="dir">${esc(dirOf(f.path))}</span></span><span class="g g-${f.code[0]}">${f.code[0]}</span></div>`).join("") : ""}`).join("") : ""}${cm.history?.length === 0 && g.empty ? '<div class="hint" style="padding:4px 14px 8px">這個 repo 還沒有任何 commit</div>' : ""}</div>`;
+				<button class="small" data-gb="fetch" title="${esc(tr("抓取遠端"))}">${tr("抓取")}</button><button class="small${g.upstream && g.behind > 0 ? " primary" : ""}" data-gb="pull" title="${esc(tr("拉取(只快轉)"))}">${tr("拉取{count}", { count: g.upstream && g.behind > 0 ? ` ↓${g.behind}` : "" })}</button><button class="small" data-gb="push" title="${esc(tr("推送"))}">${tr("推送{count}", { count: g.ahead ? ` ${g.ahead}` : "" })}</button></div>
+			<div class="git-commit"><textarea id="cvMsg" placeholder="${esc(tr("提交訊息(⌘/Ctrl+Enter 提交)"))}">${esc(cm.msgDraft || "")}</textarea>
+				<div class="row"><button class="small" data-gb="genmsg">${tr("產生提交訊息")}</button><button class="small primary" data-gb="commit">${anyStaged ? tr("提交") : changes.length ? tr("全部暫存並提交") : tr("提交")}</button></div></div>
+			${g.conflicted.length ? sec("conflict", tr("衝突"), g.conflicted.length, "", `<div class="hint" style="padding:4px 14px 8px">${tr("合併衝突請到終端機處理")}</div>${g.conflicted.map((x) => gitRow(x.path, "!", "unstaged")).join("")}`) : ""}
+			${sec("staged", tr("已暫存"), g.staged.length, anyStaged ? `<button data-ga="unstageAll" title="${esc(tr("全部取消暫存"))}">−</button>` : "", g.staged.map((x) => gitRow(x.path, x.code, "staged")).join(""))}
+			${sec("changes", tr("變更"), changes.length, changes.length ? `<button data-ga="discardAll" title="${esc(tr("捨棄全部變更"))}">↺</button><button data-ga="stageAll" title="${esc(tr("全部暫存"))}">${tr("＋")}</button>` : "", changes.map((x) => gitRow(x.path, x.code, x.which)).join(""))}
+			<div class="git-sec"><div class="h" data-ga="history">${cm.history ? "▾" : "▸"} ${tr("歷史(最近 50 筆)")}</div>${cm.history ? cm.history.map((c) => `<div class="git-row" data-commit="${c.hash}" title="${esc(c.author)} · ${esc(c.date)}"><span class="nm">${esc(c.subject)}<span class="dir">${c.short}</span></span></div>${cm.openCommit?.hash === c.hash ? cm.openCommit.files.map((f) => `<div class="git-row" data-cfile="${esc(f.path)}" data-commit="${c.hash}" style="padding-left:28px"><span class="nm">${esc(baseName(f.path))}<span class="dir">${esc(dirOf(f.path))}</span></span><span class="g g-${f.code[0]}">${f.code[0]}</span></div>`).join("") : ""}`).join("") : ""}${cm.history?.length === 0 && g.empty ? `<div class="hint" style="padding:4px 14px 8px">${tr("這個 repo 還沒有任何 commit")}</div>` : ""}</div>`;
 		wireRepo();
 		$("cvMsg").addEventListener("input", (e) => (cm.msgDraft = e.target.value));
 		$("cvMsg").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) root.querySelector('[data-gb="commit"]').click(); });
-		$("cvBranch").onchange = (e) => gitDo("checkout", { branch: e.target.value }, `已切換到 ${e.target.value}`);
+		$("cvBranch").onchange = (e) => gitDo("checkout", { branch: e.target.value }, tr("已切換到 {branch}", { branch: e.target.value }));
 	}
 	async function gitDo(action, body, okMsg) {
 		try { await gitPost(action, body); if (okMsg) toast(okMsg); } catch (e) { fail(e); }
@@ -2536,34 +2536,34 @@
 		const wf = e.target.closest("[data-wtfold]");
 		if (wf && cm.wts?.repo) { toggleWtFold(wf.dataset.wtfold); renderGit(); const mt = wtMapTab(); if (mt?.pv) renderWtMap(mt); return; }
 		if (fold) { setGitFold(fold, !gitFold(fold)); return renderGit(); }
-		if (gb === "new") { const n = await askName("建立新分支", "", "分支名稱"); if (n) gitDo("checkout", { branch: n, create: true }, `已建立並切換到 ${n}`); return; }
+		if (gb === "new") { const n = await askName(tr("建立新分支"), "", tr("分支名稱")); if (n) gitDo("checkout", { branch: n, create: true }, tr("已建立並切換到 {branch}", { branch: n })); return; }
 		if (gb === "afOn" || gb === "afOff") {
 			try {
 				const r = await fetch("/api/code-prefs", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ autoFetch: gb === "afOn" ? "on" : "off" }) });
 				const prefs = await r.json();
-				if (!r.ok) throw new Error(prefs.error || `錯誤 ${r.status}`);
+				if (!r.ok) throw new Error(prefs.error || tr("錯誤 {status}", { status: r.status }));
 				cm.fetchPrefs = prefs;
 				cm.fetchPrefsAt = Date.now();
-				toast(gb === "afOn" ? "已開啟自動抓取，可以在 設定 → 一般 調整" : "不會自動抓取，之後可以在 設定 → 一般 開啟");
+				toast(gb === "afOn" ? tr("已開啟自動抓取，可以在 設定 → 一般 調整") : tr("不會自動抓取，之後可以在 設定 → 一般 開啟"));
 				if (gb === "afOn") await autoFetchTick(true);
 				renderGit();
 			} catch (err) { fail(err); }
 			return;
 		}
 		if (gb === "afLater") { cm.askLater = true; return renderGit(); }
-		if (gb === "fetch") return gitDo("fetch", {}, "已抓取");
-		if (gb === "pull") return gitDo("pull", {}, "已拉取");
-		if (gb === "push") return gitDo("push", {}, "已推送");
+		if (gb === "fetch") return gitDo("fetch", {}, tr("已抓取"));
+		if (gb === "pull") return gitDo("pull", {}, tr("已拉取"));
+		if (gb === "push") return gitDo("push", {}, tr("已推送"));
 		if (gb === "genmsg") {
-			const b = e.target; b.disabled = true; b.textContent = "產生中…";
+			const b = e.target; b.disabled = true; b.textContent = tr("產生中…");
 			try { const r = await api(`git/commitmsg${gq() ? `?${gq()}` : ""}`, { method: "POST", body: "{}" }); cm.msgDraft = r.message; $("cvMsg").value = r.message; } catch (err) { fail(err); }
-			b.disabled = false; b.textContent = "產生提交訊息";
+			b.disabled = false; b.textContent = tr("產生提交訊息");
 			return;
 		}
 		if (gb === "commit") {
 			const msg = $("cvMsg").value.trim();
-			if (!msg) return toast("先寫提交訊息,或按「產生提交訊息」");
-			const done = async () => { cm.msgDraft = ""; cm.history = cm.history ? (await gitPost("log")).out : null; toast("已提交"); };
+			if (!msg) return toast(tr("先寫提交訊息,或按「產生提交訊息」"));
+			const done = async () => { cm.msgDraft = ""; cm.history = cm.history ? (await gitPost("log")).out : null; toast(tr("已提交")); };
 			try {
 				if (!g.staged.length) await gitPost("stage", { all: true });
 				await gitPost("commit", { message: msg });
@@ -2572,9 +2572,9 @@
 				if (err.status === 409 && err.data?.outside) {
 					// 同一個 repo 的其他資料夾也有檔案在暫存區:問要只提交這個資料夾,還是一起提交
 					const choice = await new Promise((resolve) => {
-						const d = dialog({ title: "暫存區有其他資料夾的檔案", html: `<p>${esc(err.message)}</p><p class="hint">「只提交這個資料夾」會先把它們取消暫存(檔案內容不變),留給那個資料夾之後自己提交。</p>`, buttons: [
-							{ label: "一起提交", onClick: () => resolve("include") },
-							{ label: "只提交這個資料夾", primary: true, onClick: () => resolve("unstage") },
+						const d = dialog({ title: tr("暫存區有其他資料夾的檔案"), html: `<p>${esc(err.message)}</p><p class="hint">${tr("「只提交這個資料夾」會先把它們取消暫存(檔案內容不變),留給那個資料夾之後自己提交。")}</p>`, buttons: [
+							{ label: tr("一起提交"), onClick: () => resolve("include") },
+							{ label: tr("只提交這個資料夾"), primary: true, onClick: () => resolve("unstage") },
 						] });
 						d.querySelector("[data-x]").addEventListener("click", () => resolve(null));
 					});
@@ -2590,7 +2590,7 @@
 		if (ga === "unstageAll") return gitDo("unstage", { all: true });
 		if (ga === "discardAll") {
 			const paths = [...g.unstaged, ...g.untracked].map((x) => x.path);
-			if (await confirmBox("捨棄全部變更", `捨棄 ${paths.length} 個檔案的變更?修改會還原成上次提交的內容,新檔案會移到垃圾桶。`, "捨棄")) gitDo("discard", { paths });
+			if (await confirmBox(tr("捨棄全部變更"), tr("捨棄 {n} 個檔案的變更?修改會還原成上次提交的內容,新檔案會移到垃圾桶。", { n: paths.length }), tr("捨棄"))) gitDo("discard", { paths });
 			return;
 		}
 		if (ga === "history") { cm.history = cm.history ? null : (await gitPost("log").catch(fail))?.out ?? null; cm.openCommit = null; return renderGit(); }
@@ -2606,7 +2606,7 @@
 		if (rowAct === "stage") return gitDo("stage", { paths: [path] });
 		if (rowAct === "unstage") return gitDo("unstage", { paths: [path] });
 		if (rowAct === "discard") {
-			if (await confirmBox("捨棄變更", which === "untracked" ? `「${path}」是新檔案,捨棄會把它移到垃圾桶。` : `把「${path}」還原成上次提交的內容?`, "捨棄")) gitDo("discard", { paths: [path] });
+			if (await confirmBox(tr("捨棄變更"), which === "untracked" ? tr("「{path}」是新檔案,捨棄會把它移到垃圾桶。", { path }) : tr("把「{path}」還原成上次提交的內容?", { path }), tr("捨棄"))) gitDo("discard", { paths: [path] });
 			return;
 		}
 		openDiff(path, which);
@@ -2622,9 +2622,9 @@
 		try {
 			const d = await api(`git/diff?path=${encodeURIComponent(path)}&which=${which}${commit ? `&commit=${commit}` : ""}${gq(repo) ? `&${gq(repo)}` : ""}`);
 			const lang = langOf(path);
-			const caption = which === "staged" ? "已暫存的變更:上次提交 ↔ 暫存區" : which === "commit" ? `提交 ${commit.slice(0, 7)} 的變更` : which === "untracked" ? "新檔案" : "未暫存的變更:暫存區 ↔ 工作目錄";
+			const caption = which === "staged" ? tr("已暫存的變更:上次提交 ↔ 暫存區") : which === "commit" ? tr("提交 {commit} 的變更", { commit: commit.slice(0, 7) }) : which === "untracked" ? tr("新檔案") : tr("未暫存的變更:暫存區 ↔ 工作目錄");
 			const target = allGroups().includes(g) ? g : allGroups()[0];
-			const t = { key, group: target, kind: "diff", path, which, commit, repo, label: `${baseName(path)}${which === "staged" ? "(已暫存)" : which === "commit" ? `@${commit.slice(0, 7)}` : "(變更)"}`, title: `${path} · ${caption}`, caption, orig: cm.monaco.editor.createModel(d.original, lang), mod: cm.monaco.editor.createModel(d.modified, lang), ...(view ? { viewState: view } : {}) };
+			const t = { key, group: target, kind: "diff", path, which, commit, repo, label: which === "staged" ? tr("{name}(已暫存)", { name: baseName(path) }) : which === "commit" ? `${baseName(path)}@${commit.slice(0, 7)}` : tr("{name}(變更)", { name: baseName(path) }), title: `${path} · ${caption}`, caption, orig: cm.monaco.editor.createModel(d.original, lang), mod: cm.monaco.editor.createModel(d.modified, lang), ...(view ? { viewState: view } : {}) };
 			target.tabs.push(t);
 			setActiveGroup(target);
 			activate(target, t);
@@ -2632,27 +2632,27 @@
 	}
 
 	// ---------- 和管家連動 ----------
-	const snippetBlock = (s) => `檔案 ${s.path} 第 ${s.from}${s.to !== s.from ? `–${s.to}` : ""} 行:\n\`\`\`\n${s.text}\n\`\`\``;
+	const snippetBlock = (s) => tr("檔案 {path} 第 {lines} 行:\n```\n{text}\n```", { path: s.path, lines: `${s.from}${s.to !== s.from ? `–${s.to}` : ""}`, text: s.text });
 	/** 編輯器右鍵「問管家」:打開浮動球的對話面板,把選取的程式當成引用 */
 	function askSteward(s) {
-		if (!s.text) return toast("先選取一段程式碼");
+		if (!s.text) return toast(tr("先選取一段程式碼"));
 		window.openStewardChat?.({ quote: { path: s.path, from: s.from, to: s.to, text: s.text } });
 	}
 	// 能派工的 agent(這台電腦裝了、herdr 支援的)
 	fetch("/api/agents").then((r) => r.json()).then((d) => { cm.agents = d.agents; }).catch(() => {});
 	function newCard(s) {
-		const lines = s.text ? `第 ${s.from}${s.to !== s.from ? `–${s.to}` : ""} 行` : "";
+		const lines = s.text ? tr("第 {lines} 行", { lines: `${s.from}${s.to !== s.from ? `–${s.to}` : ""}` }) : "";
 		dialog({
-			title: "建立工作卡",
-			html: `<label class="field">標題<input type="text" data-t value="${esc(`修改 ${s.path ?? ""} ${lines}`.trim())}"></label>
-				<label class="field">給 agent 的指示<textarea data-i rows="8" style="font:13px Menlo,monospace;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">${esc(`${s.text ? snippetBlock(s) : `檔案 ${s.path}`}\n\n要做的事:`)}</textarea></label>
-				<label class="field">完成標準<input type="text" data-c value="完成上述要求,並說明改了什麼"></label>
-				<label class="field">交給<select data-g>${(cm.agents?.length ? cm.agents : [{ id: "pi", name: "pi" }, { id: "claude", name: "Claude Code" }, { id: "codex", name: "Codex" }]).map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("")}</select></label>
-				<div class="hint">建好的卡會放在「提案」,你核准後才會派出去。</div>`,
-			buttons: [{ label: "建立", primary: true, onClick: async (w) => {
+			title: tr("建立工作卡"),
+			html: `<label class="field">${tr("標題")}<input type="text" data-t value="${esc(tr("修改 {path} {lines}", { path: s.path ?? "", lines }).trim())}"></label>
+				<label class="field">${tr("給 agent 的指示")}<textarea data-i rows="8" style="font:13px Menlo,monospace;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">${esc(tr("{content}\n\n要做的事:", { content: s.text ? snippetBlock(s) : tr("檔案 {path}", { path: s.path }) }))}</textarea></label>
+				<label class="field">${tr("完成標準")}<input type="text" data-c value="${esc(tr("完成上述要求,並說明改了什麼"))}"></label>
+				<label class="field">${tr("交給")}<select data-g>${(cm.agents?.length ? cm.agents : [{ id: "pi", name: "pi" }, { id: "claude", name: "Claude Code" }, { id: "codex", name: "Codex" }]).map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("")}</select></label>
+				<div class="hint">${tr("建好的卡會放在「提案」,你核准後才會派出去。")}</div>`,
+			buttons: [{ label: tr("建立"), primary: true, onClick: async (w) => {
 				const r = await post("/api/cards", { projectId: cm.pid, title: w.querySelector("[data-t]").value, instructions: w.querySelector("[data-i]").value, doneCriteria: w.querySelector("[data-c]").value, agent: w.querySelector("[data-g]").value });
 				if (r.error) throw new Error(r.error);
-				toast("已建立工作卡,放在「提案」");
+				toast(tr("已建立工作卡,放在「提案」"));
 				load();
 			} }],
 		});
@@ -2671,8 +2671,8 @@
 	function setSideCollapsed(on) {
 		document.body.classList.toggle("cv-side-collapsed", on);
 		pref("steward.cvSideCollapsed", on ? "1" : "0");
-		$("cvFilesBtn").title = on ? "展開側欄" : "檔案(再按一次收合側欄)";
-		$("cvGitBtn").title = on ? "展開側欄" : "版本控制(再按一次收合側欄)";
+		$("cvFilesBtn").title = on ? tr("展開側欄") : tr("檔案(再按一次收合側欄)");
+		$("cvGitBtn").title = on ? tr("展開側欄") : tr("版本控制(再按一次收合側欄)");
 	}
 	// 跟 VS Code 一樣:按目前的圖示 = 收合/展開側欄;按另一個 = 切過去並展開
 	const activityClick = (v) => {
@@ -2749,7 +2749,7 @@
 			const t = g?.active;
 			if (!t) return null;
 			const ed = t.kind === "file" && !g.editorEl.hidden ? g.editor : t.kind === "diff" && !g.diffEl.hidden ? g.diff?.getModifiedEditor() : null;
-			const label = t.kind === "diff" ? `${t.path}(差異)` : t.path || t.label || "程式碼頁";
+			const label = t.kind === "diff" ? tr("{path}(差異)", { path: t.path }) : t.path || t.label || tr("程式碼頁");
 			if (ed?.getModel()) {
 				const model = ed.getModel(), box = ed.getDomNode().getBoundingClientRect();
 				const lh = ed.getOption(cm.monaco.editor.EditorOption.lineHeight), top = ed.getScrollTop();
@@ -2761,7 +2761,7 @@
 				if (!from) return { kind: "code", path: t.path, label, text: "" };
 				const range = (a, b) => model.getValueInRange({ startLineNumber: a, startColumn: 1, endLineNumber: b, endColumn: model.getLineMaxColumn(b) });
 				const c0 = Math.max(1, from - 30), c1 = Math.min(model.getLineCount(), to + 30);
-				return { kind: "code", path: t.path, label, from, to, text: range(from, to), context: `(第 ${c0}–${c1} 行)\n${range(c0, c1)}` };
+				return { kind: "code", path: t.path, label, from, to, text: range(from, to), context: tr("(第 {from}–{to} 行)\n{text}", { from: c0, to: c1, text: range(c0, c1) }) };
 			}
 			return { kind: "doc", dom: g.stageEl, path: t.path, label };
 		},

@@ -1,5 +1,6 @@
 // 管家主體:一個 pi durable Harness,每個專案一條對話(加上「雜務」與「總覽」)。
 // 管家只有「改專案狀態 / 提工作卡 / 更新工作卡」三類工具,不能碰檔案或跑指令。
+import { isEn, tr } from "./i18n.ts";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { AssistantEntry, CompactionTask, createRegistry, defineExtension, defineTask, defineTool, GenerationTask, Harness, hook, section } from "@earendil-works/pi-durable";
@@ -31,7 +32,7 @@ type WatchState = { phase: "check"; idleSince: number | null; askedUser: boolean
 const MAX_RECENT = 12;
 
 const PERSONA = () => `你是「專案管家」,負責追蹤使用者${settings().user.name ? `(${settings().user.name})` : ""}所有專案的進度,讓任何 AI agent(pi、Claude Code、Codex、opencode、Hermes…)換了 session 也能馬上接手。
-全程使用繁體中文。
+${isEn() ? "Always write in English." : "全程使用繁體中文。"}
 
 你會收到三種訊息:
 1. 【回報】某個 agent 在這個專案剛做完一段工作的對話節錄。請判斷這段工作改變了什麼,然後呼叫 update_project_state 更新專案狀態:
@@ -64,7 +65,7 @@ export type Role = "digest" | "judge" | "chat";
 
 export class StewardUnanswered extends Error {
 	constructor(why: string) {
-		super(`管家沒有回答:${why}`);
+		super(tr("管家沒有回答:{why}", { why }));
 	}
 }
 
@@ -94,7 +95,7 @@ export class Steward {
 		const projectOf = (conversationId: string): Project => {
 			const id = this.projectByConversation.get(conversationId);
 			const p = id ? store.project(id) : undefined;
-			if (!p) throw new Error("這條對話沒有對應的專案");
+			if (!p) throw new Error(tr("這條對話沒有對應的專案"));
 			return p;
 		};
 
@@ -185,15 +186,15 @@ export class Steward {
 					const pane = (terminalId
 						? (listPanes() ?? []).find((x) => (x as { terminal_id?: string }).terminal_id === terminalId)
 						: herdrCli(["pane", "get", paneId])?.result?.pane) as { agent?: string; agent_status?: string } | undefined;
-					if (!pane) return blocked("派工的 tab 已經關掉,工作沒有完成。要繼續就拖回「已核准」重新派工。");
-					if (now - startedAt > HARD_LIMIT_MS) return blocked(`已經做了超過 ${Math.round(HARD_LIMIT_MS / 3_600_000)} 小時還沒結束,請去看一下 ${card.paneId ?? paneId}。`);
+					if (!pane) return blocked(tr("派工的 tab 已經關掉,工作沒有完成。要繼續就拖回「已核准」重新派工。"));
+					if (now - startedAt > HARD_LIMIT_MS) return blocked(tr("已經做了超過 {hours} 小時還沒結束,請去看一下 {pane}。", { hours: Math.round(HARD_LIMIT_MS / 3_600_000), pane: card.paneId ?? paneId }));
 					const status = pane.agent_status ?? "unknown";
 					if (status === "working") return sleep({ idleSince: null });
 					if (status === "blocked") {
 						// agent 在等使用者核准某個操作:提醒一次,繼續等
 						if (!task.state.checkpoint.askedUser) {
 							const p = store.project(card.projectId);
-							void notify(pushText(p, `⏸ 派出去的工作在等你回應(${p?.name ?? "?"})\n「${card.title}」\nherdr 窗格 ${card.paneId ?? paneId}`, "⏸ 有一個隱私專案的派工在等你回應,請到看板查看"), { projectId: card.projectId });
+							void notify(pushText(p, tr("⏸ 派出去的工作在等你回應({project})\n「{title}」\nherdr 窗格 {pane}", { project: p?.name ?? "?", title: card.title, pane: card.paneId ?? paneId }), tr("⏸ 有一個隱私專案的派工在等你回應,請到看板查看")), { projectId: card.projectId });
 						}
 						return sleep({ askedUser: true, idleSince: null });
 					}
@@ -201,7 +202,7 @@ export class Steward {
 					const idleSince = task.state.checkpoint.idleSince ?? now;
 					if (now - idleSince >= IDLE_LIMIT_MS) {
 						const mins = Math.round((now - idleSince) / 60_000);
-						return blocked(`agent 已經停下${mins >= 1 ? ` ${mins} 分鐘` : "一段時間"},管家沒有判定完成:可能在等你回覆,或做到一半停了(${card.paneId ?? paneId})。`);
+						return blocked(tr("agent 已經停下{time},管家沒有判定完成:可能在等你回覆,或做到一半停了({pane})。", { time: mins >= 1 ? tr(" {minutes} 分鐘", { minutes: mins }) : tr("一段時間"), pane: card.paneId ?? paneId }));
 					}
 					return sleep({ idleSince });
 				},
@@ -229,7 +230,7 @@ export class Steward {
 				if (!card || card.projectId !== p.id) return { output: [{ type: "text", text: "找不到這張卡" }] };
 				if (!card.refreshing) return { output: [{ type: "text", text: "這張卡不在派工前更新中,不能改寫" }] };
 				if (args.withdraw) {
-					store.updateCard(card.id, { column: "proposed", refreshing: false, note: `管家建議先不要派工:${args.reason ?? "依最新進度,這張卡已經不需要或不適合現在做"}` });
+					store.updateCard(card.id, { column: "proposed", refreshing: false, note: tr("管家建議先不要派工:{reason}", { reason: args.reason ?? tr("依最新進度,這張卡已經不需要或不適合現在做") }) });
 					return { output: [{ type: "text", text: "已退回提案" }] };
 				}
 				store.updateCard(card.id, {
@@ -237,7 +238,7 @@ export class Steward {
 					...(args.instructions ? { instructions: args.instructions } : {}),
 					...(args.done_criteria ? { doneCriteria: args.done_criteria } : {}),
 					revisedAt: new Date().toISOString(),
-					note: `已依最新進度更新${args.reason ? `:${args.reason}` : ""},派工中…`,
+					note: tr("已依最新進度更新{reason},派工中…", { reason: args.reason ? `:${args.reason}` : "" }),
 				});
 				return { output: [{ type: "text", text: "已改寫,接著會派工" }] };
 			},
@@ -408,7 +409,7 @@ export class Steward {
 			if (settled === "timeout") {
 				// 模型卡住:中止這一題,後面的問題才不會被擋住
 				await (conv as unknown as { abort(c: typeof ctx): Promise<void> }).abort(ctx).catch(() => undefined);
-				throw new StewardUnanswered(`等了 ${Math.round(timeoutMs! / 1000)} 秒沒有回應`);
+				throw new StewardUnanswered(tr("等了 {seconds} 秒沒有回應", { seconds: Math.round(timeoutMs! / 1000) }));
 			}
 			if (settled.status !== "done" || settled.type !== "input") {
 				const why = "reason" in settled ? `${settled.reason} ${JSON.stringify((settled as { detail?: unknown }).detail ?? "").slice(0, 400)}` : settled.status;
@@ -438,9 +439,9 @@ export class Steward {
 	async oneShotWith(system: string, user: string, ref: { provider: string; modelId: string }, maxTokens = 2000): Promise<string> {
 		const cli = this.cliOf(ref.provider);
 		if (cli) return runCli(cli, ref.modelId, system, user);
-		if (!this.models) throw new Error("管家還沒準備好");
+		if (!this.models) throw new Error(tr("管家還沒準備好"));
 		const model = (this.models as unknown as { getModel(p: string, id: string): unknown }).getModel(ref.provider, ref.modelId);
-		if (!model) throw new Error(`找不到模型 ${ref.provider}/${ref.modelId}(到設定 → AI 接口確認)`);
+		if (!model) throw new Error(tr("找不到模型 {provider}/{model}(到設定 → AI 接口確認)", { provider: ref.provider, model: ref.modelId }));
 		const msg = await (this.models as unknown as { completeSimple(m: unknown, c: unknown, o?: unknown): Promise<{ content?: { type: string; text?: string }[]; errorMessage?: string }> }).completeSimple(
 			model,
 			{ systemPrompt: system, messages: [{ role: "user", content: user, timestamp: Date.now() }] },
@@ -482,7 +483,7 @@ ${card.instructions}
 ${brief(this.deps.store, p, { recent: 5 })}
 
 使用者在主線 agent(「${info.mainLabel}」)之外開了一條支線 agent(「${info.label}」)另外問問題或做事。現在要把支線的結論送回主線。規則:
-- 寫給主線 agent 看,3 到 8 句或條列,繁體中文。
+- 寫給主線 agent 看,3 到 8 句或條列,${isEn() ? "English." : "繁體中文。"}
 - 包含:支線問了什麼、得到什麼結論、做了哪些決定、改了哪些檔案(只寫路徑)、還有什麼沒解決。
 - 只寫支線裡真的出現過的內容,不要編造;支線沒做任何事就直說。
 - 不要開場白、不要客套,直接輸出要送出的內容。`;
@@ -524,10 +525,10 @@ ${brief(this.deps.store, p, { recent: 5 })}
 			const ref = routeFor("judge", { private: p.private, fallback });
 			const text = await this.oneShotWith(system, user, ref, 4000);
 			const m = text.match(/\{[\s\S]*\}/);
-			if (!m) throw new Error("模型沒有給出草稿");
+			if (!m) throw new Error(tr("模型沒有給出草稿"));
 			const j = JSON.parse(m[0]) as Record<string, unknown>;
 			const str = (k: string) => String(j[k] ?? "").trim();
-			if (!str("title") || !str("instructions")) throw new Error("草稿缺少標題或指示");
+			if (!str("title") || !str("instructions")) throw new Error(tr("草稿缺少標題或指示"));
 			// 預設只用在新草稿;修改草稿時保留使用者在下拉選單選的
 			const agent = chooseCardAgent(str("agent"), { available: opts.agents, defaultAgent: opts.previous ? "" : settings().cards.defaultAgent }).agent;
 			return { title: str("title").slice(0, 80), agent, instructions: str("instructions"), doneCriteria: str("done_criteria") || "完成上述要求並說明改了什麼" };
@@ -553,19 +554,19 @@ ${brief(this.deps.store, p, { recent: 5 })}
 
 	/** 有圖片的提問:用看得懂圖片的模型單次回答(不寫進管家的對話) */
 	async askWithImages(p: Project, content: string, images: { data: string; mimeType: string }[], ref: { provider: string; modelId: string }, timeoutMs = 180_000): Promise<string> {
-		if (!this.models) throw new StewardUnanswered("管家還沒準備好");
+		if (!this.models) throw new StewardUnanswered(tr("管家還沒準備好"));
 		const model = (this.models as unknown as { getModel(p: string, id: string): unknown }).getModel(ref.provider, ref.modelId);
-		if (!model) throw new StewardUnanswered(`找不到模型 ${ref.provider}/${ref.modelId}`);
+		if (!model) throw new StewardUnanswered(tr("找不到模型 {provider}/{model}", { provider: ref.provider, model: ref.modelId }));
 		const ask = (this.models as unknown as { completeSimple(m: unknown, c: unknown, o?: unknown): Promise<{ content?: { type: string; text?: string }[]; errorMessage?: string }> }).completeSimple(
 			model,
 			{ systemPrompt: this.chatSystem(p), messages: [{ role: "user", content: [{ type: "text", text: content }, ...images.map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType }))], timestamp: Date.now() }] },
 			{ reasoning: "low", maxTokens: 4000 },
 		);
 		let timer: ReturnType<typeof setTimeout> | undefined;
-		const msg = await Promise.race([ask, new Promise<never>((_, no) => { timer = setTimeout(() => no(new StewardUnanswered(`等了 ${Math.round(timeoutMs / 1000)} 秒沒有回應`)), timeoutMs); })]).finally(() => clearTimeout(timer));
+		const msg = await Promise.race([ask, new Promise<never>((_, no) => { timer = setTimeout(() => no(new StewardUnanswered(tr("等了 {seconds} 秒沒有回應", { seconds: Math.round(timeoutMs / 1000) }))), timeoutMs); })]).finally(() => clearTimeout(timer));
 		if (msg.errorMessage) throw new StewardUnanswered(msg.errorMessage);
 		const text = (msg.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
-		if (!text) throw new StewardUnanswered("模型沒有回答");
+		if (!text) throw new StewardUnanswered(tr("模型沒有回答"));
 		return text;
 	}
 

@@ -40,6 +40,8 @@ function setup(overrides = {}) {
 		$: () => wrap,
 		document: { createElement: () => new Node(), body: { appendChild: (node) => { wrap = node; } } },
 		ago: () => "剛剛", chatMd: { render: (text) => text, typeset() {} },
+		tr: (zh, vars) => zh.replace(/\{([^{}]+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)),
+		LANG: "zh-TW",
 	});
 	vm.runInContext(escSource + "\n" + html.slice(start, end), context);
 	const run = (source) => vm.runInContext(source, context);

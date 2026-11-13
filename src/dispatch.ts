@@ -1,4 +1,5 @@
 // 派工:使用者核准工作卡後,在專案對應的 herdr space 開新 tab、啟動指定 agent、送出指示。
+import { tr } from "./i18n.ts";
 import { dispatchableAgents, dispatchProblem, herdrKindOf } from "./agents.ts";
 import { herdrCli, listPanes, listWorkspaces, type HerdrPane } from "./herdr.ts";
 import { ownerOf } from "./projects.ts";
@@ -44,20 +45,20 @@ export function focusProject(store: Store, project: Project, opts: { create?: bo
 	if (bound) {
 		const inside = panes.find((x) => x.workspace_id === bound.workspace_id);
 		const res = inside ? go(inside) : herdrCli(["workspace", "focus", bound.workspace_id]);
-		if (res?.error) return { ok: false, reason: String(res.error.message ?? "herdr 拒絕切換") };
+		if (res?.error) return { ok: false, reason: String(res.error.message ?? tr("herdr 拒絕切換")) };
 		const strays = panes.filter((x) => x.workspace_id !== bound.workspace_id).length;
-		return { ok: true, where: inside ? `${bound.label} › ${tabName(inside)}` : `${bound.label}`, hint: strays ? `另有 ${strays} 個窗格在別的 space` : undefined };
+		return { ok: true, where: inside ? `${bound.label} › ${tabName(inside)}` : `${bound.label}`, hint: strays ? tr("另有 {n} 個窗格在別的 space", { n: strays }) : undefined };
 	}
 	if (panes[0]) {
 		const res = go(panes[0]);
-		if (res?.error) return { ok: false, reason: String(res.error.message ?? "herdr 拒絕切換") };
-		return { ok: true, where: `${spaceName(panes[0].workspace_id)} › ${tabName(panes[0])}`, hint: "這個專案還沒有自己的 space,可以用「整理 spaces」" };
+		if (res?.error) return { ok: false, reason: String(res.error.message ?? tr("herdr 拒絕切換")) };
+		return { ok: true, where: `${spaceName(panes[0].workspace_id)} › ${tabName(panes[0])}`, hint: tr("這個專案還沒有自己的 space,可以用「整理 spaces」") };
 	}
 	// 自動跳轉不新建 space(使用者按「建立並跳過去」才建)
-	if (opts.create === false) return { ok: false, needCreate: true, reason: "這個專案還沒有 herdr space" };
+	if (opts.create === false) return { ok: false, needCreate: true, reason: tr("這個專案還沒有 herdr space") };
 	const { space, created } = ensureSpace(store, project);
 	herdrCli(["workspace", "focus", space.workspace_id]);
-	return { ok: true, where: `${space.label}${created ? "(新建)" : ""}` };
+	return { ok: true, where: `${space.label}${created ? tr("(新建)") : ""}` };
 }
 
 export interface PreviousAttempt {
@@ -92,7 +93,7 @@ function prompt(card: Card, project: Project, previous: PreviousAttempt | undefi
 
 export async function dispatchCard(store: Store, watcher: Watcher, input: Card, previous?: PreviousAttempt): Promise<Card> {
 	const project = store.project(input.projectId);
-	if (!project) throw new Error("找不到專案");
+	if (!project) throw new Error(tr("找不到專案"));
 	const attempts = (input.attempts ?? 0) + 1;
 	const card = store.updateCard(input.id, { attempts });
 	const problem = dispatchProblem(card.agent, dispatchableAgents());
@@ -104,13 +105,13 @@ export async function dispatchCard(store: Store, watcher: Watcher, input: Card, 
 	const created = herdrCli(["tab", "create", ...(ws ? ["--workspace", ws] : []), "--cwd", project.root, "--label", label, "--no-focus"]);
 	const paneId: string | undefined = created?.result?.root_pane?.pane_id;
 	const terminalId: string | undefined = created?.result?.root_pane?.terminal_id;
-	if (!paneId) return store.updateCard(card.id, { column: "blocked", note: `開 tab 失敗:${JSON.stringify(created?.error ?? created).slice(0, 200)}` });
+	if (!paneId) return store.updateCard(card.id, { column: "blocked", note: tr("開 tab 失敗:{error}", { error: JSON.stringify(created?.error ?? created).slice(0, 200) }) });
 
 	const started = herdrCli(["agent", "start", `steward-${card.id}-${attempts}`, "--kind", kind, "--pane", paneId, "--timeout", "60000"], 70_000);
-	if (started?.error) return store.updateCard(card.id, { column: "blocked", paneId, note: `啟動 ${kind} 失敗:${String(started.error.message ?? "").slice(0, 200)}` });
+	if (started?.error) return store.updateCard(card.id, { column: "blocked", paneId, note: tr("啟動 {agent} 失敗:{error}", { agent: kind, error: String(started.error.message ?? "").slice(0, 200) }) });
 
 	watcher.expectWork.add(paneId);
 	const sent = herdrCli(["agent", "prompt", paneId, prompt(card, project, previous, brief(store, project))], 20_000);
-	if (sent?.error) return store.updateCard(card.id, { column: "blocked", paneId, note: `送出指示失敗:${String(sent.error.message ?? "").slice(0, 200)}` });
-	return store.updateCard(card.id, { column: "running", paneId, terminalId, note: `已派給 ${kind}(${paneId})` });
+	if (sent?.error) return store.updateCard(card.id, { column: "blocked", paneId, note: tr("送出指示失敗:{error}", { error: String(sent.error.message ?? "").slice(0, 200) }) });
+	return store.updateCard(card.id, { column: "running", paneId, terminalId, note: tr("已派給 {agent}({pane})", { agent: kind, pane: paneId }) });
 }

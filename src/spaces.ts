@@ -1,5 +1,6 @@
 // 專案 ↔ herdr space 一對一:綁定、建立、沿用、改名、搬窗格、整理計畫。
 // 規則:管家永遠不關閉 space 或窗格;搬窗格用 herdr 的 pane.move(程序不中斷,但窗格 ID 會變)。
+import { tr } from "./i18n.ts";
 import { connect } from "node:net";
 import { HERDR_SOCKET } from "./config.ts";
 import { herdrCli, listPanes, listWorkspaces, type HerdrPane, type HerdrWorkspace } from "./herdr.ts";
@@ -13,7 +14,7 @@ export function herdrRpc(method: string, params: Record<string, unknown>, timeou
 		let buf = "";
 		const timer = setTimeout(() => {
 			s.destroy();
-			reject(new Error(`herdr ${method} 逾時`));
+			reject(new Error(tr("herdr {method} 逾時", { method })));
 		}, timeoutMs);
 		s.on("data", (d) => {
 			buf += d;
@@ -69,7 +70,7 @@ export function bind(store: Store, p: Project, w: HerdrWorkspace): Project {
 export function createSpace(label: string, cwd: string): { space: HerdrWorkspace; paneId?: string } {
 	const res = herdrCli(["workspace", "create", "--label", label, "--cwd", cwd, "--no-focus"]);
 	const w = res?.result?.workspace;
-	if (!w?.workspace_id) throw new Error(`建立 space 失敗:${JSON.stringify(res?.error ?? res).slice(0, 200)}`);
+	if (!w?.workspace_id) throw new Error(tr("建立 space 失敗:{error}", { error: JSON.stringify(res?.error ?? res).slice(0, 200) }));
 	const paneId = res?.result?.root_pane?.pane_id ?? (listPanes() ?? []).find((x) => x.workspace_id === w.workspace_id)?.pane_id;
 	return { space: { workspace_id: w.workspace_id, label: w.label ?? label }, paneId };
 }
@@ -105,9 +106,9 @@ export function strayPanes(store: Store, p: Project, panes: HerdrPane[] = listPa
 export async function movePane(store: Store, pane: HerdrPane, spaceId: string): Promise<string> {
 	const label = (herdrCli(["tab", "get", pane.tab_id])?.result?.tab?.label as string | undefined) ?? "moved";
 	const res = await herdrRpc("pane.move", { pane_id: pane.pane_id, destination: { type: "new_tab", workspace_id: spaceId, label }, focus: false });
-	if (res?.error) throw new Error(`搬 ${pane.pane_id} 失敗:${res.error.message ?? JSON.stringify(res.error)}`);
+	if (res?.error) throw new Error(tr("搬 {pane} 失敗:{error}", { pane: pane.pane_id, error: res.error.message ?? JSON.stringify(res.error) }));
 	const newId: string | undefined = res?.result?.move_result?.pane?.pane_id;
-	if (!newId) throw new Error(`搬 ${pane.pane_id} 後找不到新窗格`);
+	if (!newId) throw new Error(tr("搬 {pane} 後找不到新窗格", { pane: pane.pane_id }));
 	for (const c of store.cards()) if (c.paneId === pane.pane_id) store.updateCard(c.id, { paneId: newId });
 	return newId;
 }
@@ -172,7 +173,7 @@ export function tidyPlan(store: Store): TidyRow[] {
 		const target = p.spaceId ?? mine;
 		if (!target) {
 			if (!list.length) {
-				rows.push({ projectId: p.id, project: p.name, action: "skip", moves: [], reason: "目前沒有開著的窗格;之後跳轉或派工時才建 space" });
+				rows.push({ projectId: p.id, project: p.name, action: "skip", moves: [], reason: tr("目前沒有開著的窗格;之後跳轉或派工時才建 space") });
 				continue;
 			}
 			rows.push({
@@ -181,7 +182,7 @@ export function tidyPlan(store: Store): TidyRow[] {
 				action: "create",
 				spaceLabel: p.name,
 				moves: list.map((x) => ({ paneId: x.pane_id, tab: tabLabel(x), from: label(x.workspace_id) })),
-				reason: `窗格和別的專案混在 ${[...new Set(list.map((x) => label(x.workspace_id)))].join("、")}:新建「${p.name}」space 並搬過去`,
+				reason: tr("窗格和別的專案混在 {spaces}:新建「{name}」space 並搬過去", { spaces: [...new Set(list.map((x) => label(x.workspace_id)))].join(tr("、")), name: p.name }),
 			});
 			continue;
 		}
@@ -196,8 +197,8 @@ export function tidyPlan(store: Store): TidyRow[] {
 			moves,
 			nameDiffers: norm(tl) !== norm(p.name),
 			reason: p.spaceId
-				? moves.length ? `已綁定「${tl}」,有 ${moves.length} 個窗格在別的 space` : `已綁定「${tl}」,沒有要搬的`
-				: `綁定現有的「${tl}」space${moves.length ? `,並把 ${moves.length} 個窗格搬過來` : ""}`,
+				? moves.length ? tr("已綁定「{space}」,有 {n} 個窗格在別的 space", { space: tl, n: moves.length }) : tr("已綁定「{space}」,沒有要搬的", { space: tl })
+				: tr("綁定現有的「{space}」space{moves}", { space: tl, moves: moves.length ? tr(",並把 {n} 個窗格搬過來", { n: moves.length }) : "" }),
 		});
 	}
 	// 搬完之後會被搬空的 space(herdr 會自動移除空的 space):綁在上面又沒有自己窗格的專案改成略過
@@ -207,7 +208,7 @@ export function tidyPlan(store: Store): TidyRow[] {
 		const remaining = panes.filter((x) => x.workspace_id === r.spaceId && !leaving.has(x.pane_id)).length;
 		if (!remaining) {
 			r.action = "skip";
-			r.reason = `沒有自己的窗格;「${r.spaceLabel}」裡的窗格都會搬給子專案,搬空後 herdr 會自動移除這個 space。之後要用時再建`;
+			r.reason = tr("沒有自己的窗格;「{space}」裡的窗格都會搬給子專案,搬空後 herdr 會自動移除這個 space。之後要用時再建", { space: r.spaceLabel });
 			r.spaceId = undefined;
 		}
 	}
@@ -232,33 +233,33 @@ export async function runTidy(store: Store, rows: TidyRow[]): Promise<string[]> 
 					const tab = (herdrCli(["tab", "get", first.tab_id])?.result?.tab?.label as string | undefined) ?? "main";
 					const res = await herdrRpc("pane.move", { pane_id: first.pane_id, destination: { type: "new_workspace", label: name, tab_label: tab }, focus: false });
 					const moved = res?.result?.move_result?.pane;
-					if (res?.error || !moved) throw new Error(`建立 space 失敗:${res?.error?.message ?? "沒有回應"}`);
+					if (res?.error || !moved) throw new Error(tr("建立 space 失敗:{error}", { error: res?.error?.message ?? tr("沒有回應") }));
 					for (const c of store.cards()) if (c.paneId === first.pane_id) store.updateCard(c.id, { paneId: moved.pane_id });
 					bind(store, p, { workspace_id: moved.workspace_id, label: name });
 					spaceId = moved.workspace_id;
 					moves = moves.filter((m) => m.paneId !== first.pane_id);
-					log.push(`${p.name}:建立 space「${name}」,「${tab}」搬過來`);
+					log.push(tr("{project}:建立 space「{space}」,「{tab}」搬過來", { project: p.name, space: name, tab }));
 				} else {
 					const { space } = createSpace(name, p.root);
 					bind(store, p, space);
 					spaceId = space.workspace_id;
-					log.push(`${p.name}:建立 space「${space.label}」`);
+					log.push(tr("{project}:建立 space「{space}」", { project: p.name, space: space.label }));
 				}
 			} else if (r.action === "bind" && spaceId) {
 				const w = listWorkspaces().find((x) => x.workspace_id === spaceId);
 				if (w) {
 					bind(store, p, w);
-					log.push(`${p.name}:綁定「${w.label}」`);
+					log.push(tr("{project}:綁定「{space}」", { project: p.name, space: w.label }));
 				}
 			}
 			for (const m of moves) {
 				const pane = panes.find((x) => x.pane_id === m.paneId);
 				if (!pane || !spaceId) continue;
 				const id = await movePane(store, pane, spaceId);
-				log.push(`${p.name}:「${m.tab}」從 ${m.from} 搬過來(${pane.pane_id} → ${id})`);
+				log.push(tr("{project}:「{tab}」從 {from} 搬過來({pane} → {id})", { project: p.name, tab: m.tab, from: m.from, pane: pane.pane_id, id }));
 			}
 		} catch (e) {
-			log.push(`${p.name}:失敗 ${String(e).slice(0, 160)}`);
+			log.push(tr("{project}:失敗 {error}", { project: p.name, error: String(e).slice(0, 160) }));
 		}
 	}
 	return log;
@@ -290,7 +291,7 @@ export function syncClosedSpaces(store: Store, prev: SpaceSnapshot | undefined, 
 		for (const c of store.cards(p.id)) {
 			if (c.column !== "running") continue;
 			if (c.terminalId && alive.has(c.terminalId)) continue; // 窗格之前就搬到別的 space,還在跑
-			store.updateCard(c.id, { column: "blocked", note: `herdr 的 space「${label || id}」被關掉了,agent 已經停止。要繼續請重新派工。` });
+			store.updateCard(c.id, { column: "blocked", note: tr("herdr 的 space「{space}」被關掉了,agent 已經停止。要繼續請重新派工。", { space: label || id }) });
 		}
 		console.log(new Date().toISOString(), `[spaces] space「${label || id}」關閉 → 專案「${p.name}」收起來`);
 	}

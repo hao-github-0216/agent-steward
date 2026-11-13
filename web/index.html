@@ -1,9 +1,11 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
+<script>window.STEWARD_LANG="__STEWARD_LANG__";window.STEWARD_EN=__STEWARD_EN__;</script>
+<script src="/web/i18n.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>專案管家</title>
+<title data-t>專案管家</title>
 <style>
 :root {
 	--bg: #f6f5f2; --panel: #ffffff; --ink: #1f2328; --muted: #6b7280; --line: #e3e1dc;
@@ -842,58 +844,58 @@ try {
 </head>
 <body>
 <header>
-	<button class="titlebtn" id="menu" title="開合專案欄"><h1>專案管家</h1><span class="chev" id="menuChev">◂</span></button>
+	<button class="titlebtn" id="menu" data-t-title title="開合專案欄"><h1 data-t>專案管家</h1><span class="chev" id="menuChev">◂</span></button>
 	<div class="seg" role="tablist">
-		<button id="modeBoard" class="on" role="tab">看板</button>
-		<button id="modeCode" role="tab">程式碼</button>
-		<button id="modeTerm" role="tab">終端機</button>
+		<button id="modeBoard" class="on" role="tab" data-t>看板</button>
+		<button id="modeCode" role="tab" data-t>程式碼</button>
+		<button id="modeTerm" role="tab" data-t>終端機</button>
 	</div>
 	<div class="termctl" id="termctl">
-		<button class="small" id="fontDown" title="字體縮小">A−</button>
+		<button class="small" id="fontDown" data-t-title title="字體縮小">A−</button>
 		<span id="fontSize">15</span>
-		<button class="small" id="fontUp" title="字體放大">A+</button>
-		<button class="small termonly" id="branchBtn" hidden title="從 herdr 目前的 agent 開一條支線:新 tab 接著它的對話,另外問問題或做事,不打擾它"><span class="lg">開支線</span><span class="sm">＋支線</span></button>
-		<button class="small termonly" id="branchMore" hidden title="其他開法" aria-label="其他開法">▾</button>
-		<button class="small termonly" id="handoffBtn" hidden title="把這條支線的結論整理好,確認後送回主線"><span class="lg">帶回主線</span><span class="sm">帶回</span></button>
-		<button class="small" id="drawerBtn" title="管家側欄">管家 ▸</button>
+		<button class="small" id="fontUp" data-t-title title="字體放大">A+</button>
+		<button class="small termonly" id="branchBtn" hidden data-t-title title="從 herdr 目前的 agent 開一條支線:新 tab 接著它的對話,另外問問題或做事,不打擾它"><span class="lg" data-t>開支線</span><span class="sm" data-t>＋支線</span></button>
+		<button class="small termonly" id="branchMore" hidden data-t-title title="其他開法" data-t-aria-label aria-label="其他開法">▾</button>
+		<button class="small termonly" id="handoffBtn" hidden data-t-title title="把這條支線的結論整理好,確認後送回主線"><span class="lg" data-t>帶回主線</span><span class="sm" data-t>帶回</span></button>
+		<button class="small" id="drawerBtn" data-t-title title="管家側欄" data-t>管家 ▸</button>
 	</div>
-	<span class="status" id="status"><span class="dot"></span>連線中…</span>
-	<button class="gear" id="gearBtn" type="button" title="設定" aria-label="設定">⚙</button>
+	<span class="status" id="status"><span class="dot"></span><span data-t>連線中…</span></span>
+	<button class="gear" id="gearBtn" type="button" data-t-title title="設定" data-t-aria-label aria-label="設定">⚙</button>
 </header>
 <section id="termView" hidden>
-	<div class="termwrap"><iframe id="term" title="herdr 終端機"></iframe><div class="termhint" id="termHint">連線到 herdr…</div>
-		<div class="tkeys" id="tkeys" role="toolbar" aria-label="終端機按鍵">
-			<button type="button" class="tpin" data-k="kbd" aria-label="叫出或收起鍵盤">⌨︎</button>
+	<div class="termwrap"><iframe id="term" data-t-title title="herdr 終端機"></iframe><div class="termhint" id="termHint" data-t>連線到 herdr…</div>
+		<div class="tkeys" id="tkeys" role="toolbar" data-t-aria-label aria-label="終端機按鍵">
+			<button type="button" class="tpin" data-k="kbd" data-t-aria-label aria-label="叫出或收起鍵盤">⌨︎</button>
 			<div class="tscroll">
-				<button type="button" data-k="up" aria-label="上">↑</button><button type="button" data-k="down" aria-label="下">↓</button><button type="button" data-k="left" aria-label="左">←</button><button type="button" data-k="right" aria-label="右">→</button><button type="button" data-k="enter" aria-label="Enter">⏎</button><span class="tsep"></span>
-				<button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button><button type="button" class="tmod" data-k="ctrl" aria-label="Control(點一下只用在下一個鍵,點兩下鎖住)">Ctrl</button><button type="button" class="tmod" data-k="alt" aria-label="Alt(點一下只用在下一個鍵,點兩下鎖住)">Alt</button><span class="tsep"></span>
-				<button type="button" data-k="herdr" aria-label="herdr 快捷鍵">herdr ▴</button><button type="button" data-k="stab" aria-label="Shift Tab">⇧Tab</button><button type="button" data-k="ctrlc" aria-label="Control C">⌃C</button><span class="tsep"></span>
+				<button type="button" data-k="up" data-t-aria-label aria-label="上">↑</button><button type="button" data-k="down" data-t-aria-label aria-label="下">↓</button><button type="button" data-k="left" data-t-aria-label aria-label="左">←</button><button type="button" data-k="right" data-t-aria-label aria-label="右">→</button><button type="button" data-k="enter" aria-label="Enter">⏎</button><span class="tsep"></span>
+				<button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button><button type="button" class="tmod" data-k="ctrl" data-t-aria-label aria-label="Control(點一下只用在下一個鍵,點兩下鎖住)">Ctrl</button><button type="button" class="tmod" data-k="alt" data-t-aria-label aria-label="Alt(點一下只用在下一個鍵,點兩下鎖住)">Alt</button><span class="tsep"></span>
+				<button type="button" data-k="herdr" data-t-aria-label aria-label="herdr 快捷鍵">herdr ▴</button><button type="button" data-k="stab" aria-label="Shift Tab">⇧Tab</button><button type="button" data-k="ctrlc" aria-label="Control C">⌃C</button><span class="tsep"></span>
 				<button type="button" data-k="t:~">~</button><button type="button" data-k="t:/">/</button><button type="button" data-k="t:|">|</button><button type="button" data-k="t:-">-</button><button type="button" data-k="t:_">_</button><span class="tsep"></span>
 				<button type="button" data-k="home">Home</button><button type="button" data-k="end">End</button><button type="button" data-k="pgup">PgUp</button><button type="button" data-k="pgdn">PgDn</button>
 			</div>
-			<div class="tpanel" id="tpanel" role="menu" aria-label="herdr 快捷鍵" hidden>
-				<button type="button" data-hk="p">◀︎ 上一個分頁</button><button type="button" data-hk="n">下一個分頁 ▶︎</button>
-				<button type="button" data-hk="w">切換 space…</button><button type="button" data-hk="g">跳到…</button>
-				<button type="button" data-hk="z">放大/還原窗格</button><button type="button" data-hk="c">新分頁</button>
+			<div class="tpanel" id="tpanel" role="menu" data-t-aria-label aria-label="herdr 快捷鍵" hidden>
+				<button type="button" data-hk="p" data-t>◀︎ 上一個分頁</button><button type="button" data-hk="n" data-t>下一個分頁 ▶︎</button>
+				<button type="button" data-hk="w" data-t>切換 space…</button><button type="button" data-hk="g" data-t>跳到…</button>
+				<button type="button" data-hk="z" data-t>放大/還原窗格</button><button type="button" data-hk="c" data-t>新分頁</button>
 			</div>
 		</div>
 	</div>
 	<aside id="drawer" class="sfade">
-		<div class="dhead"><div class="dt" id="dTitle"></div><button class="small" id="drawerClose">收起</button></div>
+		<div class="dhead"><div class="dt" id="dTitle"></div><button class="small" id="drawerClose" data-t>收起</button></div>
 		<div id="dBody"></div>
 	</aside>
 </section>
 <section id="codeView" hidden>
 	<div class="cv-act">
-		<button id="cvFilesBtn" class="on" title="檔案">檔案</button>
-		<button id="cvGitBtn" title="版本控制">Git<span class="badge" id="cvGitCount" hidden></span><span class="badge behind" id="cvGitBehind" hidden></span></button>
+		<button id="cvFilesBtn" class="on" data-t-title title="檔案" data-t>檔案</button>
+		<button id="cvGitBtn" data-t-title title="版本控制">Git<span class="badge" id="cvGitCount" hidden></span><span class="badge behind" id="cvGitBehind" hidden></span></button>
 	</div>
 	<div class="cv-side">
 		<div class="cv-proj"><div id="cvProject" class="cv-projname"></div></div>
 		<div id="cvFiles" class="cv-pane sfade"></div>
 		<div id="cvGit" class="cv-pane sfade" hidden></div>
 	</div>
-	<div class="cv-sash-v" id="cvSideSash" title="拖拉調整側欄寬度"></div>
+	<div class="cv-sash-v" id="cvSideSash" data-t-title title="拖拉調整側欄寬度"></div>
 	<div class="cv-main" id="cvGroups"></div>
 </section>
 <main id="boardView">
@@ -901,9 +903,9 @@ try {
 	<section class="content sfade">
 		<div class="boardwrap">
 			<div class="toggles" style="margin:0 0 8px">
-				<label><input type="checkbox" id="allCards"> 顯示所有專案的工作卡</label>
-				<span title="提案→已核准:派工;卡住/完成→已核准:重新派工(附上次結果);進行中/卡住→完成:手動標記;任何→提案:退回;「進行中」只能由派工產生">拖到「已核准」= 派工或重新派工 · 拖回「提案」= 退回 · 游標停在這裡看完整規則</span>
-				<span class="viewtoggles"><button class="small" id="toggleBoard">收起看板</button></span>
+				<label><input type="checkbox" id="allCards"> <span data-t>顯示所有專案的工作卡</span></label>
+				<span data-t-title title="提案→已核准:派工;卡住/完成→已核准:重新派工(附上次結果);進行中/卡住→完成:手動標記;任何→提案:退回;「進行中」只能由派工產生" data-t>拖到「已核准」= 派工或重新派工 · 拖回「提案」= 退回 · 游標停在這裡看完整規則</span>
+				<span class="viewtoggles"><button class="small" id="toggleBoard" data-t>收起看板</button></span>
 			</div>
 			<div class="bdots" id="bdots"></div>
 			<div class="board" id="board"></div>
@@ -915,13 +917,13 @@ try {
 </main>
 <!-- 問管家:浮動球(三個頁面共用,可拖到四個角落) -->
 <div id="ballWrap" data-corner="br">
-	<div id="ballPanel" hidden role="dialog" aria-label="問管家">
+	<div id="ballPanel" hidden role="dialog" data-t-aria-label aria-label="問管家">
 		<div class="bp-resize" data-edge="n" aria-hidden="true"></div><div class="bp-resize" data-edge="s" aria-hidden="true"></div>
 		<div class="bp-resize" data-edge="e" aria-hidden="true"></div><div class="bp-resize" data-edge="w" aria-hidden="true"></div>
 		<div class="bp-resize" data-edge="nw" aria-hidden="true"></div><div class="bp-resize" data-edge="ne" aria-hidden="true"></div>
 		<div class="bp-resize" data-edge="sw" aria-hidden="true"></div><div class="bp-resize" data-edge="se" aria-hidden="true"></div>
 		<div class="bp-content">
-			<div class="bp-head"><b id="bpTitle">問管家</b><button class="small" id="bpClear" title="清除這個專案畫面上的問答紀錄(管家記得的專案進度不受影響)">清除紀錄</button><button class="small" id="bpClose">關閉</button></div>
+			<div class="bp-head"><b id="bpTitle" data-t>問管家</b><button class="small" id="bpClear" data-t-title title="清除這個專案畫面上的問答紀錄(管家記得的專案進度不受影響)" data-t>清除紀錄</button><button class="small" id="bpClose" data-t>關閉</button></div>
 			<div class="bp-log sfade" id="bpLog"></div>
 			<div class="bp-extras">
 				<div class="bp-sugg" id="bpSugg" hidden></div>
@@ -929,11 +931,11 @@ try {
 				<div class="bp-ctx" id="bpCtx"></div>
 				<div class="bp-pick" id="bpPick" hidden></div>
 			</div>
-			<form id="bpForm"><textarea id="bpInput" placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><div class="bp-btns"><button class="small primary">送出</button><button type="button" class="small" id="bpDraft" title="根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡">開工作卡</button></div></form>
+			<form id="bpForm"><textarea id="bpInput" data-t-placeholder placeholder="問管家這個專案的事…(⌘/Ctrl+Enter 送出)"></textarea><div class="bp-btns"><button class="small primary" data-t>送出</button><button type="button" class="small" id="bpDraft" data-t-title title="根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡" data-t>開工作卡</button></div></form>
 		</div>
 	</div>
-	<button id="ballSnap" type="button" title="圈選畫面問管家(Alt+S;也可以長按浮動球)" aria-label="圈選畫面問管家"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c5 0 9 3.6 9 8s-4 8-9 8c-1.6 0-3-.3-4.3-.9L4 20l1-3.4C3.8 15.2 3 13.2 3 11c0-4.4 4-8 9-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4" stroke-linecap="round"/></svg></button>
-	<button id="stewardBall" type="button" title="問管家(可以拖到畫面四個角落)" aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
+	<button id="ballSnap" type="button" data-t-title title="圈選畫面問管家(Alt+S;也可以長按浮動球)" data-t-aria-label aria-label="圈選畫面問管家"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c5 0 9 3.6 9 8s-4 8-9 8c-1.6 0-3-.3-4.3-.9L4 20l1-3.4C3.8 15.2 3 13.2 3 11c0-4.4 4-8 9-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4" stroke-linecap="round"/></svg></button>
+	<button id="stewardBall" type="button" data-t-title title="問管家(可以拖到畫面四個角落)" data-t-aria-label aria-label="問管家"><svg class="cat" viewBox="0 0 64 64" aria-hidden="true">
 		<path d="M11 27 L13 6 L28 17 Z" fill="#f6a04d"/><path d="M53 27 L51 6 L36 17 Z" fill="#f6a04d"/>
 		<path d="M15 22 L16 11 L24 17 Z" fill="#ffb3c1"/><path d="M49 22 L48 11 L40 17 Z" fill="#ffb3c1"/>
 		<ellipse cx="32" cy="37" rx="24" ry="21" fill="#f6a04d"/>
@@ -949,42 +951,42 @@ try {
 </div>
 <div class="modal" id="createDlg" hidden>
 	<div class="box" role="dialog" aria-labelledby="createTitle">
-		<div class="mhead"><h3 id="createTitle">建立專案</h3><button class="small" data-close="createDlg">關閉</button></div>
+		<div class="mhead"><h3 id="createTitle" data-t>建立專案</h3><button class="small" data-close="createDlg" data-t>關閉</button></div>
 		<div class="mbody">
-			<div class="choice"><button class="small" id="fsUp">↑ 上一層</button><span class="crumb" id="fsPath"></span></div>
+			<div class="choice"><button class="small" id="fsUp" data-t>↑ 上一層</button><span class="crumb" id="fsPath"></span></div>
 			<div class="dirlist" id="fsList"></div>
-			<div class="choice"><button class="small primary" id="fsPick">選這個資料夾</button><span class="hint" id="fsHere"></span></div>
+			<div class="choice"><button class="small primary" id="fsPick" data-t>選這個資料夾</button><span class="hint" id="fsHere"></span></div>
 			<div class="choice">
-				<span class="hint">或在這裡新建:</span>
-				<input type="text" id="newFolder" placeholder="新資料夾名稱">
-				<label><input type="checkbox" id="newGit"> 同時建立 git repo</label>
-				<button class="small" id="fsNew">新建</button>
+				<span class="hint" data-t>或在這裡新建:</span>
+				<input type="text" id="newFolder" data-t-placeholder placeholder="新資料夾名稱">
+				<label><input type="checkbox" id="newGit"> <span data-t>同時建立 git repo</span></label>
+				<button class="small" id="fsNew" data-t>新建</button>
 			</div>
 			<div id="createForm" hidden>
 				<div class="msgbox" id="pickedBox"></div>
-				<label class="field">專案名稱(也是 herdr space 的名稱)<input type="text" id="spaceName"></label>
-				<label class="field">順便啟動 agent
-					<select id="startAgent"><option value="none">不啟動</option><option value="pi">pi</option><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
+				<label class="field"><span data-t>專案名稱(也是 herdr space 的名稱)</span><input type="text" id="spaceName"></label>
+				<label class="field"><span data-t>順便啟動 agent</span>
+					<select id="startAgent"><option value="none" data-t>不啟動</option><option value="pi">pi</option><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
 				</label>
 			</div>
 			<div class="msgbox" id="createMsg" hidden></div>
 		</div>
-		<div class="mfoot"><button class="small primary" id="createGo" disabled>建立</button></div>
+		<div class="mfoot"><button class="small primary" id="createGo" disabled data-t>建立</button></div>
 	</div>
 </div>
-<div class="bmenu" id="branchMenu" hidden><button id="branchHere" title="不建 worktree,支線和主線改同一份檔案">同資料夾開(不建 worktree)</button></div>
+<div class="bmenu" id="branchMenu" hidden><button id="branchHere" data-t-title title="不建 worktree,支線和主線改同一份檔案" data-t>同資料夾開(不建 worktree)</button></div>
 <div class="modal" id="handoffDlg" hidden>
 	<div class="box" role="dialog" aria-labelledby="handoffTitle">
-		<div class="mhead"><h3 id="handoffTitle">帶回主線</h3><button class="small" data-close="handoffDlg">取消</button></div>
-		<div class="mbody"><div class="hint" id="handoffHint"></div><textarea id="handoffText" placeholder="管家正在整理支線的結論…"></textarea></div>
-		<div class="mfoot"><span class="hint" id="handoffNote"></span><button class="small" id="handoffRedo" disabled>重新整理</button><button class="small primary" id="handoffGo" disabled>送給主線</button><label class="hint" id="handoffRmWrap" hidden><input type="checkbox" id="handoffRm"> 也移除 worktree</label><button class="small" id="handoffKeep" hidden>保留支線</button><button class="small primary" id="handoffClose" hidden>關掉支線</button></div>
+		<div class="mhead"><h3 id="handoffTitle" data-t>帶回主線</h3><button class="small" data-close="handoffDlg" data-t>取消</button></div>
+		<div class="mbody"><div class="hint" id="handoffHint"></div><textarea id="handoffText" data-t-placeholder placeholder="管家正在整理支線的結論…"></textarea></div>
+		<div class="mfoot"><span class="hint" id="handoffNote"></span><button class="small" id="handoffRedo" disabled data-t>重新整理</button><button class="small primary" id="handoffGo" disabled data-t>送給主線</button><label class="hint" id="handoffRmWrap" hidden><input type="checkbox" id="handoffRm"> <span data-t>也移除 worktree</span></label><button class="small" id="handoffKeep" hidden data-t>保留支線</button><button class="small primary" id="handoffClose" hidden data-t>關掉支線</button></div>
 	</div>
 </div>
 <div class="modal" id="tidyDlg" hidden>
 	<div class="box" role="dialog" aria-labelledby="tidyTitle">
-		<div class="mhead"><h3 id="tidyTitle">整理 spaces(一個專案一個 space)</h3><button class="small" data-close="tidyDlg">關閉</button></div>
-		<div class="mbody"><div class="hint">勾選要執行的項目。搬窗格時裡面的程式不會中斷;管家不會關閉任何 space 或窗格。</div><div id="tidyList"><div class="empty">計算中…</div></div></div>
-		<div class="mfoot"><span class="hint" id="tidyNote"></span><button class="small primary" id="tidyGo" disabled>執行勾選的項目</button></div>
+		<div class="mhead"><h3 id="tidyTitle" data-t>整理 spaces(一個專案一個 space)</h3><button class="small" data-close="tidyDlg" data-t>關閉</button></div>
+		<div class="mbody"><div class="hint" data-t>勾選要執行的項目。搬窗格時裡面的程式不會中斷;管家不會關閉任何 space 或窗格。</div><div id="tidyList"><div class="empty" data-t>計算中…</div></div></div>
+		<div class="mfoot"><span class="hint" id="tidyNote"></span><button class="small primary" id="tidyGo" disabled data-t>執行勾選的項目</button></div>
 	</div>
 </div>
 <script src="/web/chatmd.js"></script>
@@ -1008,15 +1010,15 @@ function showLogin(d = {}) {
 	const w = document.createElement("div");
 	w.className = "loginwrap";
 	w.innerHTML = d.login === false
-		? `<div class="loginbox"><h2>專案管家</h2><p>${(d.error || "還沒設定管理密碼").replace(/[&<>]/g, "")}</p></div>`
-		: `<form class="loginbox"><h2>專案管家</h2><p class="hint">請輸入管理密碼</p><input type="password" name="pw" autocomplete="current-password" autofocus placeholder="管理密碼"><button class="primary" type="submit">登入</button><div class="loginerr"></div></form>`;
+		? `<div class="loginbox"><h2>${tr("專案管家")}</h2><p>${(d.error || tr("還沒設定管理密碼")).replace(/[&<>]/g, "")}</p></div>`
+		: `<form class="loginbox"><h2>${tr("專案管家")}</h2><p class="hint">${tr("請輸入管理密碼")}</p><input type="password" name="pw" autocomplete="current-password" autofocus placeholder="${esc(tr("管理密碼"))}"><button class="primary" type="submit">${tr("登入")}</button><div class="loginerr"></div></form>`;
 	document.body.appendChild(w);
 	w.querySelector("form")?.addEventListener("submit", async (e) => {
 		e.preventDefault();
 		const pw = w.querySelector("input").value;
-		const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: pw }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
+		const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: pw }) }).then((x) => x.json()).catch(() => ({ error: tr("連不上管家") }));
 		if (r.ok) location.reload();
-		else w.querySelector(".loginerr").textContent = r.error || "登入失敗";
+		else w.querySelector(".loginerr").textContent = r.error || tr("登入失敗");
 	});
 }
 // 從 Tailscale 的 http 網址打開時,轉到設定的 https 網址(瀏覽器只在安全來源開放剪貼簿 API)
@@ -1025,7 +1027,7 @@ if (location.protocol === "http:" && /^100\./.test(location.hostname) && PUBLIC_
 	location.replace(`${PUBLIC_URL.replace(/\/$/, "")}/${location.search}${location.hash}`);
 }
 try { fetch("/api/clientlog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "load", proto: location.protocol, secure: isSecureContext, ua: navigator.userAgent }), keepalive: true }); } catch {}
-const COLS = [["proposed", "提案"], ["approved", "已核准"], ["running", "進行中"], ["blocked", "卡住"], ["done", "完成"]];
+const COLS = [["proposed", tr("提案")], ["approved", tr("已核准")], ["running", tr("進行中")], ["blocked", tr("卡住")], ["done", tr("完成")]];
 let state = { projects: [], cards: [], watcher: {} };
 let sel = null;
 try { sel = localStorage.getItem("steward.sel"); } catch {}
@@ -1034,7 +1036,7 @@ const $ = (id) => document.getElementById(id);
 const inApp = () => document.documentElement.classList.contains("inapp") && !!window.webkit?.messageHandlers?.steward;
 const toApp = (msg) => { try { window.webkit.messageHandlers.steward.postMessage(msg); return true; } catch { return false; } };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const ago = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : `${Math.round(m / 1440)} 天前`; };
+const ago = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); if (LANG === "en" && m === 0) return tr("剛剛"); if (m < 60) return tr("{n} 分鐘前", { n: m }); if (m < 1440) return tr("{n} 小時前", { n: Math.round(m / 60) }); const d = Math.round(m / 1440); return d === 1 ? tr("1 天前") : tr("{n} 天前", { n: d }); };
 const post = (url, data) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json());
 
 // ---------- 三個頁面共用的「目前專案」 ----------
@@ -1073,8 +1075,8 @@ async function load() {
 		state = await fetch("/api/board").then((r) => r.json());
 		syncSetupBanner(state.setup);
 		const w = state.watcher || {};
-		$("status").innerHTML = `<span class="dot ${w.lastError ? "off" : ""}"></span>${w.lastError ? esc(w.lastError) : `監看 ${w.panes?.length ?? 0} 個 agent 窗格`}`;
-	} catch { $("status").innerHTML = `<span class="dot off"></span>連不上管家`; }
+		$("status").innerHTML = `<span class="dot ${w.lastError ? "off" : ""}"></span>${w.lastError ? esc(w.lastError) : tr("監看 {n} 個 agent 窗格", { n: w.panes?.length ?? 0 })}`;
+	} catch { $("status").innerHTML = `<span class="dot off"></span>${tr("連不上管家")}`; }
 	if (firstLoad) { firstLoad = false; await syncCurrent(); }
 	window.refreshWtCounts(false);
 	if (!sel || !state.projects.find((p) => p.id === sel)) sel = (state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity)[0] || state.projects[0])?.id;
@@ -1098,7 +1100,7 @@ function closeTool() { editing = null; $("tool").innerHTML = ""; }
 
 function renderNav() {
 	const open = (p) => state.cards.filter((c) => c.projectId === p.id && (c.column === "proposed" || c.column === "blocked")).length;
-	const item = (p) => `<div class="projrow ${p.id === sel ? "sel" : ""}"><button class="proj" data-id="${p.id}">${open(p) ? `<span class="badge">${open(p)}</span>` : ""}${window.codeMode?.hasUnsaved?.(p.id) ? '<span class="unsaved" title="程式碼頁面有還沒存的修改">●</span>' : ""}${p.private ? "🔒 " : ""}${esc(p.name)}${wtCounts[p.id] ? `<span class="wtb" title="有 ${wtCounts[p.id]} 個另外開的分支 worktree(程式碼 → git 面板看)">⑂${wtCounts[p.id]}</span>` : ""}<small>${p.lastActivityAt ? ago(p.lastActivityAt) : "尚無紀錄"}</small></button>${p.kind === "project" ? `<button class="pmore" data-pmenu="${p.id}" title="更多動作" aria-label="${esc(p.name)} 的更多動作">⋯</button>` : ""}</div>`;
+	const item = (p) => `<div class="projrow ${p.id === sel ? "sel" : ""}"><button class="proj" data-id="${p.id}">${open(p) ? `<span class="badge">${open(p)}</span>` : ""}${window.codeMode?.hasUnsaved?.(p.id) ? `<span class="unsaved" title="${esc(tr("程式碼頁面有還沒存的修改"))}">●</span>` : ""}${p.private ? "🔒 " : ""}${esc(p.name)}${wtCounts[p.id] ? `<span class="wtb" title="${esc(tr("有 {n} 個另外開的分支 worktree(程式碼 → git 面板看)", { n: wtCounts[p.id] }))}">⑂${wtCounts[p.id]}</span>` : ""}<small>${p.lastActivityAt ? ago(p.lastActivityAt) : tr("尚無紀錄")}</small></button>${p.kind === "project" ? `<button class="pmore" data-pmenu="${p.id}" title="${esc(tr("更多動作"))}" aria-label="${esc(tr("{name} 的更多動作", { name: p.name }))}">⋯</button>` : ""}</div>`;
 	const active = state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity);
 	const special = state.projects.filter((p) => p.kind !== "project");
 	const pending = state.projects.filter((p) => p.status === "pending");
@@ -1106,38 +1108,38 @@ function renderNav() {
 	const stopped = state.projects.filter((p) => p.status === "ignored" && p.kind === "project" && (p.state?.updatedAt || state.cards.some((c) => c.projectId === p.id)));
 	// herdr 的 space 被關掉而收起來的專案:在資料夾裡開 agent 或按「打開」就回來
 	const closed = state.projects.filter((p) => p.status === "closed" && p.kind === "project").sort((a, b) => String(b.closedAt).localeCompare(String(a.closedAt)));
-	$("nav").innerHTML = `<div class="navacts"><button class="small primary" id="newProject">＋ 建立專案</button><button class="small" id="tidySpaces">整理 spaces</button></div>
-		<h2>專案</h2>${active.map(item).join("") || '<div class="empty">還沒有專案</div>'}
-		<h2>其他</h2>${special.map(item).join("")}
-		${pending.length ? `<h2>要登記成專案嗎?</h2>${pending.map((p) => `<div class="pending"><b>${esc(p.root)}</b><div class="row"><button class="small primary" data-reg="${p.id}">登記</button><button class="small" data-ign="${p.id}">略過</button></div></div>`).join("")}` : ""}
-		${closed.length ? `<details class="stopped"><summary><h2 style="display:inline">已收起(${closed.length})</h2></summary><p class="hint">herdr 的 space 被關掉的專案。在它的資料夾裡開 agent 就會自動回來。</p>${closed.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.closedAt ? ` · ${ago(p.closedAt)}收起` : ""}</span><div class="row"><button class="small primary" data-reopen="${p.id}" title="恢復追蹤並在終端機開一個新的 space">打開</button><button class="small" data-ign="${p.id}" title="不再追蹤:之後在這個資料夾開 agent 也不會自動回來">停止追蹤</button></div></div>`).join("")}</details>` : ""}
-		${stopped.length ? `<details class="stopped"><summary><h2 style="display:inline">已停止追蹤(${stopped.length})</h2></summary>${stopped.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.state?.updatedAt ? ` · 紀錄保留到 ${ago(p.state.updatedAt)}` : ""}</span><div class="row"><button class="small primary" data-reg="${p.id}" title="恢復追蹤:之前的進度、工作卡、管家記憶都會回來">恢復追蹤</button></div></div>`).join("")}</details>` : ""}`;
+	$("nav").innerHTML = `<div class="navacts"><button class="small primary" id="newProject">${tr("＋ 建立專案")}</button><button class="small" id="tidySpaces">${tr("整理 spaces")}</button></div>
+		<h2>${tr("專案")}</h2>${active.map(item).join("") || `<div class="empty">${tr("還沒有專案")}</div>`}
+		<h2>${tr("其他")}</h2>${special.map(item).join("")}
+		${pending.length ? `<h2>${tr("要登記成專案嗎?")}</h2>${pending.map((p) => `<div class="pending"><b>${esc(p.root)}</b><div class="row"><button class="small primary" data-reg="${p.id}">${tr("登記")}</button><button class="small" data-ign="${p.id}">${tr("略過")}</button></div></div>`).join("")}` : ""}
+		${closed.length ? `<details class="stopped"><summary><h2 style="display:inline">${tr("已收起({n})", { n: closed.length })}</h2></summary><p class="hint">${tr("herdr 的 space 被關掉的專案。在它的資料夾裡開 agent 就會自動回來。")}</p>${closed.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.closedAt ? tr(" · {time}收起", { time: ago(p.closedAt) }) : ""}</span><div class="row"><button class="small primary" data-reopen="${p.id}" title="${esc(tr("恢復追蹤並在終端機開一個新的 space"))}">${tr("打開")}</button><button class="small" data-ign="${p.id}" title="${esc(tr("不再追蹤:之後在這個資料夾開 agent 也不會自動回來"))}">${tr("停止追蹤")}</button></div></div>`).join("")}</details>` : ""}
+		${stopped.length ? `<details class="stopped"><summary><h2 style="display:inline">${tr("已停止追蹤({n})", { n: stopped.length })}</h2></summary>${stopped.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.state?.updatedAt ? tr(" · 紀錄保留到 {time}", { time: ago(p.state.updatedAt) }) : ""}</span><div class="row"><button class="small primary" data-reg="${p.id}" title="${esc(tr("恢復追蹤:之前的進度、工作卡、管家記憶都會回來"))}">${tr("恢復追蹤")}</button></div></div>`).join("")}</details>` : ""}`;
 }
 
 function renderBrief() {
 	const p = state.projects.find((x) => x.id === sel);
-	if (!p) { $("brief").innerHTML = '<div class="empty">選一個專案</div>'; return; }
+	if (!p) { $("brief").innerHTML = `<div class="empty">${tr("選一個專案")}</div>`; return; }
 	const s = p.state || {};
 	const list = (t, a) => a?.length ? `<h4>${t}</h4><ul>${a.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
 	const si = state.spaceInfo?.[p.id];
 	const spaceLine = p.kind !== "project" ? "" : si?.label
 		? `<div class="spaceline"><span class="chip">herdr space:${esc(si.label)}</span>
-			${si.nameDiffers ? `<span class="warn">名稱和專案不同</span><button class="small" data-spacename="space">專案改名為「${esc(si.label)}」</button><button class="small" data-spacename="project">space 改回「${esc(p.name)}」</button>` : ""}
-			${si.strays ? `<span class="warn">有 ${si.strays} 個窗格在別的 space</span><button class="small primary" data-strays="1">搬過去</button>` : ""}</div>`
-		: `<div class="spaceline"><span class="chip dim">還沒有綁定 herdr space</span><span class="hint">跳轉或派工時會自動建立,也可以用「整理 spaces」</span></div>`;
-	$("brief").innerHTML = `<h3>${p.private ? "🔒 " : ""}${esc(p.name)}</h3><div class="path">${esc(p.root)}${s.updatedAt ? ` · 更新於 ${ago(s.updatedAt)}` : ""}</div>${spaceLine}
-		${s.goal ? `<h4>目標</h4><p>${esc(s.goal)}</p>` : ""}
-		${s.progress ? `<h4>目前進度</h4><p>${esc(s.progress)}</p>` : `<p class="empty">管家還沒有這個專案的紀錄。agent 收工後會自動整理${p.kind === "project" ? ',或現在就從現有記錄補建。</p><p><button class="small primary" id="bootstrap">從現有記錄補建</button>' : "。"}</p>`}
-		<div class="grid"><div>${list("下一步", s.nextSteps)}</div><div>${list("卡住的地方", s.blockers)}</div></div>
-		${s.decisions?.length ? `<details><summary><b style="font-size:12px;color:var(--muted)">重要決定(${s.decisions.length})</b></summary>${list("", s.decisions)}</details>` : ""}
-		${s.recent?.length ? `<h4>最近的工作</h4><ul>${s.recent.slice(0, 6).map((r) => `<li>${ago(r.at)} · ${esc(r.agent)}:${esc(r.summary)}</li>`).join("")}</ul>` : ""}
-		${p.kind === "project" ? `<div class="toggles"><label><input type="checkbox" id="priv" ${p.private ? "checked" : ""}> 隱私專案(只用「隱私專案」指定的模型)</label><button class="small" id="split">拆出子資料夾</button><span class="hint">改名、在終端機開啟、停止追蹤:左側專案旁的「⋯」</span></div><div id="tool"></div>` : ""}`;
+			${si.nameDiffers ? `<span class="warn">${tr("名稱和專案不同")}</span><button class="small" data-spacename="space">${tr("專案改名為「{label}」", { label: esc(si.label) })}</button><button class="small" data-spacename="project">${tr("space 改回「{name}」", { name: esc(p.name) })}</button>` : ""}
+			${si.strays ? `<span class="warn">${tr("有 {strays} 個窗格在別的 space", { strays: si.strays })}</span><button class="small primary" data-strays="1">${tr("搬過去")}</button>` : ""}</div>`
+		: `<div class="spaceline"><span class="chip dim">${tr("還沒有綁定 herdr space")}</span><span class="hint">${tr("跳轉或派工時會自動建立,也可以用「整理 spaces」")}</span></div>`;
+	$("brief").innerHTML = `<h3>${p.private ? "🔒 " : ""}${esc(p.name)}</h3><div class="path">${esc(p.root)}${s.updatedAt ? tr(" · 更新於 {time}", { time: ago(s.updatedAt) }) : ""}</div>${spaceLine}
+		${s.goal ? `<h4>${tr("目標")}</h4><p>${esc(s.goal)}</p>` : ""}
+		${s.progress ? `<h4>${tr("目前進度")}</h4><p>${esc(s.progress)}</p>` : p.kind === "project" ? `<p class="empty">${tr("管家還沒有這個專案的紀錄。agent 收工後會自動整理,或現在就從現有記錄補建。")}</p><p><button class="small primary" id="bootstrap">${tr("從現有記錄補建")}</button></p>` : `<p class="empty">${tr("管家還沒有這個專案的紀錄。agent 收工後會自動整理。")}</p>`}
+		<div class="grid"><div>${list(tr("下一步"), s.nextSteps)}</div><div>${list(tr("卡住的地方"), s.blockers)}</div></div>
+		${s.decisions?.length ? `<details><summary><b style="font-size:12px;color:var(--muted)">${tr("重要決定({n})", { n: s.decisions.length })}</b></summary>${list("", s.decisions)}</details>` : ""}
+		${s.recent?.length ? `<h4>${tr("最近的工作")}</h4><ul>${s.recent.slice(0, 6).map((r) => `<li>${ago(r.at)} · ${esc(r.agent)}:${esc(r.summary)}</li>`).join("")}</ul>` : ""}
+		${p.kind === "project" ? `<div class="toggles"><label><input type="checkbox" id="priv" ${p.private ? "checked" : ""}> ${tr("隱私專案(只用「隱私專案」指定的模型)")}</label><button class="small" id="split">${tr("拆出子資料夾")}</button><span class="hint">${tr("改名、在終端機開啟、停止追蹤:左側專案旁的「⋯」")}</span></div><div id="tool"></div>` : ""}`;
 	const priv = $("priv"); if (priv) priv.onchange = () => post(`/api/projects/${p.id}`, { private: priv.checked }).then(load);
 	const bs = $("bootstrap");
 	if (bs) bs.onclick = async () => {
-		bs.disabled = true; bs.textContent = "整理中…(約 1 分鐘)";
+		bs.disabled = true; bs.textContent = tr("整理中…(約 1 分鐘)");
 		const r = await post(`/api/projects/${p.id}/bootstrap`, {});
-		if (r.error) { bs.disabled = false; bs.textContent = `補建失敗:${r.error}`; return; }
+		if (r.error) { bs.disabled = false; bs.textContent = tr("補建失敗:{error}", { error: r.error }); return; }
 		load();
 	};
 	const sp = $("split"); if (sp) sp.onclick = () => showSplit(p);
@@ -1145,19 +1147,19 @@ function renderBrief() {
 
 async function showSplit(p) {
 	editing = p.id;
-	$("tool").innerHTML = '<div class="tool"><span class="empty">讀取子資料夾…</span></div>';
+	$("tool").innerHTML = `<div class="tool"><span class="empty">${tr("讀取子資料夾…")}</span></div>`;
 	const r = await fetch(`/api/projects/${p.id}/subdirs`).then((x) => x.json());
-	const rows = (r.dirs || []).map((d) => `<div class="subdir"><span>${esc(d.name)}/</span>${d.project ? '<span class="empty">已是專案</span>' : `<button class="small" data-split="${esc(d.root)}">拆成專案</button>`}</div>`).join("");
+	const rows = (r.dirs || []).map((d) => `<div class="subdir"><span>${esc(d.name)}/</span>${d.project ? `<span class="empty">${tr("已是專案")}</span>` : `<button class="small" data-split="${esc(d.root)}">${tr("拆成專案")}</button>`}</div>`).join("");
 	$("tool").innerHTML = `<div class="tool split">
-		<div class="empty">拆出來的子資料夾會變成獨立專案;之後在裡面的工作改記到新專案(已經記在「${esc(p.name)}」的內容不會搬過去)。</div>
-		${rows || '<div class="empty">沒有子資料夾</div>'}
-		<form id="splitForm" class="subdir"><input id="splitPath" placeholder="或輸入完整路徑,例如 ${esc(p.root)}/某個資料夾"><button class="small primary">登記</button></form>
-		<button class="small" type="button" id="cancelTool">關閉</button></div>`;
+		<div class="empty">${tr("拆出來的子資料夾會變成獨立專案;之後在裡面的工作改記到新專案(已經記在「{name}」的內容不會搬過去)。", { name: esc(p.name) })}</div>
+		${rows || `<div class="empty">${tr("沒有子資料夾")}</div>`}
+		<form id="splitForm" class="subdir"><input id="splitPath" placeholder="${esc(tr("或輸入完整路徑,例如 {root}/某個資料夾", { root: p.root }))}"><button class="small primary">${tr("登記")}</button></form>
+		<button class="small" type="button" id="cancelTool">${tr("關閉")}</button></div>`;
 	$("cancelTool").onclick = closeTool;
 	const register = async (root) => {
 		const res = await post("/api/projects", { root });
 		if (res.error) { alertInline(res.error); return; }
-		await load(); selectProject(res.id, "看板");
+		await load(); selectProject(res.id, "看板"); // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
 	};
 	$("tool").querySelectorAll("[data-split]").forEach((b) => (b.onclick = () => register(b.dataset.split)));
 	$("splitForm").onsubmit = (e) => { e.preventDefault(); const v = $("splitPath").value.trim(); if (v) register(v); };
@@ -1190,7 +1192,7 @@ function popMenu(x, y, items) {
 function miniDialog({ title, html, okLabel, danger, onOk }) {
 	const w = document.createElement("div");
 	w.className = "modal";
-	w.innerHTML = `<div class="box" role="dialog" style="width:min(460px,100%)"><div class="mhead"><h3>${esc(title)}</h3><button class="small" data-x>取消</button></div><div class="mbody">${html}</div><div class="mfoot"><button class="small ${danger ? "" : "primary"}" data-ok ${danger ? 'style="color:var(--bad);border-color:var(--bad)"' : ""}>${esc(okLabel)}</button></div></div>`;
+	w.innerHTML = `<div class="box" role="dialog" style="width:min(460px,100%)"><div class="mhead"><h3>${esc(title)}</h3><button class="small" data-x>${tr("取消")}</button></div><div class="mbody">${html}</div><div class="mfoot"><button class="small ${danger ? "" : "primary"}" data-ok ${danger ? 'style="color:var(--bad);border-color:var(--bad)"' : ""}>${esc(okLabel)}</button></div></div>`;
 	const close = () => w.remove();
 	w.querySelector("[data-x]").onclick = close;
 	w.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); if (e.key === "Enter" && e.target.tagName === "INPUT") w.querySelector("[data-ok]").click(); });
@@ -1200,33 +1202,33 @@ function miniDialog({ title, html, okLabel, danger, onOk }) {
 }
 function projMenu(p, x, y) {
 	popMenu(x, y, [
-		{ label: "在終端機開啟", run: () => { selectProject(p.id, "看板"); setMode("term", { create: true }); } },
-		{ label: "在程式碼模式開啟", run: () => { selectProject(p.id, "看板"); setMode("code"); } },
-		{ label: "改名", run: () => miniDialog({
-			title: "改名", okLabel: "儲存",
-			html: `<label class="field">新名稱(herdr 的 space 也會跟著改)<input type="text" data-n value="${esc(p.name)}" maxlength="60"></label>`,
+		{ label: tr("在終端機開啟"), run: () => { selectProject(p.id, "看板"); setMode("term", { create: true }); } }, // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
+		{ label: tr("在程式碼模式開啟"), run: () => { selectProject(p.id, "看板"); setMode("code"); } }, // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
+		{ label: tr("改名"), run: () => miniDialog({
+			title: tr("改名"), okLabel: tr("儲存"),
+			html: `<label class="field">${tr("新名稱(herdr 的 space 也會跟著改)")}<input type="text" data-n value="${esc(p.name)}" maxlength="60"></label>`,
 			onOk: async (w) => {
 				const name = w.querySelector("[data-n]").value.trim();
 				if (!name || name === p.name) return;
 				const r = await post(`/api/projects/${p.id}`, { name });
-				toast(r.error || `已改名為「${name}」`);
+				toast(r.error || tr("已改名為「{name}」", { name: name }));
 				load();
 			},
 		}) },
-		{ label: "停止追蹤", danger: true, run: () => miniDialog({
-			title: `停止追蹤「${p.name}」?`, okLabel: "停止追蹤", danger: true,
+		{ label: tr("停止追蹤"), danger: true, run: () => miniDialog({
+			title: tr("停止追蹤「{name}」?", { name: p.name }), okLabel: tr("停止追蹤"), danger: true,
 			html: (() => {
 				const si = state.spaceInfo?.[p.id];
 				// 有 agent 正在工作時預設不勾,免得把跑到一半的工作關掉
-				const box = si?.label ? `<label class="field check"><input type="checkbox" data-closespace ${si.working ? "" : "checked"}> 同時關閉 herdr 的 space「${esc(si.label)}」(${si.panes} 個窗格)</label>${si.working ? `<p class="warn">裡面有 ${si.working} 個 agent 正在工作,勾選會讓它們停止。</p>` : ""}` : "";
-				return `<p>之後在這個資料夾做的事會改記到「雜務」,在這裡開 agent 也不會自動恢復。</p>${box}<p class="hint">進度、工作卡、管家記憶都會保留,資料夾和檔案不會被動到。隨時可以從左側最下面的「已停止追蹤」恢復。</p>`;
+				const box = si?.label ? `<label class="field check"><input type="checkbox" data-closespace ${si.working ? "" : "checked"}> ${tr("同時關閉 herdr 的 space「{label}」({panes} 個窗格)", { label: esc(si.label), panes: si.panes })}</label>${si.working ? `<p class="warn">${tr("裡面有 {working} 個 agent 正在工作,勾選會讓它們停止。", { working: si.working })}</p>` : ""}` : "";
+				return `<p>${tr("之後在這個資料夾做的事會改記到「雜務」,在這裡開 agent 也不會自動恢復。")}</p>${box}<p class="hint">${tr("進度、工作卡、管家記憶都會保留,資料夾和檔案不會被動到。隨時可以從左側最下面的「已停止追蹤」恢復。")}</p>`;
 			})(),
 			onOk: async (w) => {
 				const closeSpace = !!w.querySelector("[data-closespace]")?.checked;
 				const r = await post(`/api/projects/${p.id}`, { status: "ignored", closeSpace });
 				if (r.error) { toast(r.error); load(); return; }
 				if (sel === p.id) sel = null;
-				toast(r.closedSpace ? `已停止追蹤「${p.name}」,並關閉 space「${r.closedSpace}」` : `已停止追蹤「${p.name}」`);
+				toast(r.closedSpace ? tr("已停止追蹤「{name}」,並關閉 space「{closedSpace}」", { name: p.name, closedSpace: r.closedSpace }) : tr("已停止追蹤「{name}」", { name: p.name }));
 				load();
 			},
 		}) },
@@ -1238,7 +1240,7 @@ let showAllDone = false;
 function cardLine(c, projName = "") {
 	const asked = (c.thread || []).filter((t) => t.role === "user").length;
 	const waiting = (c.thread || []).some((t) => t.status === "sent" || t.status === "queued");
-	const tags = `${c.note ? '<span class="dn" title="有備註,點開看"></span>' : ""}${(c.attempts ?? 0) > 1 ? `<span title="第 ${c.attempts} 次派工">×${c.attempts}</span>` : ""}${asked ? `<span title="${waiting ? "追問等回覆中" : `追問 ${asked} 次`}"${waiting ? ' style="color:var(--accent)"' : ""}>💬${asked}</span>` : ""}${projName ? `<span class="pn">${esc(projName)}</span>` : ""}`;
+	const tags = `${c.note ? `<span class="dn" title="${esc(tr("有備註,點開看"))}"></span>` : ""}${(c.attempts ?? 0) > 1 ? `<span title="${esc(tr("第 {attempts} 次派工", { attempts: c.attempts }))}">×${c.attempts}</span>` : ""}${asked ? `<span title="${esc(waiting ? tr("追問等回覆中") : tr("追問 {asked} 次", { asked: asked }))}"${waiting ? ' style="color:var(--accent)"' : ""}>💬${asked}</span>` : ""}${projName ? `<span class="pn">${esc(projName)}</span>` : ""}`;
 	return `<div class="kcard" data-card="${c.id}" title="${esc(c.title)}"><span class="t">${esc(c.title)}</span>${tags ? `<span class="tags">${tags}</span>` : ""}</div>`;
 }
 // ---------- 資訊卡 ----------
@@ -1271,9 +1273,9 @@ function renderCardPop() {
 	}
 	const p = state.projects.find((x) => x.id === c.projectId);
 	const acts = {
-		proposed: '<button class="small" data-move="rejected">不要</button><button class="small primary" data-move="approved">核准派工</button>',
-		blocked: '<button class="small" data-move="done">標成完成</button><button class="small primary" data-move="approved">重新派工</button>',
-		done: '<button class="small" data-move="approved">重做一次</button>',
+		proposed: `<button class="small" data-move="rejected">${tr("不要")}</button><button class="small primary" data-move="approved">${tr("核准派工")}</button>`,
+		blocked: `<button class="small" data-move="done">${tr("標成完成")}</button><button class="small primary" data-move="approved">${tr("重新派工")}</button>`,
+		done: `<button class="small" data-move="approved">${tr("重做一次")}</button>`,
 	}[c.column] || "";
 	const canJump = (c.terminalId || c.paneId) && ["running", "blocked", "done"].includes(c.column);
 	// 外框只在換卡時建一次:看板一直在更新,輸入框不能跟著重建(打到一半的字、注音選字才不會不見)
@@ -1281,9 +1283,9 @@ function renderCardPop() {
 		wrap.dataset.card = c.id;
 		delete wrap.dataset.turns;
 		wrap.innerHTML = `<div class="box" role="dialog" data-card="${c.id}">
-		<div class="mhead"><h3 data-cp="title"></h3><button class="small" data-closecard>關閉</button></div>
+		<div class="mhead"><h3 data-cp="title"></h3><button class="small" data-closecard>${tr("關閉")}</button></div>
 		<div class="mbody" data-cp="body"></div>
-		<form class="cask" data-cp="ask" hidden><textarea id="cardAsk" rows="1" aria-label="追問這張卡"></textarea><button class="small primary" type="submit">送出</button></form>
+		<form class="cask" data-cp="ask" hidden><textarea id="cardAsk" rows="1" aria-label="${esc(tr("追問這張卡"))}"></textarea><button class="small primary" type="submit">${tr("送出")}</button></form>
 		<div class="mfoot" data-cp="foot"></div>
 	</div>`;
 		const form = wrap.querySelector("[data-cp=ask]");
@@ -1303,27 +1305,27 @@ function renderCardPop() {
 	const currentAgent = agentIdOf(c.agent);
 	const agentOptions = cardAgents === null
 		? `<option value="${esc(c.agent)}" selected>${esc(c.agent)}</option>`
-		: `${!currentAgent ? `<option value="${esc(c.agent)}" selected>${esc(c.agent)}(沒有安裝)</option>` : ""}${cardAgents.map((a) => `<option value="${esc(a.id)}" ${a.id === currentAgent ? "selected" : ""}>${esc(a.name)}</option>`).join("")}`;
-	body.innerHTML = `<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>· 第 ${c.attempts} 次派工</span>` : ""}<span>· 更新於 ${esc(ago(c.updatedAt))}</span>${c.paneId ? `<span>· 窗格 ${esc(c.paneId)}</span>` : ""}</div>
-			${["proposed", "blocked", "done"].includes(c.column) ? `<label class="field">交給<select data-cagent>${agentOptions}</select></label>` : ""}
+		: `${!currentAgent ? `<option value="${esc(c.agent)}" selected>${tr("{agent}(沒有安裝)", { agent: esc(c.agent) })}</option>` : ""}${cardAgents.map((a) => `<option value="${esc(a.id)}" ${a.id === currentAgent ? "selected" : ""}>${esc(a.name)}</option>`).join("")}`;
+	body.innerHTML = `<div class="cmeta"><span class="chip">${esc(COL_LABEL[c.column] || c.column)}</span><span>#${esc(c.id)}</span><span>· ${esc(c.agent)}</span>${p ? `<span>· ${esc(p.name)}</span>` : ""}${(c.attempts ?? 0) > 1 ? `<span>${tr("· 第 {attempts} 次派工", { attempts: c.attempts })}</span>` : ""}<span>${tr("· 更新於 {time}", { time: esc(ago(c.updatedAt)) })}</span>${c.paneId ? `<span>${tr("· 窗格 {paneId}", { paneId: esc(c.paneId) })}</span>` : ""}</div>
+			${["proposed", "blocked", "done"].includes(c.column) ? `<label class="field">${tr("交給")}<select data-cagent>${agentOptions}</select></label>` : ""}
 			${c.note ? `<div class="cnote">${esc(c.note)}</div>` : ""}
-			<section class="csection"><h4>指示</h4><pre class="ctext">${esc(c.instructions || "(沒有)")}</pre></section>
-			<section class="csection"><h4>完成標準</h4><div>${esc(c.doneCriteria || "(沒有)")}</div></section>
+			<section class="csection"><h4>${tr("指示")}</h4><pre class="ctext">${esc(c.instructions || tr("(沒有)"))}</pre></section>
+			<section class="csection"><h4>${tr("完成標準")}</h4><div>${esc(c.doneCriteria || tr("(沒有)"))}</div></section>
 			${threadHtml(c)}`;
 	body.querySelector("[data-cagent]")?.addEventListener("change", async (e) => {
 		const agent = e.target.value;
-		const r = await post(`/api/cards/${c.id}`, { agent }).catch(() => ({ error: "連不上管家" }));
+		const r = await post(`/api/cards/${c.id}`, { agent }).catch(() => ({ error: tr("連不上管家") }));
 		if (r.error) { toast(r.error); renderCardPop(); return; }
 		const i = state.cards.findIndex((x) => x.id === c.id);
 		if (i >= 0) state.cards[i] = r;
-		toast(`改交給 ${(cardAgents || []).find((a) => a.id === agentIdOf(agent))?.name || agent}`);
+		toast(tr("改交給 {value}", { value: (cardAgents || []).find((a) => a.id === agentIdOf(agent))?.name || agent }));
 		renderCardPop();
 	});
 	if (typeof chatMd !== "undefined") chatMd.typeset(body);
 	const ask = wrap.querySelector("[data-cp=ask]");
 	ask.hidden = !["done", "blocked", "running"].includes(c.column);
-	ask.querySelector("textarea").placeholder = c.column === "running" ? "追問(這一輪做完就送出)⌘↩︎ 送出" : "追問這張卡…  ⌘↩︎ 送出";
-	wrap.querySelector("[data-cp=foot]").innerHTML = `${canJump ? '<button class="small" data-jumpcard>在終端機看這個窗格</button>' : ""}<span class="sp"></span>${acts}`;
+	ask.querySelector("textarea").placeholder = c.column === "running" ? tr("追問(這一輪做完就送出)⌘↩︎ 送出") : tr("追問這張卡…  ⌘↩︎ 送出");
+	wrap.querySelector("[data-cp=foot]").innerHTML = `${canJump ? `<button class="small" data-jumpcard>${tr("在終端機看這個窗格")}</button>` : ""}<span class="sp"></span>${acts}`;
 	// 輸入區與按鈕排好後再捲動:初開、新回覆、原本在底部時跳到最後,其餘保留閱讀位置。
 	if (turns && (prevTurns === null || turns > prevTurns || atEnd)) body.scrollTop = body.scrollHeight;
 	else body.scrollTop = scroll;
@@ -1334,16 +1336,16 @@ function threadHtml(c) {
 	const t = c.thread || [];
 	if (!t.length) return "";
 	const status = (x) => {
-		if (x.status === "queued") return `<div class="st">${c.column === "running" ? "排隊中,這一輪做完就送出" : "等這個 agent 空下來就送出"} <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
-		if (x.status === "sent") return '<div class="st">已送出,等回覆</div>';
-		if (x.status === "failed") return `<div class="st err">${esc(x.note || "送不出去")} <button class="link" data-askretry="${esc(x.id)}">重送</button> <button class="link" data-askcancel="${esc(x.id)}">取消</button></div>`;
+		if (x.status === "queued") return `<div class="st">${c.column === "running" ? tr("排隊中,這一輪做完就送出") : tr("等這個 agent 空下來就送出")} <button class="link" data-askcancel="${esc(x.id)}">${tr("取消")}</button></div>`;
+		if (x.status === "sent") return `<div class="st">${tr("已送出,等回覆")}</div>`;
+		if (x.status === "failed") return `<div class="st err">${esc(x.note || tr("送不出去"))} <button class="link" data-askretry="${esc(x.id)}">${tr("重送")}</button> <button class="link" data-askcancel="${esc(x.id)}">${tr("取消")}</button></div>`;
 		return "";
 	};
 	const rows = t.map((x) => x.role === "user"
 		? `<div class="turn me"><div class="bubble">${esc(x.text)}</div>${status(x)}</div>`
-		: `<div class="turn ag"><div class="who">${x.original ? "原本的結果" : esc(c.agent || "agent")}</div><div class="md">${chatMd.render(x.text)}</div></div>`).join("");
-	const waiting = c.column === "running" && t.some((x) => x.status === "sent") ? `<div class="turn wait">${esc(c.agent || "agent")} 回覆中…</div>` : "";
-	return `<section class="csection"><h4>結果與追問</h4><div class="thread">${rows}${waiting}</div></section>`;
+		: `<div class="turn ag"><div class="who">${x.original ? tr("原本的結果") : esc(c.agent || "agent")}</div><div class="md">${chatMd.render(x.text)}</div></div>`).join("");
+	const waiting = c.column === "running" && t.some((x) => x.status === "sent") ? `<div class="turn wait">${tr("{value} 回覆中…", { value: esc(c.agent || "agent") })}</div>` : "";
+	return `<section class="csection"><h4>${tr("結果與追問")}</h4><div class="thread">${rows}${waiting}</div></section>`;
 }
 async function askCard(id) {
 	const ta = $("cardAsk");
@@ -1351,7 +1353,7 @@ async function askCard(id) {
 	if (!text) return;
 	const btn = ta.form.querySelector("button[type=submit]");
 	btn.disabled = true;
-	const r = await post(`/api/cards/${id}/ask`, { text }).catch(() => ({ error: "連不上管家" }));
+	const r = await post(`/api/cards/${id}/ask`, { text }).catch(() => ({ error: tr("連不上管家") }));
 	btn.disabled = false;
 	if (r.error) return toast(r.error);
 	ta.value = "";
@@ -1361,7 +1363,7 @@ async function askCard(id) {
 	renderCardPop();
 }
 async function followUp(id, turn, action) {
-	const r = await post(`/api/cards/${id}/ask/${turn}/${action}`, {}).catch(() => ({ error: "連不上管家" }));
+	const r = await post(`/api/cards/${id}/ask/${turn}/${action}`, {}).catch(() => ({ error: tr("連不上管家") }));
 	if (r.error) return toast(r.error);
 	const i = state.cards.findIndex((x) => x.id === id);
 	if (i >= 0) state.cards[i] = r;
@@ -1370,10 +1372,10 @@ async function followUp(id, turn, action) {
 async function jumpToCard(id) {
 	const c = state.cards.find((x) => x.id === id);
 	if (!c) return;
-	const r = await post(`/api/cards/${id}/focus`, {}).catch(() => ({ error: "連不上管家" }));
+	const r = await post(`/api/cards/${id}/focus`, {}).catch(() => ({ error: tr("連不上管家") }));
 	if (r.error) return toast(r.error);
 	closeCard();
-	selectProject(c.projectId, "看板");
+	selectProject(c.projectId, "看板"); // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
 	herdrSeen = c.projectId; termCurrent = { project: c.projectId, via: "pane" };
 	setMode("term");
 }
@@ -1406,7 +1408,7 @@ function renderBoard() {
 		// 完成欄只顯示最近 8 張
 		const shown = col === "done" && !showAllDone ? list.slice(0, DONE_SHOWN) : list;
 		const more = list.length - shown.length;
-		return `<div class="col${folded.has(col) ? " collapsed" : ""}" data-col="${col}"><h4 data-fold="${col}" title="${folded.has(col) ? "展開" : "收合"}這一欄"><span>${label}</span><span>${list.length} <span class="fold">${folded.has(col) ? "▸" : "◂"}</span></span></h4><div class="cards sfade">${shown.map((c) => cardLine(c, all ? pname(c.projectId) : "")).join("")}${more > 0 ? `<button class="small more" data-moredone>顯示更早的 ${more} 張</button>` : col === "done" && showAllDone && list.length > DONE_SHOWN ? '<button class="small more" data-moredone>只顯示最近的</button>' : ""}</div></div>`;
+		return `<div class="col${folded.has(col) ? " collapsed" : ""}" data-col="${col}"><h4 data-fold="${col}" title="${esc(folded.has(col) ? tr("展開這一欄") : tr("收合這一欄"))}"><span>${label}</span><span>${list.length} <span class="fold">${folded.has(col) ? "▸" : "◂"}</span></span></h4><div class="cards sfade">${shown.map((c) => cardLine(c, all ? pname(c.projectId) : "")).join("")}${more > 0 ? `<button class="small more" data-moredone>${tr("顯示更早的 {more} 張", { more: more })}</button>` : col === "done" && showAllDone && list.length > DONE_SHOWN ? `<button class="small more" data-moredone>${tr("只顯示最近的")}</button>` : ""}</div></div>`;
 	}).join("");
 	syncDots();
 }
@@ -1460,14 +1462,14 @@ async function move(id, col) {
 	if (!card || card.column === col) return;
 	const from = card.column;
 	card.column = col; renderBoard(); renderDrawer(); // 先樂觀更新
-	const r = await post(`/api/cards/${id}/move`, { column: col }).catch(() => ({ error: "連不上管家" }));
+	const r = await post(`/api/cards/${id}/move`, { column: col }).catch(() => ({ error: tr("連不上管家") }));
 	if (r.error) {
 		card.column = from; renderBoard(); renderDrawer(); // 彈回原欄位
 		toast(r.error);
 	} else if (col === "approved") {
-		toast(from === "proposed" ? "已核准,派工中…" : "重新派工中…(會附上上次的結果)");
+		toast(from === "proposed" ? tr("已核准,派工中…") : tr("重新派工中…(會附上上次的結果)"));
 	} else if (col === "proposed") {
-		toast("已退回提案");
+		toast(tr("已退回提案"));
 	}
 	load();
 }
@@ -1481,14 +1483,14 @@ async function fsGo(path) {
 	$("fsPath").textContent = r.path.replace(r.home, "~");
 	$("fsUp").disabled = !r.parent;
 	$("fsUp").onclick = () => r.parent && fsGo(r.parent);
-	$("fsHere").textContent = r.project ? `這個資料夾已經是專案「${r.project.name}」` : "";
-	$("fsList").innerHTML = r.dirs.length ? r.dirs.map((d) => `<div class="dirrow" data-dir="${esc(d.path)}"><span class="n">📁 ${esc(d.name)}</span>${d.git ? '<span class="tag">git</span>' : ""}${d.project ? `<span class="tag">專案:${esc(d.project)}</span>` : ""}</div>`).join("") : '<div class="dirrow"><span class="n empty">(沒有子資料夾)</span></div>';
+	$("fsHere").textContent = r.project ? tr("這個資料夾已經是專案「{name}」", { name: r.project.name }) : "";
+	$("fsList").innerHTML = r.dirs.length ? r.dirs.map((d) => `<div class="dirrow" data-dir="${esc(d.path)}"><span class="n">📁 ${esc(d.name)}</span>${d.git ? '<span class="tag">git</span>' : ""}${d.project ? `<span class="tag">${tr("專案:{project}", { project: esc(d.project) })}</span>` : ""}</div>`).join("") : `<div class="dirrow"><span class="n empty">${tr("(沒有子資料夾)")}</span></div>`;
 }
 function showMsg(id, text, err = false) { const m = $(id); m.hidden = !text; m.textContent = text || ""; m.classList.toggle("err", err); }
 function pick(info) {
 	Object.assign(create, info);
 	$("createForm").hidden = false;
-	$("pickedBox").textContent = create.isNew ? `新建:${create.parent.replace(/^\/Users\/[^/]+/, "~")}/${create.picked}${create.git ? "(含 git)" : ""}` : `資料夾:${create.picked.replace(/^\/Users\/[^/]+/, "~")}`;
+	$("pickedBox").textContent = create.isNew ? (create.git ? tr("新建:{parent}/{picked}(含 git)", { parent: create.parent.replace(/^\/Users\/[^/]+/, "~"), picked: create.picked }) : tr("新建:{parent}/{picked}", { parent: create.parent.replace(/^\/Users\/[^/]+/, "~"), picked: create.picked })) : tr("資料夾:{value}", { value: create.picked.replace(/^\/Users\/[^/]+/, "~") });
 	$("spaceName").value = create.isNew ? create.picked : create.picked.split("/").pop();
 	$("createGo").disabled = false;
 	showMsg("createMsg", "");
@@ -1504,40 +1506,40 @@ $("fsList").addEventListener("click", (e) => { const row = e.target.closest("[da
 $("fsPick").onclick = () => create.path && pick({ picked: create.path, isNew: false });
 $("fsNew").onclick = () => {
 	const name = $("newFolder").value.trim();
-	if (!name) { showMsg("createMsg", "先輸入新資料夾的名稱", true); return; }
+	if (!name) { showMsg("createMsg", tr("先輸入新資料夾的名稱"), true); return; }
 	pick({ picked: name, parent: create.path, isNew: true, git: $("newGit").checked });
 };
 $("createGo").onclick = async () => {
 	const body = create.isNew ? { parent: create.parent, newName: create.picked, git: create.git } : { path: create.picked };
 	Object.assign(body, { spaceName: $("spaceName").value.trim(), agent: $("startAgent").value });
 	$("createGo").disabled = true;
-	const r = await post("/api/projects/create", body).catch(() => ({ error: "連不上管家" }));
+	const r = await post("/api/projects/create", body).catch(() => ({ error: tr("連不上管家") }));
 	$("createGo").disabled = false;
 	if (r.exists) { // 規則 1:已經是專案 → 直接跳過去
-		$("createDlg").hidden = true; toast(r.message); await load(); selectProject(r.project.id, "看板"); return;
+		$("createDlg").hidden = true; toast(r.message); await load(); selectProject(r.project.id, "看板"); return; // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
 	}
 	if (r.error) {
 		showMsg("createMsg", r.error, true);
 		if (r.suggestion) { // 規則 3:名稱衝突 → 一鍵用建議名稱
-			const b = document.createElement("button"); b.className = "small"; b.textContent = `用「${r.suggestion}」`;
+			const b = document.createElement("button"); b.className = "small"; b.textContent = tr("用「{suggestion}」", { suggestion: r.suggestion });
 			b.onclick = () => { $("spaceName").value = r.suggestion; showMsg("createMsg", ""); };
 			$("createMsg").append(" ", b);
 		}
 		return;
 	}
-	selectProject(r.project.id, "看板");
+	selectProject(r.project.id, "看板"); // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
 	if (r.strays) { // 規則 4:子專案的資料夾裡已經有窗格
-		showMsg("createMsg", `${r.message}${r.subProjectOf ? `(從「${r.subProjectOf}」拆出)` : ""}。這個資料夾已經有 ${r.strays} 個窗格開在別的 space,要搬到新的 space 嗎?`);
-		const yes = document.createElement("button"); yes.className = "small primary"; yes.textContent = "搬過去";
-		const no = document.createElement("button"); no.className = "small"; no.textContent = "先不要";
-		yes.onclick = async () => { const m = await post(`/api/projects/${r.project.id}/strays`, {}); toast(m.error || `已搬 ${m.moved} 個窗格到「${m.space}」`); $("createDlg").hidden = true; load(); };
+		showMsg("createMsg", tr("{message}{value}。這個資料夾已經有 {strays} 個窗格開在別的 space,要搬到新的 space 嗎?", { message: r.message, value: r.subProjectOf ? tr("(從「{subProjectOf}」拆出)", { subProjectOf: r.subProjectOf }) : "", strays: r.strays }));
+		const yes = document.createElement("button"); yes.className = "small primary"; yes.textContent = tr("搬過去");
+		const no = document.createElement("button"); no.className = "small"; no.textContent = tr("先不要");
+		yes.onclick = async () => { const m = await post(`/api/projects/${r.project.id}/strays`, {}); toast(m.error || tr("已搬 {moved} 個窗格到「{space}」", { moved: m.moved, space: m.space })); $("createDlg").hidden = true; load(); };
 		no.onclick = () => { $("createDlg").hidden = true; load(); };
 		$("createMsg").append(" ", yes, " ", no);
 		$("createGo").disabled = true;
 		return;
 	}
 	$("createDlg").hidden = true;
-	toast(`${r.message}${r.agent ? `,正在啟動 ${r.agent}` : ""}`);
+	toast(r.agent ? tr("{message},正在啟動 {agent}", { message: r.message, agent: r.agent }) : r.message);
 	load();
 };
 
@@ -1545,25 +1547,25 @@ $("createGo").onclick = async () => {
 let tidyRows = [];
 async function openTidy() {
 	$("tidyDlg").hidden = false; $("tidyGo").disabled = true; $("tidyNote").textContent = "";
-	$("tidyList").innerHTML = '<div class="empty">計算中…</div>';
+	$("tidyList").innerHTML = `<div class="empty">${tr("計算中…")}</div>`;
 	tidyRows = (await fetch("/api/spaces/plan").then((x) => x.json())).rows ?? [];
-	const verb = { bind: "綁定現有 space", create: "新建 space", keep: "已綁定", skip: "不處理" };
+	const verb = { bind: tr("綁定現有 space"), create: tr("新建 space"), keep: tr("已綁定"), skip: tr("不處理") };
 	$("tidyList").innerHTML = tidyRows.map((r, i) => {
 		const actionable = r.action === "bind" || r.action === "create" || r.moves.length > 0;
 		return `<label class="tidyrow"><input type="checkbox" data-tidy="${i}" ${actionable ? "checked" : "disabled"}>
-			<div><b>${esc(r.project)}</b> → ${esc(verb[r.action])}${r.spaceLabel && r.action !== "skip" ? `「${esc(r.spaceLabel)}」` : ""}${r.nameDiffers ? '<span class="hint">(名稱不同,之後可在專案頁同步)</span>' : ""}
+			<div><b>${esc(r.project)}</b> → ${esc(verb[r.action])}${r.spaceLabel && r.action !== "skip" ? tr("「{spaceLabel}」", { spaceLabel: esc(r.spaceLabel) }) : ""}${r.nameDiffers ? `<span class="hint">${tr("(名稱不同,之後可在專案頁同步)")}</span>` : ""}
 			<div class="hint">${esc(r.reason)}</div>
-			${r.moves.length ? `<div class="moves">${r.moves.map((m) => `搬「${esc(m.tab)}」(從 ${esc(m.from)})`).join("<br>")}</div>` : ""}</div></label>`;
-	}).join("") || '<div class="empty">沒有專案</div>';
+			${r.moves.length ? `<div class="moves">${r.moves.map((m) => tr("搬「{tab}」(從 {from})", { tab: esc(m.tab), from: esc(m.from) })).join("<br>")}</div>` : ""}</div></label>`;
+	}).join("") || `<div class="empty">${tr("沒有專案")}</div>`;
 	$("tidyGo").disabled = !tidyRows.length;
 }
 $("tidyGo").onclick = async () => {
 	const accept = [...document.querySelectorAll("[data-tidy]:checked")].map((c) => tidyRows[Number(c.dataset.tidy)].projectId);
-	if (!accept.length) { $("tidyNote").textContent = "沒有勾選任何項目"; return; }
-	$("tidyGo").disabled = true; $("tidyNote").textContent = "執行中…";
-	const r = await post("/api/spaces/tidy", { accept }).catch(() => ({ log: ["連不上管家"] }));
-	$("tidyList").innerHTML = `<div class="msgbox">${(r.log || []).map(esc).join("<br>") || "沒有需要做的事"}</div>`;
-	$("tidyNote").textContent = "完成";
+	if (!accept.length) { $("tidyNote").textContent = tr("沒有勾選任何項目"); return; }
+	$("tidyGo").disabled = true; $("tidyNote").textContent = tr("執行中…");
+	const r = await post("/api/spaces/tidy", { accept }).catch(() => ({ log: [tr("連不上管家")] }));
+	$("tidyList").innerHTML = `<div class="msgbox">${(r.log || []).map(esc).join("<br>") || tr("沒有需要做的事")}</div>`;
+	$("tidyNote").textContent = tr("完成");
 	load();
 };
 
@@ -1581,12 +1583,12 @@ document.addEventListener("click", (e) => {
 	if (e.target.id === "newProject") { openCreate(); return; }
 	if (e.target.id === "tidySpaces") { openTidy(); return; }
 	if (e.target.dataset?.spacename) { post(`/api/projects/${sel}/space-name`, { use: e.target.dataset.spacename }).then(() => load()); return; }
-	if (e.target.dataset?.strays) { post(`/api/projects/${sel}/strays`, {}).then((m) => { toast(m.error || `已搬 ${m.moved} 個窗格到「${m.space}」`); load(); }); return; }
+	if (e.target.dataset?.strays) { post(`/api/projects/${sel}/strays`, {}).then((m) => { toast(m.error || tr("已搬 {moved} 個窗格到「{space}」", { moved: m.moved, space: m.space })); load(); }); return; }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { for (const id of ["createDlg", "tidyDlg", "handoffDlg", "branchMenu"]) $(id).hidden = true; closeCard(); } });
 document.addEventListener("click", (e) => {
 	const t = e.target;
-	if (t.closest(".proj")) { $("nav").classList.remove("open"); syncMenuLabel(); selectProject(t.closest(".proj").dataset.id, document.body.classList.contains("code") ? "程式碼頁面" : document.body.classList.contains("term") ? "終端機" : "看板"); }
+	if (t.closest(".proj")) { $("nav").classList.remove("open"); syncMenuLabel(); selectProject(t.closest(".proj").dataset.id, document.body.classList.contains("code") ? "程式碼頁面" : document.body.classList.contains("term") ? "終端機" : "看板"); } // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
 	if (t.dataset.reg) post(`/api/projects/${t.dataset.reg}`, { status: "active" }).then(load);
 	if (t.dataset.ign) post(`/api/projects/${t.dataset.ign}`, { status: "ignored" }).then(load);
 	// 打開收起的專案:恢復追蹤,並在 herdr 開一個新的 space 綁上
@@ -1594,8 +1596,8 @@ document.addEventListener("click", (e) => {
 		const id = t.dataset.reopen;
 		post(`/api/projects/${id}`, { status: "active" }).then(async () => {
 			const f = await post("/api/terminal/focus", { project: id, create: true }).catch(() => ({}));
-			toast(f.ok ? `已打開,herdr space:${f.where}` : `已恢復追蹤${f.reason ? `(${f.reason})` : ""}`);
-			await load(); selectProject(id, "看板");
+			toast(f.ok ? tr("已打開,herdr space:{where}", { where: f.where }) : tr("已恢復追蹤{value}", { value: f.reason ? `(${f.reason})` : "" }));
+			await load(); selectProject(id, "看板"); // i18n-ok: 專案選取來源的識別值,需與伺服器資料一致
 		});
 	}
 	if (t.dataset.move) { const id = t.closest("[data-card]")?.dataset.card; if (t.closest("#cardPop")) closeCard(); if (id) move(id, t.dataset.move); }
@@ -1609,7 +1611,7 @@ const navOverlay = () => !wideNav() || document.body.classList.contains("code") 
 function syncMenuLabel() {
 	const shown = navOverlay() ? $("nav").classList.contains("open") : !document.body.classList.contains("nav-collapsed");
 	$("menuChev").textContent = shown ? "◂" : "▸";
-	$("menu").title = shown ? "收起專案欄" : "打開專案欄";
+	$("menu").title = shown ? tr("收起專案欄") : tr("打開專案欄");
 }
 $("menu").onclick = (e) => {
 	e.stopPropagation();
@@ -1639,7 +1641,7 @@ $("board").addEventListener("click", (e) => {
 function applyViewToggles() {
 	const b = pref("steward.boardCollapsed") === "1";
 	document.body.classList.toggle("board-collapsed", b);
-	$("toggleBoard").textContent = b ? "展開看板" : "收起看板";
+	$("toggleBoard").textContent = b ? tr("展開看板") : tr("收起看板");
 }
 $("toggleBoard").onclick = () => { pref("steward.boardCollapsed", pref("steward.boardCollapsed") === "1" ? "0" : "1"); applyViewToggles(); };
 // pref 定義在後面:等整段腳本跑完再套用記住的版面設定
@@ -1860,67 +1862,67 @@ function applyFont() {
 // herdr 拖曳選取放開後用 OSC 52 要外層終端機寫剪貼簿;ttyd 的 xterm.js 沒處理 52,這裡補上。
 // ---------- 設定 ----------
 let setState = null; // { s: 目前的設定, detected, tab }
-const SET_TABS = [["general", "一般"], ["ai", "AI 接口"], ["routing", "路由"], ["agents", "Agent"], ["access", "存取"], ["notify", "推播"], ["plugins", "外掛"], ["about", "關於"]];
+const SET_TABS = [["general", tr("一般")], ["ai", tr("AI 接口")], ["routing", tr("路由")], ["agents", "Agent"], ["access", tr("存取")], ["notify", tr("推播")], ["plugins", tr("外掛")], ["about", tr("關於")]];
 let setAgents = null;
 // 第一次設定精靈:[分頁, 標題, 說明]
 const WIZ = [
-	["general", "歡迎", "專案管家會整理你在各個 AI agent(Claude Code、Codex、pi…)的工作進度,並在看板上提案、派工。先花一分鐘設定幾件事,之後都能在右上角 ⚙ 修改。"],
-	["desktop", "元件與背景執行", "App 已經內附 herdr、網頁終端機和 Node.js。選擇要不要讓它們也出現在你的終端機與 herdr 設定裡，以及要不要登入時自動啟動。之後都能在 設定 → 一般 修改。"],
-	["ai", "AI 接口", "管家自己也要用 AI(聊天、整理進度、檢查提案)。至少接上一個:貼上 API 金鑰,或填自架模型的網址;儲存後會自動幫每項工作挑好模型(「路由」分頁可以改)。"],
-	["agents", "Agent", "勾選要接上專案管家的 agent:它們開工時會讀到專案進度,做完會回報給管家。"],
-	["plugins", "外掛", "要用哪些額外功能?打開的話會自動下載需要的軟體(不需要管理員權限),之後也可以在設定 → 外掛 開關。電腦上已經有的(例如 MacTeX)會直接沿用。"],
-	["access", "密碼與遠端存取", "只在這台電腦用的話,這一步可以直接按「完成」。要從手機或其他電腦連進來,先設定管理密碼,再開啟 Tailscale 或區網存取。"],
+	["general", tr("歡迎"), tr("專案管家會整理你在各個 AI agent(Claude Code、Codex、pi…)的工作進度,並在看板上提案、派工。先花一分鐘設定幾件事,之後都能在右上角 ⚙ 修改。")],
+	["desktop", tr("元件與背景執行"), tr("App 已經內附 herdr、網頁終端機和 Node.js。選擇要不要讓它們也出現在你的終端機與 herdr 設定裡，以及要不要登入時自動啟動。之後都能在 設定 → 一般 修改。")],
+	["ai", tr("AI 接口"), tr("管家自己也要用 AI(聊天、整理進度、檢查提案)。至少接上一個:貼上 API 金鑰,或填自架模型的網址;儲存後會自動幫每項工作挑好模型(「路由」分頁可以改)。")],
+	["agents", "Agent", tr("勾選要接上專案管家的 agent:它們開工時會讀到專案進度,做完會回報給管家。")],
+	["plugins", tr("外掛"), tr("要用哪些額外功能?打開的話會自動下載需要的軟體(不需要管理員權限),之後也可以在設定 → 外掛 開關。電腦上已經有的(例如 MacTeX)會直接沿用。")],
+	["access", tr("密碼與遠端存取"), tr("只在這台電腦用的話,這一步可以直接按「完成」。要從手機或其他電腦連進來,先設定管理密碼,再開啟 Tailscale 或區網存取。")],
 ];
 let setUpdate = null; // GET /api/settings/update 的結果
 let setPlugins = null; // GET /api/settings/plugins
 let plugTimer = null;
 async function loadSetPlugins() { const r = await fetch("/api/settings/plugins").then((x) => x.json()).catch(() => null); setPlugins = r?.plugins || []; }
-const PLUG_STATUS = { ready: "可以用", system: "沿用電腦上的", installed: "已安裝", missing: "還沒安裝", installing: "安裝中" };
+const PLUG_STATUS = { ready: tr("可以用"), system: tr("沿用電腦上的"), installed: tr("已安裝"), missing: tr("還沒安裝"), installing: tr("安裝中") };
 function pluginsPane() {
-	if (!setPlugins) return '<div class="empty">讀取中…</div>';
-	return `<div class="hint">外掛需要的軟體會下載到 ~/.agent-steward/tools,不需要管理員權限。關閉只是把功能藏起來,下載的東西會保留;「移除下載的檔案」只刪專案管家自己下載的,不會動你自己裝的軟體。</div>
+	if (!setPlugins) return `<div class="empty">${tr("讀取中…")}</div>`;
+	return `<div class="hint">${tr("外掛需要的軟體會下載到 ~/.agent-steward/tools,不需要管理員權限。關閉只是把功能藏起來,下載的東西會保留;「移除下載的檔案」只刪專案管家自己下載的,不會動你自己裝的軟體。")}</div>
 		${setPlugins.map((p) => {
 			const j = p.job;
 			const busy = j?.running;
 			return `<div class="plug${p.enabled ? " on" : ""}">
 				<div class="plug-h"><b>${esc(p.name)}</b><span class="chip">${esc(PLUG_STATUS[p.status] || p.status)}</span><span class="hint">${esc(p.size)}</span><span style="flex:1"></span>
-					<label class="switch"><input type="checkbox" data-plug="${p.id}" ${p.enabled ? "checked" : ""} ${busy ? "disabled" : ""}><span>${busy ? "安裝中…" : p.enabled ? "已開啟" : p.status === "missing" ? "開啟並安裝" : "開啟"}</span></label></div>
+					<label class="switch"><input type="checkbox" data-plug="${p.id}" ${p.enabled ? "checked" : ""} ${busy ? "disabled" : ""}><span>${busy ? tr("安裝中…") : p.enabled ? tr("已開啟") : p.status === "missing" ? tr("開啟並安裝") : tr("開啟")}</span></label></div>
 				<div class="hint">${esc(p.description)}</div>
 				<div class="hint">${esc(p.detail)}</div>
-				${j ? `<div class="plug-job ${j.error ? "bad" : ""}">${busy ? `<div class="plug-bar"><i style="width:${Math.max(3, j.progress || 0)}%"></i></div>` : ""}<span>${esc(j.message)}</span>${j.log?.length ? `<details><summary class="hint">安裝紀錄</summary><pre class="upd-log">${esc(j.log.join("\n"))}</pre></details>` : ""}</div>` : ""}
-				${p.removable && !busy ? `<div><button class="small" data-plugrm="${p.id}">移除下載的檔案</button></div>` : ""}
+				${j ? `<div class="plug-job ${j.error ? "bad" : ""}">${busy ? `<div class="plug-bar"><i style="width:${Math.max(3, j.progress || 0)}%"></i></div>` : ""}<span>${esc(j.message)}</span>${j.log?.length ? `<details><summary class="hint">${tr("安裝紀錄")}</summary><pre class="upd-log">${esc(j.log.join("\n"))}</pre></details>` : ""}</div>` : ""}
+				${p.removable && !busy ? `<div><button class="small" data-plugrm="${p.id}">${tr("移除下載的檔案")}</button></div>` : ""}
 			</div>`;
 		}).join("")}`;
 }
 function desktopPane(s) {
 	return [
-		["herdrCli", "在終端機也能用 herdr 指令", "（會在 ~/.local/bin 放一個指向 App 內 herdr 的連結；你自己裝的 herdr 不會被覆蓋）"],
-		["herdrConfig", "herdr 快捷鍵與外掛", "（會在 herdr 的 config.toml 加上資料夾導覽快捷鍵 prefix+e，並先備份）"],
-		["autostart", "登入時自動啟動專案管家", ""],
-		["autoUpdate", s.ui.lang === "en" ? "Automatically check for App updates" : "自動檢查 App 更新", ""],
+		["herdrCli", tr("在終端機也能用 herdr 指令"), tr("（會在 ~/.local/bin 放一個指向 App 內 herdr 的連結；你自己裝的 herdr 不會被覆蓋）")],
+		["herdrConfig", tr("herdr 快捷鍵與外掛"), tr("（會在 herdr 的 config.toml 加上資料夾導覽快捷鍵 prefix+e，並先備份）")],
+		["autostart", tr("登入時自動啟動專案管家"), ""],
+		["autoUpdate", tr("自動檢查 App 更新"), ""],
 	].map(([k, label, hint]) => `<div><label><input type="checkbox" data-k="desktop.${k}" ${s.desktop[k] ? "checked" : ""}> ${label}</label>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`).join("");
 }
-async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: "連不上管家" })); }
+async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: tr("連不上管家") })); }
 function aboutPane() {
 	const u = setUpdate;
 	const win = setState.platform === "win32";
 	const desktop = u?.desktop ?? setState.desktop;
-	const st = !u ? "檢查中…"
-		: u.running ? "正在更新…(完成後管家會自動重啟,這頁重新整理即可)"
-		: u.hasUpdate ? `<b>有新版本 ${esc(u.latest)}</b>${u.url ? `(<a href="${esc(u.url)}" target="_blank" rel="noopener">更新內容</a>)` : ""}`
+	const st = !u ? tr("檢查中…")
+		: u.running ? tr("正在更新…(完成後管家會自動重啟,這頁重新整理即可)")
+		: u.hasUpdate ? `<b>${tr("有新版本 {version}", { version: esc(u.latest) })}</b>${u.url ? `(<a href="${esc(u.url)}" target="_blank" rel="noopener">${tr("更新內容")}</a>)` : ""}`
 		: u.error ? esc(u.error)
-		: u.dev ? `這是開發版,不會自動更新${u.latest ? `(最新發布版 ${esc(u.latest)})` : ""}`
-		: "已經是最新版";
-	return `<label class="field">目前版本<input type="text" readonly value="${esc(u?.current ?? "")}"></label>
+		: u.dev ? tr("這是開發版,不會自動更新{value}", { value: u.latest ? tr("(最新發布版 {version})", { version: esc(u.latest) }) : "" })
+		: tr("已經是最新版");
+	return `<label class="field">${tr("目前版本")}<input type="text" readonly value="${esc(u?.current ?? "")}"></label>
 		<div class="hint">${st}</div>
 		${u?.notes && u.hasUpdate ? `<pre class="upd-notes">${esc(u.notes)}</pre>` : ""}
-		<div><button class="small" id="updCheck">檢查更新</button> ${desktop ? `<button class="small primary" id="updDesktop">${setState.s.ui.lang === "en" ? (u?.hasUpdate ? `Update App to ${esc(u.latest)}` : "Check for updates in App") : (u?.hasUpdate ? `更新 App 到 ${esc(u.latest)}` : "用 App 檢查更新")}</button>` : u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">更新到 ${esc(u.latest)}</button>` : ""}</div>
+		<div><button class="small" id="updCheck">${tr("檢查更新")}</button> ${desktop ? `<button class="small primary" id="updDesktop">${u?.hasUpdate ? tr("更新 App 到 {version}", { version: esc(u.latest) }) : tr("用 App 檢查更新")}</button>` : u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">${tr("更新到 {version}", { version: esc(u.latest) })}</button>` : ""}</div>
 		<pre class="upd-log" id="updLog" ${u?.running ? "" : "hidden"}></pre>
-		<h4>第三方元件</h4>
-		<div class="hint">安裝程式會從各元件的官方來源下載這些軟體，並驗證 SHA-256。</div>
-		${u?.components ? u.components.map((c) => `<div>${esc(c.name)} ${esc(c.version)} · ${esc(c.license)} · ${/^https?:\/\//i.test(c.home) ? `<a href="${esc(c.home)}" target="_blank" rel="noopener">首頁連結</a>` : esc(c.home)}</div>`).join("") : `<div class="hint">${u ? "無法載入第三方元件" : "讀取中…"}</div>`}
-		<h4>移除專案管家</h4>
-		${desktop ? '<div class="hint">在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除</div>' : `<div class="hint">在這台電腦的終端機執行(資料會保留;加 ${win ? "<code>-Purge</code>" : "<code>--purge</code>"} 連資料一起刪除):</div>
+		<h4>${tr("第三方元件")}</h4>
+		<div class="hint">${tr("安裝程式會從各元件的官方來源下載這些軟體，並驗證 SHA-256。")}</div>
+		${u?.components ? u.components.map((c) => `<div>${esc(c.name)} ${esc(c.version)} · ${esc(c.license)} · ${(/^https?:\/\//i).test(c.home) ? `<a href="${esc(c.home)}" target="_blank" rel="noopener">${tr("首頁連結")}</a>` : esc(c.home)}</div>`).join("") : `<div class="hint">${u ? tr("無法載入第三方元件") : tr("讀取中…")}</div>`}
+		<h4>${tr("移除專案管家")}</h4>
+		${desktop ? `<div class="hint">${tr("在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除")}</div>` : `<div class="hint">${tr("在這台電腦的終端機執行(資料會保留;加 {value} 連資料一起刪除):", { value: win ? "<code>-Purge</code>" : "<code>--purge</code>" })}</div>
 		<pre class="upd-cmd">${win ? "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1" : "sh ~/.agent-steward/app/uninstall.sh"}</pre>`}`;
 }
 // ---- 訂閱登入 ----
@@ -1929,7 +1931,7 @@ async function startProviderLogin(provider) {
 	collectSettings();
 	// 先開好視窗(瀏覽器只允許在點擊當下開新視窗),拿到登入網址再導過去
 	const win = window.open("about:blank", "_blank");
-	const r = await post("/api/settings/login", { provider }).catch(() => ({ error: "連不上管家" }));
+	const r = await post("/api/settings/login", { provider }).catch(() => ({ error: tr("連不上管家") }));
 	if (r.error) { win?.close(); return toast(r.error); }
 	const sid = r.session;
 	const box = () => $("loginBox");
@@ -1939,22 +1941,22 @@ async function startProviderLogin(provider) {
 		const b = box(); if (!b) return;
 		b.hidden = false;
 		const name = LOGIN_NAME[provider] || provider;
-		b.innerHTML = st.status === "error" ? `<span class="bad">✗ 登入失敗:${esc(st.message || "")}</span> <button class="small" data-lx>關閉</button>`
-			: st.userCode ? `<b>正在登入 ${name}</b>
-			<div class="hint">已經打開 ${name} 的登入頁面(沒看到的話<a href="${esc(st.url)}" target="_blank" rel="noopener">點這裡打開</a>,手機或別台電腦也可以開這個網址),在頁面上輸入這組代碼:</div>
+		b.innerHTML = st.status === "error" ? `<span class="bad">${tr("✗ 登入失敗:{value}", { value: esc(st.message || "") })}</span> <button class="small" data-lx>${tr("關閉")}</button>`
+			: st.userCode ? `<b>${tr("正在登入 {name}", { name: name })}</b>
+			<div class="hint">${tr("已經打開 {name} 的登入頁面(沒看到的話<a href=\"{url}\" target=\"_blank\" rel=\"noopener\">點這裡打開</a>,手機或別台電腦也可以開這個網址),在頁面上輸入這組代碼:", { name: name, url: esc(st.url).replace(/'/g, "&#39;") })}</div>
 			<div class="login-code">${esc(st.userCode)}</div>
-			<div class="hint">輸入並同意後,這裡會自動完成。</div>
-			<div><button class="small" data-lx>取消</button></div>`
-			: `<b>正在登入 ${name}</b>
-			<div class="hint">${st.url ? `已經打開 ${name} 的登入頁面(沒看到的話<a href="${esc(st.url)}" target="_blank" rel="noopener">點這裡打開</a>)。` : "準備中…"}</div>
-			<div class="hint">在<b>這台電腦</b>登入的話,完成後會自動接上。用<b>手機或別台電腦</b>時,登入後的頁面會打不開(網址開頭是 http://127.0.0.1 或 http://localhost),把那一頁的<b>整段網址</b>貼到這裡:</div>
-			<div class="row"><input type="text" id="loginCode" placeholder="http://127.0.0.1:…/callback?code=…" autocomplete="off"><button class="small primary" id="loginSend">送出</button><button class="small" data-lx>取消</button></div>`;
+			<div class="hint">${tr("輸入並同意後,這裡會自動完成。")}</div>
+			<div><button class="small" data-lx>${tr("取消")}</button></div>`
+			: `<b>${tr("正在登入 {name}", { name: name })}</b>
+			<div class="hint">${st.url ? tr("已經打開 {name} 的登入頁面(沒看到的話<a href=\"{url}\" target=\"_blank\" rel=\"noopener\">點這裡打開</a>)。", { name: name, url: esc(st.url).replace(/'/g, "&#39;") }) : tr("準備中…")}</div>
+			<div class="hint">${tr("在<b>這台電腦</b>登入的話,完成後會自動接上。用<b>手機或別台電腦</b>時,登入後的頁面會打不開(網址開頭是 http://127.0.0.1 或 http://localhost),把那一頁的<b>整段網址</b>貼到這裡:")}</div>
+			<div class="row"><input type="text" id="loginCode" placeholder="http://127.0.0.1:…/callback?code=…" autocomplete="off"><button class="small primary" id="loginSend">${tr("送出")}</button><button class="small" data-lx>${tr("取消")}</button></div>`;
 		b.querySelectorAll("[data-lx]").forEach((x) => (x.onclick = () => { clearInterval(loginTimer); post(`/api/settings/login/${sid}/cancel`, {}).catch(() => {}); b.hidden = true; }));
 		$("loginSend")?.addEventListener("click", async () => {
 			const code = $("loginCode").value.trim();
 			if (!code) return;
-			const x = await post(`/api/settings/login/${sid}/code`, { code }).catch(() => ({ error: "連不上管家" }));
-			if (x.error) toast(x.error); else toast("驗證中…");
+			const x = await post(`/api/settings/login/${sid}/code`, { code }).catch(() => ({ error: tr("連不上管家") }));
+			if (x.error) toast(x.error); else toast(tr("驗證中…"));
 		});
 	};
 	render({ status: "waiting" });
@@ -1969,7 +1971,7 @@ async function startProviderLogin(provider) {
 			const d = await fetch("/api/settings").then((x) => x.json()).catch(() => null);
 			if (d?.settings && setState) { setState.s.providers = d.settings.providers; setState.s.routing = d.settings.routing; }
 			await loadSetModels();
-			toast("登入完成"); if (setState) renderSettings();
+			toast(tr("登入完成")); if (setState) renderSettings();
 			return;
 		}
 		if (st.status === "error") { clearInterval(loginTimer); win?.close(); }
@@ -1989,55 +1991,57 @@ function pollUpdateLog() {
 		if (!box || !setState) return clearInterval(updTimer);
 		const r = await fetch("/api/settings/update/log").then((x) => x.json()).catch(() => null);
 		if (r) { box.hidden = false; box.textContent = r.log; box.scrollTop = box.scrollHeight; }
-		if (r && /專案管家已經在跑|錯誤:/.test(r.log.split("=====").pop())) { clearInterval(updTimer); if (/已經在跑/.test(r.log.split("=====").pop())) toast("更新完成,重新整理頁面就是新版"); }
+		const finished = /已經裝好|is installed\.|錯誤[:：]|Error: /; // i18n-ok: 比對安裝程式的中英文紀錄,不是介面文字
+		const succeeded = /已經裝好|is installed\./; // i18n-ok: 比對安裝程式的中英文成功紀錄,不是介面文字
+		if (r && finished.test(r.log.split("=====").pop())) { clearInterval(updTimer); if (succeeded.test(r.log.split("=====").pop())) toast(tr("更新完成,重新整理頁面就是新版")); }
 	}, 2000);
 }
 async function loadSetAgents() { setAgents = (await fetch("/api/settings/agents").then((r) => r.json()).catch(() => null))?.agents ?? []; }
-const PART_LABEL = { brief: "開工簡報", mcp: "MCP 工具", instructions: "工作說明" };
+const PART_LABEL = { brief: tr("開工簡報"), mcp: tr("MCP 工具"), instructions: tr("工作說明") };
 function agentRow(a) {
 	const parts = Object.keys(a.can).filter((k) => a.can[k]);
-	const badges = [...parts.map((k) => `<span class="chip ${a.on[k] ? "on" : ""}" title="${a.on[k] ? "已接上" : "還沒接上"}">${PART_LABEL[k]}${a.on[k] ? " ✓" : ""}</span>`), a.records ? '<span class="chip" title="管家會自動讀它的對話記錄">自動記錄</span>' : "", a.dispatch ? '<span class="chip" title="看板可以把工作卡派給它(要有 herdr)">可派工</span>' : ""].join("");
+	const badges = [...parts.map((k) => `<span class="chip ${a.on[k] ? "on" : ""}" title="${a.on[k] ? tr("已接上") : tr("還沒接上")}">${PART_LABEL[k]}${a.on[k] ? " ✓" : ""}</span>`), a.records ? `<span class="chip" title="${esc(tr("管家會自動讀它的對話記錄"))}">${tr("自動記錄")}</span>` : "", a.dispatch ? `<span class="chip" title="${esc(tr("看板可以把工作卡派給它(要有 herdr)"))}">${tr("可派工")}</span>` : ""].join("");
 	return `<div class="prov"><div class="prov-h"><b>${esc(a.name)}</b>${badges}<span style="flex:1"></span>
-		${parts.length ? `<button class="small ${a.integrated ? "" : "primary"}" data-agent="${a.id}" data-on="${a.integrated ? 0 : 1}">${a.integrated ? "拿掉" : "接上專案管家"}</button>` : ""}</div>
-		<div class="hint">${a.installed ? esc(a.path) : "這台電腦沒有裝"}</div>
-		${a.manual && a.installed ? `<details><summary class="hint">手動接上 MCP</summary><pre class="ctext">${esc(a.manual)}</pre></details>` : ""}</div>`;
+		${parts.length ? `<button class="small ${a.integrated ? "" : "primary"}" data-agent="${a.id}" data-on="${a.integrated ? 0 : 1}">${a.integrated ? tr("拿掉") : tr("接上專案管家")}</button>` : ""}</div>
+		<div class="hint">${a.installed ? esc(a.path) : tr("這台電腦沒有裝")}</div>
+		${a.manual && a.installed ? `<details><summary class="hint">${tr("手動接上 MCP")}</summary><pre class="ctext">${esc(a.manual)}</pre></details>` : ""}</div>`;
 }
 function agentsPane() {
-	if (!setAgents) return '<div class="empty">偵測中…</div>';
+	if (!setAgents) return `<div class="empty">${tr("偵測中…")}</div>`;
 	const inst = setAgents.filter((a) => a.installed), other = setAgents.filter((a) => !a.installed);
 	const available = setAgents.filter((a) => a.installed && a.dispatch);
 	const saved = setState.s.cards?.defaultAgent || "";
 	const selected = agentIdOf(saved, available) || saved;
-	return `<div class="hint">這台電腦上偵測到的 AI agent。「接上專案管家」會修改它的設定檔(先備份成 *.bak-steward-日期),之後開工就能讀到專案進度、問管家、回報;「拿掉」只移除專案管家加的部分。</div>
-		<div class="route"><div><b>自動提案預設交給</b><div class="hint">管家自動提案、開工作卡時交給誰;選『讓管家決定』時只會從這台電腦裝好的 agent 裡挑。每張卡在核准前都還能改。</div></div>
-			<label class="field">交給<select data-k="cards.defaultAgent"><option value="" ${!selected ? "selected" : ""}>讓管家決定</option>${selected && !agentIdOf(selected, available) ? `<option value="${esc(saved)}" selected>${esc(saved)}(沒有安裝)</option>` : ""}${available.map((a) => `<option value="${esc(a.id)}" ${a.id === selected ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label></div>
-		${inst.map(agentRow).join("") || '<div class="empty">沒有偵測到支援的 agent</div>'}
-		<details><summary class="hint">其他支援的 agent(這台電腦沒有裝,${other.length} 個)</summary>${other.map((a) => `<div class="hint">· ${esc(a.name)}</div>`).join("")}</details>
-		<div><button class="small" id="agentsRescan">重新偵測</button></div>`;
+	return `<div class="hint">${tr("這台電腦上偵測到的 AI agent。「接上專案管家」會修改它的設定檔(先備份成 *.bak-steward-日期),之後開工就能讀到專案進度、問管家、回報;「拿掉」只移除專案管家加的部分。")}</div>
+		<div class="route"><div><b>${tr("自動提案預設交給")}</b><div class="hint">${tr("管家自動提案、開工作卡時交給誰;選『讓管家決定』時只會從這台電腦裝好的 agent 裡挑。每張卡在核准前都還能改。")}</div></div>
+			<label class="field">${tr("交給")}<select data-k="cards.defaultAgent"><option value="" ${!selected ? "selected" : ""}>${tr("讓管家決定")}</option>${selected && !agentIdOf(selected, available) ? `<option value="${esc(saved)}" selected>${tr("{saved}(沒有安裝)", { saved: esc(saved) })}</option>` : ""}${available.map((a) => `<option value="${esc(a.id)}" ${a.id === selected ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label></div>
+		${inst.map(agentRow).join("") || `<div class="empty">${tr("沒有偵測到支援的 agent")}</div>`}
+		<details><summary class="hint">${tr("其他支援的 agent(這台電腦沒有裝,{n} 個)", { n: other.length })}</summary>${other.map((a) => `<div class="hint">· ${esc(a.name)}</div>`).join("")}</details>
+		<div><button class="small" id="agentsRescan">${tr("重新偵測")}</button></div>`;
 }
 const BUILTIN_LABEL = { openai: "OpenAI", anthropic: "Anthropic(Claude)", google: "Google Gemini", openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq", mistral: "Mistral", xai: "xAI(Grok)", "kimi-coding": "Kimi Code" };
 // 訂閱登入按鈕上的名稱
 const LOGIN_NAME = { openai: "ChatGPT", anthropic: "Claude", "github-copilot": "GitHub Copilot", xai: "Grok", "kimi-coding": "Kimi Code", meta: "Meta", openrouter: "OpenRouter" };
-const ROLE_ROWS = [["chat", "聊天室問答", "浮動球裡的問答"], ["suggest", "建議問題", "聊天室上方的三個建議問題"], ["digest", "整理 agent 回報", "agent 做完一段工作後整理專案進度(量最大)"], ["judge", "提案檢查", "決定要不要開工作卡給 agent(唯一能開卡的)"], ["commitmsg", "產生提交訊息", "程式碼頁 Git 的「產生提交訊息」"]];
+const ROLE_ROWS = [["chat", tr("聊天室問答"), tr("浮動球裡的問答")], ["suggest", tr("建議問題"), tr("聊天室上方的三個建議問題")], ["digest", tr("整理 agent 回報"), tr("agent 做完一段工作後整理專案進度(量最大)")], ["judge", tr("提案檢查"), tr("決定要不要開工作卡給 agent(唯一能開卡的)")], ["commitmsg", tr("產生提交訊息"), tr("程式碼頁 Git 的「產生提交訊息」")]];
 let setModels = null; // GET /api/settings/models 的結果
 async function loadSetModels() { setModels = await fetch("/api/settings/models").then((r) => r.json()).catch(() => null); }
 function providerCard(c, i) {
-	const kind = c.type === "builtin" ? (c.auth === "pi" ? "沿用 pi 的登入" : c.auth === "login" ? "訂閱登入" : "API 金鑰") : c.type === "pi-models" ? "沿用 pi 的模型設定" : c.type === "agent-cli" ? "電腦上的 CLI" : "OpenAI 相容網址";
+	const kind = c.type === "builtin" ? (c.auth === "pi" ? tr("沿用 pi 的登入") : c.auth === "login" ? tr("訂閱登入") : tr("API 金鑰")) : c.type === "pi-models" ? tr("沿用 pi 的模型設定") : c.type === "agent-cli" ? tr("電腦上的 CLI") : tr("OpenAI 相容網址");
 	const info = setModels?.providers.find((x) => x.id === c.id);
 	const n = info?.models.length;
 	return `<div class="prov" data-i="${i}">
-		<div class="prov-h"><b>${esc(c.name || c.id)}</b><span class="chip">${esc(kind)}</span><span class="hint">代號 ${esc(c.id)}${n != null ? ` · ${n} 個模型` : ""}</span><span style="flex:1"></span>
-			<button class="small" data-ptest="${i}">測試連線</button><button class="small" data-pdel="${i}">刪除</button></div>
-		<label class="field">顯示名稱<input type="text" data-p="${i}.name" value="${esc(c.name)}"></label>
-		${c.auth === "login" ? `<div class="hint">${info?.signedIn ? '<span class="ok">✓ 已登入</span>' : '<span class="bad">還沒登入</span>'} · 登入資料存在這台電腦的 ~/.agent-steward/auth.json</div>
-			<div><button class="small" data-login="${esc(c.id)}">${info?.signedIn ? "重新登入" : "登入"}</button>${info?.signedIn ? ` <button class="small" data-logout="${esc(c.id)}">登出</button>` : ""}</div>` : ""}
-		${c.type === "builtin" && c.auth !== "pi" && c.auth !== "login" ? `<label class="field">API 金鑰<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" placeholder="貼上金鑰" autocomplete="off"></label>` : ""}
-		${c.builtin === "google" && c.auth !== "pi" ? '<div class="hint">沒有金鑰?到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 用 Google 帳號登入就能免費建立(有免費額度)。</div>' : ""}
-		${c.type === "openai-compatible" ? `<label class="field">網址(OpenAI 相容,通常結尾是 /v1)<input type="text" data-p="${i}.baseUrl" value="${esc(c.baseUrl || "")}"></label>
-			<label class="field">API 金鑰(沒有就空白)<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" autocomplete="off"></label>
-			<label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
-		${c.type === "agent-cli" ? `<div class="hint">直接用這台電腦上已經登入好的 CLI 回答(用它自己的訂閱)。CLI 不能呼叫管家的工具,所以只能用在<b>聊天室問答、建議問題、產生提交訊息</b>;整理回報和提案檢查請用其他接口。${esc(setModels?.cliNotes?.[c.cli] || "")}</div>` : ""}
-		${c.type === "pi-models" ? `<div class="hint">網址、金鑰、模型清單都讀 pi 的設定(~/.pi/agent/models.json 的「${esc(c.piProvider || c.id)}」),pi 改了這裡跟著變。</div><label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> 這是本地/自架模型(隱私專案可以用)</label>` : ""}
+		<div class="prov-h"><b>${esc(c.name || c.id)}</b><span class="chip">${esc(kind)}</span><span class="hint">${tr("代號 {id}{value}", { id: esc(c.id), value: n != null ? tr(" · {n} 個模型", { n: n }) : "" })}</span><span style="flex:1"></span>
+			<button class="small" data-ptest="${i}">${tr("測試連線")}</button><button class="small" data-pdel="${i}">${tr("刪除")}</button></div>
+		<label class="field">${tr("顯示名稱")}<input type="text" data-p="${i}.name" value="${esc(c.name)}"></label>
+		${c.auth === "login" ? `<div class="hint">${tr("{value} · 登入資料存在這台電腦的 ~/.agent-steward/auth.json", { value: info?.signedIn ? `<span class="ok">${tr("✓ 已登入")}</span>` : `<span class="bad">${tr("還沒登入")}</span>` })}</div>
+			<div><button class="small" data-login="${esc(c.id)}">${info?.signedIn ? tr("重新登入") : tr("登入")}</button>${info?.signedIn ? ` <button class="small" data-logout="${esc(c.id)}">${tr("登出")}</button>` : ""}</div>` : ""}
+		${c.type === "builtin" && c.auth !== "pi" && c.auth !== "login" ? `<label class="field">${tr("API 金鑰")}<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" placeholder="${esc(tr("貼上金鑰"))}" autocomplete="off"></label>` : ""}
+		${c.builtin === "google" && c.auth !== "pi" ? `<div class="hint">${tr("沒有金鑰?到 <a href=\"https://aistudio.google.com/apikey\" target=\"_blank\" rel=\"noopener\">Google AI Studio</a> 用 Google 帳號登入就能免費建立(有免費額度)。")}</div>` : ""}
+		${c.type === "openai-compatible" ? `<label class="field">${tr("網址(OpenAI 相容,通常結尾是 /v1)")}<input type="text" data-p="${i}.baseUrl" value="${esc(c.baseUrl || "")}"></label>
+			<label class="field">${tr("API 金鑰(沒有就空白)")}<input type="text" data-p="${i}.apiKey" value="${esc(c.apiKey || "")}" autocomplete="off"></label>
+			<label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> ${tr("這是本地/自架模型(隱私專案可以用)")}</label>` : ""}
+		${c.type === "agent-cli" ? `<div class="hint">${tr("直接用這台電腦上已經登入好的 CLI 回答(用它自己的訂閱)。CLI 不能呼叫管家的工具,所以只能用在<b>聊天室問答、建議問題、產生提交訊息</b>;整理回報和提案檢查請用其他接口。{value}", { value: esc(setModels?.cliNotes?.[c.cli] || "") })}</div>` : ""}
+		${c.type === "pi-models" ? `<div class="hint">${tr("網址、金鑰、模型清單都讀 pi 的設定(~/.pi/agent/models.json 的「{id}」),pi 改了這裡跟著變。", { id: esc(c.piProvider || c.id) })}</div><label><input type="checkbox" data-p="${i}.local" ${c.local ? "checked" : ""}> ${tr("這是本地/自架模型(隱私專案可以用)")}</label>` : ""}
 		<div class="prov-test" id="ptest${i}"></div>
 	</div>`;
 }
@@ -2045,41 +2049,42 @@ function aiPane(s) {
 	const have = new Set(s.providers.map((p) => p.id));
 	const piAdd = (setModels?.piProviders || []).filter((p) => !have.has(p.id));
 	const cliAdd = (setModels?.cliProviders || []).filter((p) => !have.has(p.id));
-	return `${setState.wizard == null ? '<div class="hint">管家用到的 AI 都從這裡設定。新增或修改後按「儲存」才會生效;「測試連線」會先幫你儲存。</div>' : ""}
-		${s.providers.map(providerCard).join("") || '<div class="empty">還沒有任何 AI 接口,從下面新增一個。</div>'}
-		<h4>用訂閱登入(不需要 API 金鑰)</h4>
-		<div class="hint">用你已經有的訂閱(ChatGPT、Claude Pro / Max、GitHub Copilot、SuperGrok / X Premium、Kimi Code、Meta),不另外付 API 費用;OpenRouter 用登入代替貼金鑰。</div>
-		<div>${Object.entries(setModels?.loginProviders || {}).filter(([k]) => !s.providers.some((p) => p.id === k && p.auth === "login")).map(([k, l]) => `<button class="small" data-login="${k}" title="${esc(l)}">用 ${LOGIN_NAME[k] || k} 登入</button>`).join(" ") || '<span class="hint">都已經接上了</span>'}
-			${s.providers.some((p) => (setModels?.loginProviders || {})[p.id] && p.auth !== "login") ? '<div class="hint">已經有同一家的接口時,登入後會改用訂閱(原本的 API 金鑰或 pi 登入不再使用)。</div>' : ""}</div>
+	const localOption = "local|自架模型|http://"; // i18n-ok: option value 是既有設定識別值,只翻顯示文字
+	return `${setState.wizard == null ? `<div class="hint">${tr("管家用到的 AI 都從這裡設定。新增或修改後按「儲存」才會生效;「測試連線」會先幫你儲存。")}</div>` : ""}
+		${s.providers.map(providerCard).join("") || `<div class="empty">${tr("還沒有任何 AI 接口,從下面新增一個。")}</div>`}
+		<h4>${tr("用訂閱登入(不需要 API 金鑰)")}</h4>
+		<div class="hint">${tr("用你已經有的訂閱(ChatGPT、Claude Pro / Max、GitHub Copilot、SuperGrok / X Premium、Kimi Code、Meta),不另外付 API 費用;OpenRouter 用登入代替貼金鑰。")}</div>
+		<div>${Object.entries(setModels?.loginProviders || {}).filter(([k]) => !s.providers.some((p) => p.id === k && p.auth === "login")).map(([k, l]) => `<button class="small" data-login="${k}" title="${esc(l)}">${tr("用 {value} 登入", { value: LOGIN_NAME[k] || k })}</button>`).join(" ") || `<span class="hint">${tr("都已經接上了")}</span>`}
+			${s.providers.some((p) => (setModels?.loginProviders || {})[p.id] && p.auth !== "login") ? `<div class="hint">${tr("已經有同一家的接口時,登入後會改用訂閱(原本的 API 金鑰或 pi 登入不再使用)。")}</div>` : ""}</div>
 		<div id="loginBox" class="login-box" hidden></div>
-		<h4>新增接口</h4>
+		<h4>${tr("新增接口")}</h4>
 		<div class="row">
-			<label class="field">雲端服務(用 API 金鑰)<select id="addBuiltin"><option value="">選一個…</option>${Object.entries(BUILTIN_LABEL).filter(([k]) => !have.has(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
-			<label class="field">本地或自架(OpenAI 相容)<select id="addCompat"><option value="">選一個…</option><option value="ollama|Ollama|http://localhost:11434/v1">Ollama</option><option value="lmstudio|LM Studio|http://localhost:1234/v1">LM Studio</option><option value="local|自架模型|http://">vLLM / 其他網址</option></select></label>
-			${cliAdd.length ? `<label class="field">電腦上的 agent CLI(用它自己的訂閱)<select id="addCli"><option value="">選一個…</option>${cliAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
-			${piAdd.length ? `<label class="field">沿用 pi(這台電腦偵測到的)<select id="addPi"><option value="">選一個…</option>${piAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
+			<label class="field">${tr("雲端服務(用 API 金鑰)")}<select id="addBuiltin"><option value="">${tr("選一個…")}</option>${Object.entries(BUILTIN_LABEL).filter(([k]) => !have.has(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
+			<label class="field">${tr("本地或自架(OpenAI 相容)")}<select id="addCompat"><option value="">${tr("選一個…")}</option><option value="ollama|Ollama|http://localhost:11434/v1">Ollama</option><option value="lmstudio|LM Studio|http://localhost:1234/v1">LM Studio</option><option value="${localOption}">${tr("vLLM / 其他網址")}</option></select></label>
+			${cliAdd.length ? `<label class="field">${tr("電腦上的 agent CLI(用它自己的訂閱)")}<select id="addCli"><option value="">${tr("選一個…")}</option>${cliAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
+			${piAdd.length ? `<label class="field">${tr("沿用 pi(這台電腦偵測到的)")}<select id="addPi"><option value="">${tr("選一個…")}</option>${piAdd.map((p, j) => `<option value="${j}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
 		</div>`;
 }
 function routeOptions(selected, onlyLocal, noCli) {
 	const ps = setModels?.providers || [];
-	const opts = ps.map((p) => `<optgroup label="${esc(p.name)}${p.local ? "(本地)" : ""}">${p.models.map((m) => { const v = `${p.id}/${m}`; const dis = (onlyLocal && !p.local) || (noCli && p.cli); return `<option value="${esc(v)}" ${v === selected ? "selected" : ""} ${dis ? "disabled" : ""}>${esc(m)}${dis ? (p.cli ? "(CLI,這項不能用)" : "(雲端,不能用)") : ""}</option>`; }).join("")}</optgroup>`).join("");
+	const opts = ps.map((p) => `<optgroup label="${esc(p.name)}${p.local ? tr("(本地)") : ""}">${p.models.map((m) => { const v = `${p.id}/${m}`; const dis = (onlyLocal && !p.local) || (noCli && p.cli); return `<option value="${esc(v)}" ${v === selected ? "selected" : ""} ${dis ? "disabled" : ""}>${esc(m)}${dis ? (p.cli ? tr("(CLI,這項不能用)") : tr("(雲端,不能用)")) : ""}</option>`; }).join("")}</optgroup>`).join("");
 	const known = ps.some((p) => p.models.some((m) => `${p.id}/${m}` === selected));
-	return `<option value="">(不設定)</option>${selected && !known ? `<option value="${esc(selected)}" selected>${esc(selected)}(找不到這個模型)</option>` : ""}${opts}`;
+	return `<option value="">${tr("(不設定)")}</option>${selected && !known ? `<option value="${esc(selected)}" selected>${tr("{selected}(找不到這個模型)", { selected: esc(selected) })}</option>` : ""}${opts}`;
 }
 function routingPane(s) {
-	if (!setModels) return '<div class="empty">讀取模型清單中…</div>';
-	return `<div class="hint">每項工作選一個主要模型;可以再選一個備用。主要的失敗時:背景工作(整理回報、提案檢查、建議問題、提交訊息)自動改用備用;聊天室會讓你按「改用備用模型回答這一題」。剛新增的接口要先儲存才會出現在選單裡。</div>
+	if (!setModels) return `<div class="empty">${tr("讀取模型清單中…")}</div>`;
+	return `<div class="hint">${tr("每項工作選一個主要模型;可以再選一個備用。主要的失敗時:背景工作(整理回報、提案檢查、建議問題、提交訊息)自動改用備用;聊天室會讓你按「改用備用模型回答這一題」。剛新增的接口要先儲存才會出現在選單裡。")}</div>
 		${ROLE_ROWS.map(([k, l, d]) => `<div class="route"><div><b>${l}</b><div class="hint">${d}</div></div>
-			<label class="field">主要<select data-route="${k}.primary">${routeOptions(s.routing[k].primary, false, k === "digest" || k === "judge")}</select></label>
-			<label class="field">備用<select data-route="${k}.fallback">${routeOptions(s.routing[k].fallback, false, k === "digest" || k === "judge")}</select></label></div>`).join("")}
-		<div class="route"><div><b>隱私專案</b><div class="hint">隱私專案的所有工作都只用這個模型,不會用備用、也不會送到雲端。只能選本地模型。</div></div>
-			<label class="field">模型<select data-route="privacy">${routeOptions(s.routing.privacy, true)}</select></label></div>
-		<div class="route"><div><b>記憶搜尋(向量)</b><div class="hint">從已整理掉的舊對話找相關內容,自動附在這次的問題裡。只支援本地或自架(OpenAI 相容)接口,例如 Ollama 的 bge-m3;不設定就只用關鍵字搜尋。</div></div>
-			<label class="field">模型<select data-route="embedding">${routeOptions(s.routing.embedding || '', true, true)}</select></label></div>`;
+			<label class="field">${tr("主要")}<select data-route="${k}.primary">${routeOptions(s.routing[k].primary, false, k === "digest" || k === "judge")}</select></label>
+			<label class="field">${tr("備用")}<select data-route="${k}.fallback">${routeOptions(s.routing[k].fallback, false, k === "digest" || k === "judge")}</select></label></div>`).join("")}
+		<div class="route"><div><b>${tr("隱私專案")}</b><div class="hint">${tr("隱私專案的所有工作都只用這個模型,不會用備用、也不會送到雲端。只能選本地模型。")}</div></div>
+			<label class="field">${tr("模型")}<select data-route="privacy">${routeOptions(s.routing.privacy, true)}</select></label></div>
+		<div class="route"><div><b>${tr("記憶搜尋(向量)")}</b><div class="hint">${tr("從已整理掉的舊對話找相關內容,自動附在這次的問題裡。只支援本地或自架(OpenAI 相容)接口,例如 Ollama 的 bge-m3;不設定就只用關鍵字搜尋。")}</div></div>
+			<label class="field">${tr("模型")}<select data-route="embedding">${routeOptions(s.routing.embedding || '', true, true)}</select></label></div>`;
 }
 async function openSettings(tab = "general", wizard = false) {
-	const r = await fetch("/api/settings").then((x) => x.json().then((d) => ({ ok: x.ok, d }))).catch(() => ({ ok: false, d: { error: "連不上管家" } }));
-	if (!r.ok) return toast(r.d.error || "沒有權限打開設定");
+	const r = await fetch("/api/settings").then((x) => x.json().then((d) => ({ ok: x.ok, d }))).catch(() => ({ ok: false, d: { error: tr("連不上管家") } }));
+	if (!r.ok) return toast(r.d.error || tr("沒有權限打開設定"));
 	setState = { s: r.d.settings, detected: r.d.detected, platform: r.d.platform, desktop: r.d.desktop, tab, auth: await fetch("/api/auth/status").then((x) => x.json()).catch(() => null) };
 	setModels = null; setAgents = null; setUpdate = null; setPlugins = null;
 	if (wizard) { setState.wizard = 0; setState.tab = WIZ[0][0]; }
@@ -2098,70 +2103,71 @@ const lines = (v) => String(v || "").split("\n").map((x) => x.trim()).filter(Boo
 function renderSettings() {
 	const { s, detected, tab } = setState;
 	const steps = WIZ.filter(([k]) => k !== "desktop" || setState.desktop);
+	const zhLabel = "繁體中文"; // i18n-ok: 語言選單在兩種語言下都保留語言自稱
 	const m = $("setModal");
 	const pane = {
 		general: `
-			<label class="field">管家怎麼稱呼你<input type="text" data-k="user.name" value="${esc(s.user.name)}" placeholder="例如:小明(空白就叫「使用者」)"></label>
-			<label class="field">語言<select data-k="ui.lang"><option value="zh-TW" ${s.ui.lang === "zh-TW" ? "selected" : ""}>繁體中文</option><option value="en" ${s.ui.lang === "en" ? "selected" : ""}>English</option></select></label>
-			<div class="hint">安裝與更新程式的訊息語言。網頁介面的英文版之後提供。</div>
+			<label class="field">${tr("管家怎麼稱呼你")}<input type="text" data-k="user.name" value="${esc(s.user.name)}" placeholder="${esc(tr("例如:小明(空白就叫「使用者」)"))}"></label>
+			<label class="field">${tr("語言")}<select data-k="ui.lang"><option value="zh-TW" ${s.ui.lang !== "en" ? "selected" : ""}>${zhLabel}</option><option value="en" ${s.ui.lang === "en" ? "selected" : ""}>English</option></select></label>
+			<div class="hint">${tr("網頁介面、安裝與更新程式、App 選單的語言。換了之後頁面會重新載入。")}</div>
 			${setState.desktop && setState.wizard == null ? `<h4>App</h4>${desktopPane(s)}` : ""}
-			<label class="field">「建立專案」瀏覽資料夾的起點<input type="text" data-k="paths.createRoot" value="${esc(s.paths.createRoot)}" placeholder="~ 代表家目錄,例如 ~/Projects"></label>
-			<h4>隱私路徑</h4>
-			<div class="hint">這些資料夾底下的專案只會用「隱私專案」指定的模型(通常是本地模型),內容不會送到雲端。一行一個,可以用 ~ 開頭。</div>
+			<label class="field">${tr("「建立專案」瀏覽資料夾的起點")}<input type="text" data-k="paths.createRoot" value="${esc(s.paths.createRoot)}" placeholder="${esc(tr("~ 代表家目錄,例如 ~/Projects"))}"></label>
+			<h4>${tr("隱私路徑")}</h4>
+			<div class="hint">${tr("這些資料夾底下的專案只會用「隱私專案」指定的模型(通常是本地模型),內容不會送到雲端。一行一個,可以用 ~ 開頭。")}</div>
 			<textarea data-k="paths.privacy" data-lines>${esc(s.paths.privacy.join("\n"))}</textarea>
-			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> 同時沿用 pi 的隱私清單${detected.piPrivacy ? "" : "(這台電腦沒有 pi 的清單)"}</label>
-			<h4>程式碼頁面</h4>
-			<div class="hint">開著程式碼頁面時，定期在背景抓取遠端（只抓不合併，不會動到檔案），遠端有新的 commit 就在 Git 標出 ↓ 數字，提醒你拉取。抓取時不會跳出登入視窗；登入失敗會自動停止，手動按「抓取」成功後恢復。</div>
+			<label><input type="checkbox" data-k="paths.usePiPrivacy" ${s.paths.usePiPrivacy ? "checked" : ""} ${detected.piPrivacy ? "" : "disabled"}> ${tr("同時沿用 pi 的隱私清單{value}", { value: detected.piPrivacy ? "" : tr("(這台電腦沒有 pi 的清單)") })}</label>
+			<h4>${tr("程式碼頁面")}</h4>
+			<div class="hint">${tr("開著程式碼頁面時，定期在背景抓取遠端（只抓不合併，不會動到檔案），遠端有新的 commit 就在 Git 標出 ↓ 數字，提醒你拉取。抓取時不會跳出登入視窗；登入失敗會自動停止，手動按「抓取」成功後恢復。")}</div>
 			<div class="row">
-				<label class="field">自動抓取遠端<select data-k="code.autoFetch"><option value="ask" ${s.code.autoFetch === "ask" ? "selected" : ""}>先問我</option><option value="on" ${s.code.autoFetch === "on" ? "selected" : ""}>開啟</option><option value="off" ${s.code.autoFetch === "off" ? "selected" : ""}>關閉</option></select></label>
-				<label class="field">每隔幾分鐘<input type="number" min="1" max="60" data-num data-k="code.autoFetchMinutes" value="${s.code.autoFetchMinutes}"></label>
+				<label class="field">${tr("自動抓取遠端")}<select data-k="code.autoFetch"><option value="ask" ${s.code.autoFetch === "ask" ? "selected" : ""}>${tr("先問我")}</option><option value="on" ${s.code.autoFetch === "on" ? "selected" : ""}>${tr("開啟")}</option><option value="off" ${s.code.autoFetch === "off" ? "selected" : ""}>${tr("關閉")}</option></select></label>
+				<label class="field">${tr("每隔幾分鐘")}<input type="number" min="1" max="60" data-num data-k="code.autoFetchMinutes" value="${s.code.autoFetchMinutes}"></label>
 			</div>
-			<h4>圈選提問(這台裝置)</h4>
-			<div class="hint">按快捷鍵後圈出畫面上的一塊,旁邊會跳出小框問管家。點下面的框再按想用的組合鍵;手機按浮動球旁的圈選鈕,或長按浮動球。</div>
-			<div class="row"><label class="field">快捷鍵<input type="text" id="snapKeyIn" readonly value="${esc(pref("steward.snapKey") || window.snapKeyDefault || "Alt+S")}"></label><button type="button" class="small" id="snapKeyReset">還原成 ${esc(window.snapKeyDefault || "Alt+S")}</button></div>`,
+			<h4>${tr("圈選提問(這台裝置)")}</h4>
+			<div class="hint">${tr("按快捷鍵後圈出畫面上的一塊,旁邊會跳出小框問管家。點下面的框再按想用的組合鍵;手機按浮動球旁的圈選鈕,或長按浮動球。")}</div>
+			<div class="row"><label class="field">${tr("快捷鍵")}<input type="text" id="snapKeyIn" readonly value="${esc(pref("steward.snapKey") || window.snapKeyDefault || "Alt+S")}"></label><button type="button" class="small" id="snapKeyReset">${tr("還原成 {value}", { value: esc(window.snapKeyDefault || "Alt+S") })}</button></div>`,
 		access: `
-			<h4>管理密碼</h4>
-			<div class="hint">${setState.auth?.hasPassword ? "已設定。" : "<b>還沒設定</b>:目前只有這台電腦本身能使用專案管家。"}從別的裝置、瀏覽器登入時要輸入這組密碼(Tailscale 本人的裝置免密碼)。</div>
+			<h4>${tr("管理密碼")}</h4>
+			<div class="hint">${tr("{value}從別的裝置、瀏覽器登入時要輸入這組密碼(Tailscale 本人的裝置免密碼)。", { value: setState.auth?.hasPassword ? tr("已設定。") : tr("<b>還沒設定</b>:目前只有這台電腦本身能使用專案管家。") })}</div>
 			<div class="row">
-				${setState.auth?.hasPassword ? '<label class="field">目前的密碼<input type="password" id="pwCur" autocomplete="current-password"></label>' : ""}
-				<label class="field">新密碼(至少 8 個字)<input type="password" id="pwNew" autocomplete="new-password"></label>
-				<label class="field">再輸入一次<input type="password" id="pwNew2" autocomplete="new-password"></label>
+				${setState.auth?.hasPassword ? `<label class="field">${tr("目前的密碼")}<input type="password" id="pwCur" autocomplete="current-password"></label>` : ""}
+				<label class="field">${tr("新密碼(至少 8 個字)")}<input type="password" id="pwNew" autocomplete="new-password"></label>
+				<label class="field">${tr("再輸入一次")}<input type="password" id="pwNew2" autocomplete="new-password"></label>
 			</div>
-			<div><button class="small" id="pwSet">${setState.auth?.hasPassword ? "修改密碼" : "設定密碼"}</button>${setState.auth?.how === "password" ? ' <button class="small" id="logoutBtn">登出這個瀏覽器</button>' : ""}</div>
-			<h4>Tailscale 遠端存取</h4>
-			<div class="hint">${detected.tailscale ? "從任何地方經 Tailscale 連進來,有 https 網址(手機複製貼上才能用)。下面這些帳號的個人裝置(手機、筆電)免密碼;其他人要用管理密碼登入。" : "這台電腦沒有偵測到 Tailscale。裝好並登入 Tailscale 後,這裡就能開啟。"}</div>
-			<label><input type="checkbox" id="tsToggle" ${s.access.tailscale.enabled ? "checked" : ""} ${detected.tailscale ? "" : "disabled"}> 開啟 Tailscale 遠端存取${s.access.tailscale.enabled && s.server.publicUrl ? `:<a href="${esc(s.server.publicUrl)}" target="_blank">${esc(s.server.publicUrl)}</a>` : ""}</label>
-			<label class="field">免密碼的 Tailscale 帳號(一行一個)<textarea data-k="access.tailscaleUsers" data-lines>${esc(s.access.tailscaleUsers.join("\n"))}</textarea></label>
-			<h4>區網存取</h4>
-			<div class="hint">同一個 Wi-Fi 的裝置可以打開專案管家,要用管理密碼登入${detected.lanIps?.length ? `,網址:${detected.lanIps.map((ip) => `http://${ip}:${detected.port}/`).join("、")}` : ""}。改了要重新啟動管家才生效。</div>
-			<label><input type="checkbox" data-k="access.lan.enabled" ${s.access.lan.enabled ? "checked" : ""} ${setState.auth?.hasPassword ? "" : "disabled"}> 開啟區網存取${setState.auth?.hasPassword ? "" : "(先設定管理密碼)"}</label>
-			<details><summary class="hint">進階</summary>
-				<label class="field">對外網址(推播訊息裡的連結;從 http 打開時會轉到這個 https 網址)<input type="text" data-k="server.publicUrl" value="${esc(s.server.publicUrl)}" placeholder="空白 = http://127.0.0.1:${s.server.port}/"></label>
+			<div><button class="small" id="pwSet">${setState.auth?.hasPassword ? tr("修改密碼") : tr("設定密碼")}</button>${setState.auth?.how === "password" ? ` <button class="small" id="logoutBtn">${tr("登出這個瀏覽器")}</button>` : ""}</div>
+			<h4>${tr("Tailscale 遠端存取")}</h4>
+			<div class="hint">${detected.tailscale ? tr("從任何地方經 Tailscale 連進來,有 https 網址(手機複製貼上才能用)。下面這些帳號的個人裝置(手機、筆電)免密碼;其他人要用管理密碼登入。") : tr("這台電腦沒有偵測到 Tailscale。裝好並登入 Tailscale 後,這裡就能開啟。")}</div>
+			<label><input type="checkbox" id="tsToggle" ${s.access.tailscale.enabled ? "checked" : ""} ${detected.tailscale ? "" : "disabled"}> ${tr("開啟 Tailscale 遠端存取{value}", { value: s.access.tailscale.enabled && s.server.publicUrl ? `:<a href="${esc(s.server.publicUrl)}" target="_blank">${esc(s.server.publicUrl)}</a>` : "" })}</label>
+			<label class="field">${tr("免密碼的 Tailscale 帳號(一行一個)")}<textarea data-k="access.tailscaleUsers" data-lines>${esc(s.access.tailscaleUsers.join("\n"))}</textarea></label>
+			<h4>${tr("區網存取")}</h4>
+			<div class="hint">${tr("同一個 Wi-Fi 的裝置可以打開專案管家,要用管理密碼登入{n}。改了要重新啟動管家才生效。", { n: detected.lanIps?.length ? tr(",網址:{value}", { value: detected.lanIps.map((ip) => `http://${ip}:${detected.port}/`).join(tr("、")) }) : "" })}</div>
+			<label><input type="checkbox" data-k="access.lan.enabled" ${s.access.lan.enabled ? "checked" : ""} ${setState.auth?.hasPassword ? "" : "disabled"}> ${tr("開啟區網存取{value}", { value: setState.auth?.hasPassword ? "" : tr("(先設定管理密碼)") })}</label>
+			<details><summary class="hint">${tr("進階")}</summary>
+				<label class="field">${tr("對外網址(推播訊息裡的連結;從 http 打開時會轉到這個 https 網址)")}<input type="text" data-k="server.publicUrl" value="${esc(s.server.publicUrl)}" placeholder="${esc(tr("空白 = http://127.0.0.1:{port}/", { port: s.server.port }))}"></label>
 				<div class="row">
-					<label class="field">埠號<input type="text" data-k="server.port" data-num value="${s.server.port}"></label>
-					<label class="field">網頁終端機埠號<input type="text" data-k="server.terminalPort" data-num value="${s.server.terminalPort}"></label>
+					<label class="field">${tr("埠號")}<input type="text" data-k="server.port" data-num value="${s.server.port}"></label>
+					<label class="field">${tr("網頁終端機埠號")}<input type="text" data-k="server.terminalPort" data-num value="${s.server.terminalPort}"></label>
 				</div>
-				<label class="field">聽哪些位址(一行一個;127.0.0.1 一定會有)<textarea data-k="server.hosts" data-lines>${esc(s.server.hosts.join("\n"))}</textarea></label>
-				<div class="set-note">埠號和位址改了要重新啟動管家才會生效。</div>
+				<label class="field">${tr("聽哪些位址(一行一個;127.0.0.1 一定會有)")}<textarea data-k="server.hosts" data-lines>${esc(s.server.hosts.join("\n"))}</textarea></label>
+				<div class="set-note">${tr("埠號和位址改了要重新啟動管家才會生效。")}</div>
 			</details>`,
 		notify: `
-			<div class="hint">工作卡提案、卡住、每日提醒時推播給你。</div>
-			<div class="radios">${[["none", "不推播"], ["telegram", "Telegram 機器人"], ["webhook", "通用 webhook"], ["hermes", "Hermes"]].map(([k, l]) => `<label><input type="radio" name="nk" data-k="notify.kind" value="${k}" ${s.notify.kind === k ? "checked" : ""}> ${l}</label>`).join("")}</div>
+			<div class="hint">${tr("工作卡提案、卡住、每日提醒時推播給你。")}</div>
+			<div class="radios">${[["none", tr("不推播")], ["telegram", tr("Telegram 機器人")], ["webhook", tr("通用 webhook")], ["hermes", "Hermes"]].map(([k, l]) => `<label><input type="radio" name="nk" data-k="notify.kind" value="${k}" ${s.notify.kind === k ? "checked" : ""}> ${l}</label>`).join("")}</div>
 			<div class="sub" data-show="telegram" ${s.notify.kind === "telegram" ? "" : "hidden"}>
-				<div class="hint">在 Telegram 找 @BotFather 建一個機器人拿到 token;先傳一句話給你的機器人,再打開 https://api.telegram.org/bot&lt;token&gt;/getUpdates 找到 chat 的 id。</div>
+				<div class="hint">${tr("在 Telegram 找 @BotFather 建一個機器人拿到 token;先傳一句話給你的機器人,再打開 https://api.telegram.org/bot&lt;token&gt;/getUpdates 找到 chat 的 id。")}</div>
 				<label class="field">Bot token<input type="text" data-k="notify.telegram.botToken" value="${esc(s.notify.telegram.botToken)}" placeholder="123456:ABC..." autocomplete="off"></label>
 				<label class="field">Chat ID<input type="text" data-k="notify.telegram.chatId" value="${esc(s.notify.telegram.chatId)}"></label>
 			</div>
 			<div class="sub" data-show="webhook" ${s.notify.kind === "webhook" ? "" : "hidden"}>
-				<div class="hint">會用 POST 送出 JSON:{"text": …, "content": …, "message": …}。Slack、Discord、ntfy 之類的服務都能接。</div>
-				<label class="field">Webhook 網址<input type="text" data-k="notify.webhook.url" value="${esc(s.notify.webhook.url)}" placeholder="https://..."></label>
+				<div class="hint">${tr("會用 POST 送出 JSON:{json}。Slack、Discord、ntfy 之類的服務都能接。", { json: '{"text": …, "content": …, "message": …}' })}</div>
+				<label class="field">${tr("Webhook 網址")}<input type="text" data-k="notify.webhook.url" value="${esc(s.notify.webhook.url)}" placeholder="https://..."></label>
 			</div>
 			<div class="sub" data-show="hermes" ${s.notify.kind === "hermes" ? "" : "hidden"}>
-				<div class="hint">${detected.hermes ? "已找到 Hermes 的推播路由。" : "還沒找到 Hermes 的推播路由(~/.hermes/webhook_subscriptions.json)。"}</div>
-				<label class="field">Webhook 網址<input type="text" data-k="notify.hermes.url" value="${esc(s.notify.hermes.url)}" placeholder="例如 http://127.0.0.1:8644/p/&lt;profile&gt;/webhooks/steward"></label>
-				<label class="field">路由名稱<input type="text" data-k="notify.hermes.route" value="${esc(s.notify.hermes.route)}"></label>
+				<div class="hint">${detected.hermes ? tr("已找到 Hermes 的推播路由。") : tr("還沒找到 Hermes 的推播路由(~/.hermes/webhook_subscriptions.json)。")}</div>
+				<label class="field">${tr("Webhook 網址")}<input type="text" data-k="notify.hermes.url" value="${esc(s.notify.hermes.url)}" placeholder="${esc(tr("例如 http://127.0.0.1:8644/p/<profile>/webhooks/steward"))}"></label>
+				<label class="field">${tr("路由名稱")}<input type="text" data-k="notify.hermes.route" value="${esc(s.notify.hermes.route)}"></label>
 			</div>
-			<div><button class="small" id="setTestNotify">儲存並發一則測試推播</button></div>`,
+			<div><button class="small" id="setTestNotify">${tr("儲存並發一則測試推播")}</button></div>`,
 		desktop: setState.desktop ? desktopPane(s) : "",
 		ai: aiPane(s),
 		agents: agentsPane(),
@@ -2170,14 +2176,14 @@ function renderSettings() {
 		plugins: pluginsPane(),
 	}[tab];
 	const wz = setState.wizard;
-	m.innerHTML = wz == null ? `<div class="box" role="dialog" aria-label="設定">
-		<div class="mhead"><h3>設定</h3><button class="small" data-x>關閉</button></div>
+	m.innerHTML = wz == null ? `<div class="box" role="dialog" aria-label="${esc(tr("設定"))}">
+		<div class="mhead"><h3>${tr("設定")}</h3><button class="small" data-x>${tr("關閉")}</button></div>
 		<div class="mbody"><div class="set-tabs">${SET_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div><div class="set-pane">${pane}</div></div>
-		<div class="mfoot"><span class="set-note" id="setMsg"></span><span style="flex:1"></span><button class="small" data-x>取消</button><button class="small primary" id="setSave">儲存</button></div>
-	</div>` : `<div class="box" role="dialog" aria-label="第一次設定">
-		<div class="mhead"><h3>第一次設定 · ${wz + 1}/${steps.length} ${steps[wz][1]}</h3><button class="small" id="wzSkip">之後再說</button></div>
+		<div class="mfoot"><span class="set-note" id="setMsg"></span><span style="flex:1"></span><button class="small" data-x>${tr("取消")}</button><button class="small primary" id="setSave">${tr("儲存")}</button></div>
+	</div>` : `<div class="box" role="dialog" aria-label="${esc(tr("第一次設定"))}">
+		<div class="mhead"><h3>${tr("第一次設定 · {value}/{n} {value2}", { value: wz + 1, n: steps.length, value2: steps[wz][1] })}</h3><button class="small" id="wzSkip">${tr("之後再說")}</button></div>
 		<div class="mbody"><div class="set-pane"><div class="wz-intro">${steps[wz][2]}</div>${pane}</div></div>
-		<div class="mfoot"><span class="set-note" id="setMsg"></span><span style="flex:1"></span>${wz > 0 ? '<button class="small" id="wzPrev">上一步</button>' : ""}<button class="small primary" id="setSave">${wz === steps.length - 1 ? "完成" : "下一步"}</button></div>
+		<div class="mfoot"><span class="set-note" id="setMsg"></span><span style="flex:1"></span>${wz > 0 ? `<button class="small" id="wzPrev">${tr("上一步")}</button>` : ""}<button class="small primary" id="setSave">${wz === steps.length - 1 ? tr("完成") : tr("下一步")}</button></div>
 	</div>`;
 	m.querySelectorAll("[data-x]").forEach((b) => (b.onclick = closeSettings));
 	if (wz != null) {
@@ -2186,11 +2192,11 @@ function renderSettings() {
 			setState.wizard = wz + d; setState.tab = steps[wz + d][0]; renderSettings();
 		};
 		$("wzPrev")?.addEventListener("click", () => go(-1));
-		$("wzSkip").onclick = async () => { setState.s.setupDone = true; if (await saveSettings(true, true)) toast("之後可以從右上角 ⚙ 打開設定"); };
+		$("wzSkip").onclick = async () => { setState.s.setupDone = true; if (await saveSettings(true, true)) toast(tr("之後可以從右上角 ⚙ 打開設定")); };
 		$("setSave").onclick = async () => {
 			if (wz < steps.length - 1) return go(1);
 			setState.s.setupDone = true;
-			if (await saveSettings(true, true)) { toast("設定完成"); syncPwBanner(); }
+			if (await saveSettings(true, true)) { toast(tr("設定完成")); syncPwBanner(); }
 		};
 	}
 	m.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { collectSettings(); setState.tab = b.dataset.tab; renderSettings(); }));
@@ -2199,10 +2205,10 @@ function renderSettings() {
 	// ---- 存取 ----
 	$("pwSet")?.addEventListener("click", async () => {
 		const next = $("pwNew").value, next2 = $("pwNew2").value;
-		if (next !== next2) return toast("兩次輸入的新密碼不一樣");
-		const r = await post("/api/auth/password", { current: $("pwCur")?.value ?? "", next }).catch(() => ({ error: "連不上管家" }));
-		if (!r.ok) return toast(r.error || "設定失敗");
-		toast("管理密碼已設定");
+		if (next !== next2) return toast(tr("兩次輸入的新密碼不一樣"));
+		const r = await post("/api/auth/password", { current: $("pwCur")?.value ?? "", next }).catch(() => ({ error: tr("連不上管家") }));
+		if (!r.ok) return toast(r.error || tr("設定失敗"));
+		toast(tr("管理密碼已設定"));
 		collectSettings();
 		setState.auth = await fetch("/api/auth/status").then((x) => x.json()).catch(() => setState.auth);
 		renderSettings(); syncPwBanner();
@@ -2210,14 +2216,14 @@ function renderSettings() {
 	$("logoutBtn")?.addEventListener("click", async () => { await post("/api/auth/logout", {}); location.reload(); });
 	$("tsToggle")?.addEventListener("change", async (e) => {
 		const box = e.target; box.disabled = true;
-		const r = await post("/api/settings/tailscale", { enable: box.checked }).catch(() => ({ error: "連不上管家" }));
+		const r = await post("/api/settings/tailscale", { enable: box.checked }).catch(() => ({ error: tr("連不上管家") }));
 		box.disabled = false;
-		if (!r.ok) { box.checked = !box.checked; return toast(r.error || "設定失敗"); }
+		if (!r.ok) { box.checked = !box.checked; return toast(r.error || tr("設定失敗")); }
 		collectSettings();
 		setState.s.access.tailscale = r.settings.access.tailscale;
 		setState.s.access.tailscaleUsers = r.settings.access.tailscaleUsers;
 		setState.s.server.publicUrl = r.settings.server.publicUrl;
-		toast(box.checked ? `已開啟:${r.url}` : "已關閉 Tailscale 遠端存取");
+		toast(box.checked ? tr("已開啟:{url}", { url: r.url }) : tr("已關閉 Tailscale 遠端存取"));
 		renderSettings();
 	});
 	// ---- AI 接口 ----
@@ -2236,21 +2242,21 @@ function renderSettings() {
 	m.querySelectorAll("[data-ptest]").forEach((b) => (b.onclick = async () => {
 		const i = Number(b.dataset.ptest), id = setState.s.providers[i]?.id;
 		const box = $(`ptest${i}`);
-		box.textContent = "儲存並測試中…";
+		box.textContent = tr("儲存並測試中…");
 		if (!(await saveSettings(false))) { box.textContent = ""; return; }
 		await loadSetModels();
-		const r = await post("/api/settings/test-provider", { id }).catch(() => ({ ok: false, error: "連不上管家" }));
+		const r = await post("/api/settings/test-provider", { id }).catch(() => ({ ok: false, error: tr("連不上管家") }));
 		await loadSetModels();
 		const j = setState.s.providers.findIndex((p) => p.id === id);
 		renderSettings();
 		const box2 = $(`ptest${j}`);
-		if (box2) box2.innerHTML = r.ok ? `<span class="ok">✓ 連線成功</span>:${esc(r.model)} 回覆「${esc(r.reply)}」,${r.latencyMs} 毫秒;共 ${r.models.length} 個模型` : `<span class="bad">✗ ${esc(r.error || "失敗")}</span>`;
+		if (box2) box2.innerHTML = r.ok ? `<span class="ok">${tr("✓ 連線成功")}</span>${tr(":{model} 回覆「{reply}」,{latencyMs} 毫秒;共 {n} 個模型", { model: esc(r.model), reply: esc(r.reply), latencyMs: r.latencyMs, n: r.models.length })}` : `<span class="bad">✗ ${esc(r.error || tr("失敗"))}</span>`;
 	}));
 	m.querySelectorAll("[data-login]").forEach((b) => (b.onclick = () => startProviderLogin(b.dataset.login)));
 	m.querySelectorAll("[data-logout]").forEach((b) => (b.onclick = async () => {
-		const r = await post("/api/settings/logout-provider", { provider: b.dataset.logout }).catch(() => ({ error: "連不上管家" }));
+		const r = await post("/api/settings/logout-provider", { provider: b.dataset.logout }).catch(() => ({ error: tr("連不上管家") }));
 		if (r.error) return toast(r.error);
-		toast("已登出"); await loadSetModels(); renderSettings();
+		toast(tr("已登出")); await loadSetModels(); renderSettings();
 	}));
 	if (tab === "plugins" && !setPlugins) loadSetPlugins().then(() => setState && setState.tab === "plugins" && renderSettings());
 	// 有外掛在安裝:每 1.5 秒更新進度
@@ -2258,15 +2264,15 @@ function renderSettings() {
 	if (tab === "plugins" && setPlugins?.some((p) => p.job?.running)) plugTimer = setInterval(async () => { if (!setState || setState.tab !== "plugins") return clearInterval(plugTimer); await loadSetPlugins(); renderSettings(); }, 1500);
 	m.querySelectorAll("[data-plug]").forEach((c) => (c.onchange = async () => {
 		c.disabled = true;
-		const r = await post(`/api/settings/plugins/${c.dataset.plug}`, { enable: c.checked }).catch(() => ({ error: "連不上管家" }));
-		if (r.error) toast(r.error); else { setPlugins = r.plugins; if (r.started) toast("開始下載安裝,可以先做別的事"); }
+		const r = await post(`/api/settings/plugins/${c.dataset.plug}`, { enable: c.checked }).catch(() => ({ error: tr("連不上管家") }));
+		if (r.error) toast(r.error); else { setPlugins = r.plugins; if (r.started) toast(tr("開始下載安裝,可以先做別的事")); }
 		renderSettings();
 		window.codeMode?.refreshPlugins?.();
 	}));
 	m.querySelectorAll("[data-plugrm]").forEach((b) => (b.onclick = async () => {
-		if (!(await window.confirmBox("移除下載的檔案", "刪掉專案管家為這個外掛下載的軟體?之後要用再開啟就會重新下載。你自己裝的軟體不受影響。", "移除"))) return;
-		const r = await post(`/api/settings/plugins/${b.dataset.plugrm}/remove`, {}).catch(() => ({ error: "連不上管家" }));
-		if (r.error) toast(r.error); else { setPlugins = r.plugins; toast("已移除"); }
+		if (!(await window.confirmBox(tr("移除下載的檔案"), tr("刪掉專案管家為這個外掛下載的軟體?之後要用再開啟就會重新下載。你自己裝的軟體不受影響。"), tr("移除")))) return;
+		const r = await post(`/api/settings/plugins/${b.dataset.plugrm}/remove`, {}).catch(() => ({ error: tr("連不上管家") }));
+		if (r.error) toast(r.error); else { setPlugins = r.plugins; toast(tr("已移除")); }
 		renderSettings();
 		window.codeMode?.refreshPlugins?.();
 	}));
@@ -2274,28 +2280,28 @@ function renderSettings() {
 	if (tab === "about" && setUpdate?.running) pollUpdateLog();
 	$("updCheck")?.addEventListener("click", () => { setUpdate = null; renderSettings(); loadSetUpdate(true).then(() => setState && renderSettings()); });
 	$("updDesktop")?.addEventListener("click", async () => {
-		const r = await post("/api/desktop/update", {}).catch(() => ({ error: "連不上管家" }));
-		toast(r.error || (setState.s.ui.lang === "en" ? "Asked the App to check for updates. Please see the App dialog." : "已請 App 檢查更新，請看 App 跳出的視窗"));
+		const r = await post("/api/desktop/update", {}).catch(() => ({ error: tr("連不上管家") }));
+		toast(r.error || tr("已請 App 檢查更新，請看 App 跳出的視窗"));
 	});
 	$("updApply")?.addEventListener("click", async () => {
-		if (!(await window.confirmBox("更新專案管家", `從 ${setUpdate.current} 更新到 ${setUpdate.latest}。\n會從 GitHub 下載 ${setUpdate.latest} 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。`, "更新"))) return;
+		if (!(await window.confirmBox(tr("更新專案管家"), tr("從 {current} 更新到 {version}。\n會從 GitHub 下載 {version} 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。", { current: setUpdate.current, version: setUpdate.latest }), tr("更新")))) return;
 		$("updApply").disabled = true;
-		const r = await post("/api/settings/update", { tag: setUpdate.latest }).catch(() => ({ error: "連不上管家" }));
+		const r = await post("/api/settings/update", { tag: setUpdate.latest }).catch(() => ({ error: tr("連不上管家") }));
 		if (r.error) return toast(r.error);
 		setUpdate = { ...setUpdate, running: true }; renderSettings();
 	});
 	if (tab === "agents" && !setAgents) loadSetAgents().then(() => setState && setState.tab === "agents" && renderSettings());
 	$("agentsRescan")?.addEventListener("click", () => { setAgents = null; renderSettings(); });
 	m.querySelectorAll("[data-agent]").forEach((b) => (b.onclick = async () => {
-		b.disabled = true; b.textContent = "設定中…";
-		const r = await post(`/api/settings/agents/${b.dataset.agent}`, { enable: b.dataset.on === "1" }).catch(() => ({ error: "連不上管家" }));
-		if (r.error) { toast(r.error); } else toast(r.changed.length ? `已更新 ${r.changed.length} 個設定` : "沒有需要改的");
+		b.disabled = true; b.textContent = tr("設定中…");
+		const r = await post(`/api/settings/agents/${b.dataset.agent}`, { enable: b.dataset.on === "1" }).catch(() => ({ error: tr("連不上管家") }));
+		if (r.error) { toast(r.error); } else toast(r.changed.length ? tr("已更新 {n} 個設定", { n: r.changed.length }) : tr("沒有需要改的"));
 		await loadSetAgents(); renderSettings();
 	}));
 	if (tab === "routing" && !setModels) loadSetModels().then(() => setState && setState.tab === "routing" && renderSettings());
 	if (tab === "ai" && !setModels) loadSetModels().then(() => setState && setState.tab === "ai" && renderSettings());
 	const t = $("setTestNotify");
-	if (t) t.onclick = async () => { if (await saveSettings(false)) { const r = await post("/api/settings/test-notify", {}).catch(() => ({ error: "連不上管家" })); toast(r.ok ? "已送出測試推播" : r.error); } };
+	if (t) t.onclick = async () => { if (await saveSettings(false)) { const r = await post("/api/settings/test-notify", {}).catch(() => ({ error: tr("連不上管家") })); toast(r.ok ? tr("已送出測試推播") : r.error); } };
 }
 /** 把畫面上的值收回 setState.s(切換分頁時不會丟掉) */
 function collectSettings() {
@@ -2323,13 +2329,14 @@ function collectSettings() {
 }
 async function saveSettings(close = true, quiet = false) {
 	collectSettings();
-	const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: setState.s }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
+	const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: setState.s }) }).then((x) => x.json()).catch(() => ({ error: tr("連不上管家") }));
 	if (r.error) { toast(r.error); return false; }
 	setState.s = r.settings;
 	load(); // 接上模型後,看板的「還沒接上模型」提示跟著消失
-	if (r.restartNeeded) toast("已儲存。埠號或位址要重新啟動管家才會生效");
-	else if (!quiet) toast("設定已儲存");
+	if (r.restartNeeded) toast(tr("已儲存。埠號或位址要重新啟動管家才會生效"));
+	else if (!quiet) toast(tr("設定已儲存"));
 	if (close) closeSettings();
+	if ((r.settings.ui.lang === "en" ? "en" : "zh-TW") !== window.LANG) location.reload();
 	return true;
 }
 $("gearBtn").onclick = () => openSettings();
@@ -2339,7 +2346,7 @@ async function syncPwBanner() {
 	if (a?.authed && !a.hasPassword) {
 		const b = document.createElement("div");
 		b.className = "pwbanner";
-		b.textContent = "還沒設定管理密碼:除了這台電腦(和你的 Tailscale 裝置),其他地方都沒辦法登入。點這裡設定 →";
+		b.textContent = tr("還沒設定管理密碼:除了這台電腦(和你的 Tailscale 裝置),其他地方都沒辦法登入。點這裡設定 →");
 		b.onclick = () => openSettings("access");
 		bannerBox().appendChild(b);
 	}
@@ -2361,7 +2368,7 @@ function syncSetupBanner(setup) {
 		b.onclick = () => openSettings("ai");
 		bannerBox().prepend(b);
 	}
-	b.textContent = `「${missing.join("」「")}」還沒接上模型,所以不會自動記錄進度、也不會開工作卡。電腦上的 agent CLI(Claude Code、Codex…)只能用在聊天。點這裡登入一個接口:ChatGPT/Claude/Copilot 訂閱、OpenAI/Gemini/OpenRouter 等 API 金鑰,或本地模型(Ollama、LM Studio)都可以 →`;
+	b.textContent = tr("「{value}」還沒接上模型,所以不會自動記錄進度、也不會開工作卡。電腦上的 agent CLI(Claude Code、Codex…)只能用在聊天。點這裡登入一個接口:ChatGPT/Claude/Copilot 訂閱、OpenAI/Gemini/OpenRouter 等 API 金鑰,或本地模型(Ollama、LM Studio)都可以 →", { value: missing.join(tr("」「")) });
 }
 syncPwBanner();
 // 第一次使用:自動打開設定精靈(只有能改設定的人才會看到)
@@ -2373,13 +2380,13 @@ fetch("/api/settings").then((r) => (r.ok ? r.json() : null)).then(async (d) => {
 		// choiceBox 在頁尾的 code.js 裡:設定可能比它先讀回來,等頁面的 script 都跑完
 		if (document.readyState === "loading") await new Promise((r) => document.addEventListener("DOMContentLoaded", r, { once: true }));
 		if (!window.choiceBox) return;
-		const choice = await window.choiceBox("Tailscale 位址", `管家目前也直接開放在 Tailscale 位址 ${tsIps.join("、")} 的 ${d.settings.server.port} 埠(明碼 http)。\n透過 Tailscale Serve 的 https 網址連線用不到它。其他裝置的 agent 或指令如果是直接連這個位址,拿掉後會連不上。`, ["拿掉", "保留"]);
+		const choice = await window.choiceBox(tr("Tailscale 位址"), tr("管家目前也直接開放在 Tailscale 位址 {value} 的 {port} 埠(明碼 http)。\n透過 Tailscale Serve 的 https 網址連線用不到它。其他裝置的 agent 或指令如果是直接連這個位址,拿掉後會連不上。", { value: tsIps.join(tr("、")), port: d.settings.server.port }), [tr("拿掉"), tr("保留")]);
 		if (choice === null) return;
 		const server = { tailnetBindReviewed: true };
 		if (choice === 0) server.hosts = d.settings.server.hosts.filter((h) => !tsIps.includes(h));
-		const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: { server } }) }).then((x) => x.json()).catch(() => ({ error: "連不上管家" }));
+		const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ settings: { server } }) }).then((x) => x.json()).catch(() => ({ error: tr("連不上管家") }));
 		if (r.error) return toast(r.error);
-		toast(choice === 0 ? "已拿掉:管家不再直接聽 Tailscale 位址" : "保留了,之後可以在 設定 → 存取 的「聽哪些位址」修改");
+		toast(choice === 0 ? tr("已拿掉:管家不再直接聽 Tailscale 位址") : tr("保留了,之後可以在 設定 → 存取 的「聽哪些位址」修改"));
 	}
 }).catch(() => {});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("setModal")) closeSettings(); });
@@ -2440,10 +2447,10 @@ function manualCopy(text) {
 	let d = $("copyDlg");
 	if (!d) {
 		d = document.createElement("div"); d.id = "copyDlg";
-		d.innerHTML = '<div class="box"><b>瀏覽器不讓網頁直接寫剪貼簿</b><span>文字已經選好了,按 <kbd>Ctrl</kbd>+<kbd>C</kbd>(Mac 用 <kbd>⌘</kbd>+<kbd>C</kbd>)複製後會自動關閉。</span><textarea id="copyText" readonly></textarea><button class="small" id="copyClose">關閉</button></div>';
+		d.innerHTML = `<div class="box"><b>${tr("瀏覽器不讓網頁直接寫剪貼簿")}</b><span>${tr("文字已經選好了,按 <kbd>Ctrl</kbd>+<kbd>C</kbd>(Mac 用 <kbd>⌘</kbd>+<kbd>C</kbd>)複製後會自動關閉。")}</span><textarea id="copyText" readonly></textarea><button class="small" id="copyClose">${tr("關閉")}</button></div>`;
 		document.body.appendChild(d);
 		$("copyClose").onclick = () => { d.hidden = true; focusTerm(); };
-		$("copyText").addEventListener("copy", () => setTimeout(() => { d.hidden = true; toast("已複製"); focusTerm(); }, 0));
+		$("copyText").addEventListener("copy", () => setTimeout(() => { d.hidden = true; toast(tr("已複製")); focusTerm(); }, 0));
 		$("copyText").addEventListener("keydown", (e) => { if (e.key === "Escape") $("copyClose").click(); });
 	}
 	d.hidden = false;
@@ -2519,7 +2526,7 @@ function hookClipboard() {
 		const imgs = imageFiles(e.dataTransfer);
 		if (![...(e.dataTransfer?.files || [])].length) return;
 		e.preventDefault(); e.stopImmediatePropagation();
-		if (!imgs.length) return toast("只能拖圖片進終端機");
+		if (!imgs.length) return toast(tr("只能拖圖片進終端機"));
 		pasteImages(t, imgs);
 	}, true);
 	t.onData((d) => { if (d.includes("\x16")) clog("sent-ctrl-v"); });
@@ -2535,7 +2542,7 @@ function hookClipboard() {
 		let text = "";
 		try { text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch { clog("osc52-bad"); return true; }
 		clog("osc52", { len: text.length });
-		copyText(win, text).then((ok) => (ok ? toast(`已複製 ${text.length} 字`) : manualCopy(text)));
+		copyText(win, text).then((ok) => (ok ? toast(tr("已複製 {n} 字", { n: text.length })) : manualCopy(text)));
 		return true;
 	});
 }
@@ -2547,13 +2554,13 @@ function imageFiles(dt) {
 }
 // 上傳圖片 → 主機回檔案路徑 → 以「貼上」送進終端機(agent 會把路徑當成附圖)
 async function pasteImages(t, files) {
-	toast(files.length > 1 ? `上傳 ${files.length} 張圖片…` : "上傳圖片…");
+	toast(files.length > 1 ? tr("上傳 {n} 張圖片…", { n: files.length }) : tr("上傳圖片…"));
 	const paths = [];
 	for (const f of files) {
 		const r = await fetch("/api/terminal/paste-image", { method: "POST", headers: { "content-type": f.type || "image/png" }, body: f })
 			.then(async (x) => ({ ok: x.ok, ...(await x.json().catch(() => ({}))) }))
-			.catch(() => ({ ok: false, error: "連不上管家" }));
-		if (!r.ok || !r.path) { toast(`圖片沒貼上:${r.error || "上傳失敗"}`); clog("paste-image-fail", { error: r.error }); continue; }
+			.catch(() => ({ ok: false, error: tr("連不上管家") }));
+		if (!r.ok || !r.path) { toast(tr("圖片沒貼上:{value}", { value: r.error || tr("上傳失敗") })); clog("paste-image-fail", { error: r.error }); continue; }
 		// 路徑有空白要加引號,不然 agent 會切成兩段
 		paths.push(/\s/.test(r.path) ? `"${r.path}"` : r.path);
 	}
@@ -2561,7 +2568,7 @@ async function pasteImages(t, files) {
 	clog("paste-image", { n: paths.length });
 	t.paste(`${paths.join(" ")} `);
 	t.focus();
-	toast(paths.length > 1 ? `已貼上 ${paths.length} 張圖片` : "已貼上圖片");
+	toast(paths.length > 1 ? tr("已貼上 {n} 張圖片", { n: paths.length }) : tr("已貼上圖片"));
 }
 // 手機:手指上下滑動換算成滾輪事件。herdr 會接管滑鼠,捲動要靠滾輪回報;
 // 觸控滑動本身不會產生滾輪事件,所以要自己轉。往上滑=往下看(和一般手機捲動方向一致)。
@@ -2635,9 +2642,9 @@ function hookTouchScroll(win, t) {
 // ttyd 斷線重連時可能換一個新的終端機物件:定期檢查,新的就重新掛上
 setInterval(() => { if ($("term").src) hookClipboard(); }, 2000);
 async function jumpTo(projectId) {
-	const r = await post("/api/terminal/focus", { project: projectId }).catch(() => ({ ok: false, reason: "連不上管家" }));
+	const r = await post("/api/terminal/focus", { project: projectId }).catch(() => ({ ok: false, reason: tr("連不上管家") }));
 	if (r.ok) { termCurrent = { project: projectId, via: "pane" }; herdrSeen = projectId; termNeedCreate = null; renderDrawer(); }
-	toast(r.ok ? `已跳到 ${r.where}` : r.reason || "跳轉失敗");
+	toast(r.ok ? tr("已跳到 {where}", { where: r.where }) : r.reason || tr("跳轉失敗"));
 	focusTerm();
 }
 function setMode(mode, opts = {}) {
@@ -2672,7 +2679,7 @@ function toggleDrawer(open) {
 	const on = open ?? !document.body.classList.contains("drawer");
 	document.body.classList.toggle("drawer", on);
 	pref("steward.drawer", on ? "1" : "0");
-	$("drawerBtn").textContent = on ? "管家 ◂" : "管家 ▸";
+	$("drawerBtn").textContent = on ? tr("管家 ◂") : tr("管家 ▸");
 	setTimeout(() => { try { $("term").contentWindow.dispatchEvent(new Event("resize")); } catch {} }, 220);
 	if (!on) focusTerm();
 }
@@ -2697,8 +2704,8 @@ async function enterTerminal({ create = false } = {}) {
 		termNeedCreate = null;
 		if ((now?.project !== sel && active?.project !== sel) || create) {
 			const r = await post("/api/terminal/focus", { project: sel, create }).catch(() => ({ ok: false }));
-			if (r.needCreate) { termNeedCreate = sel; if (inApp()) toApp({ type: "needSpace", project: sel }); else toast("這個專案還沒有 herdr space:打開右邊的管家側欄可以「建立並跳過去」"); }
-			else if (r.ok) toast(`herdr 已跳到 ${r.where}`);
+			if (r.needCreate) { termNeedCreate = sel; if (inApp()) toApp({ type: "needSpace", project: sel }); else toast(tr("這個專案還沒有 herdr space:打開右邊的管家側欄可以「建立並跳過去」")); }
+			else if (r.ok) toast(tr("herdr 已跳到 {where}", { where: r.where }));
 		}
 		termCurrent = (await fetchTermCurrent()) || termCurrent;
 		herdrSeen = termCurrent.project ?? null;
@@ -2740,21 +2747,21 @@ function renderBranchBtns() {
 	$("termctl").classList.toggle("onbranch", !!b); // 手機上焦點在支線時只留「帶回」
 	if (b) {
 		$("handoffBtn").disabled = !b.mainAlive;
-		$("handoffBtn").title = b.mainAlive ? `把這條支線的結論整理好,確認後送回「${b.mainLabel}」` : "主線已經關閉,沒辦法帶回";
+		$("handoffBtn").title = b.mainAlive ? tr("把這條支線的結論整理好,確認後送回「{mainLabel}」", { mainLabel: b.mainLabel }) : tr("主線已經關閉,沒辦法帶回");
 		const queued = b.handoff === "queued";
-		$("handoffBtn").innerHTML = `<span class="lg">${queued ? "帶回主線(等主線閒下來)" : "帶回主線"}</span><span class="sm">${queued ? "排隊中" : "帶回"}</span>`;
+		$("handoffBtn").innerHTML = `<span class="lg">${queued ? tr("帶回主線(等主線閒下來)") : tr("帶回主線")}</span><span class="sm">${queued ? tr("排隊中") : tr("帶回")}</span>`;
 	}
 }
 async function openBranchHere(here) {
 	$("branchMenu").hidden = true;
 	$("branchBtn").disabled = true;
-	toast(here ? "正在開支線(同資料夾)…" : "正在開支線(建立 worktree)…");
+	toast(here ? tr("正在開支線(同資料夾)…") : tr("正在開支線(建立 worktree)…"));
 	try {
-		const r = await post("/api/branch", { pane: termCurrent.pane, here }).catch(() => ({ error: "連不上管家" }));
-		if (r.error) return toast(`沒開成:${r.error}`);
+		const r = await post("/api/branch", { pane: termCurrent.pane, here }).catch(() => ({ error: tr("連不上管家") }));
+		if (r.error) return toast(tr("沒開成:{error}", { error: r.error }));
 		const b = r.branch;
-		const where = b.worktree ? `,開在 worktree(分支 ${b.worktree.gitBranch})` : `,開在同一個資料夾${b.hereReason && !here ? `(${b.hereReason})` : ""}`;
-		toast(b.startupNote ? `已開「${b.label}」,但 ${b.startupNote}` : b.mode === "fork" ? `已開「${b.label}」,接著主線的對話${where}` : `已開「${b.label}」:這個 agent 不能分叉,已送主線節錄給它${where}`);
+		const where = b.worktree ? tr(",開在 worktree(分支 {gitBranch})", { gitBranch: b.worktree.gitBranch }) : tr(",開在同一個資料夾{value}", { value: b.hereReason && !here ? `(${b.hereReason})` : "" });
+		toast(b.startupNote ? tr("已開「{label}」,但 {startupNote}", { label: b.label, startupNote: b.startupNote }) : b.mode === "fork" ? tr("已開「{label}」,接著主線的對話{where}", { label: b.label, where: where }) : tr("已開「{label}」:這個 agent 不能分叉,已送主線節錄給它{where}", { label: b.label, where: where }));
 		termCurrent = (await fetchTermCurrent()) || termCurrent;
 		renderBranchBtns();
 		focusTerm();
@@ -2775,16 +2782,16 @@ let handoffBranch = null;
 async function loadHandoffDraft() {
 	$("handoffText").value = ""; $("handoffText").disabled = true;
 	$("handoffGo").disabled = true; $("handoffRedo").disabled = true;
-	$("handoffNote").textContent = "管家正在整理…";
-	const r = await post(`/api/branch/${handoffBranch.id}/draft`, {}).catch(() => ({ error: "連不上管家" }));
+	$("handoffNote").textContent = tr("管家正在整理…");
+	const r = await post(`/api/branch/${handoffBranch.id}/draft`, {}).catch(() => ({ error: tr("連不上管家") }));
 	$("handoffText").disabled = false; $("handoffRedo").disabled = false;
 	if (r.error) { $("handoffNote").textContent = r.error; return; }
-	$("handoffText").value = r.draft; $("handoffNote").textContent = "可以先改再送"; $("handoffGo").disabled = false;
+	$("handoffText").value = r.draft; $("handoffNote").textContent = tr("可以先改再送"); $("handoffGo").disabled = false;
 }
 $("handoffBtn").onclick = () => {
 	handoffBranch = termCurrent.branch;
 	if (!handoffBranch) return;
-	$("handoffHint").textContent = `從「${handoffBranch.label}」送回主線「${handoffBranch.mainLabel}」。主線正在工作時會等它閒下來才送。`;
+	$("handoffHint").textContent = tr("從「{label}」送回主線「{mainLabel}」。主線正在工作時會等它閒下來才送。", { label: handoffBranch.label, mainLabel: handoffBranch.mainLabel });
 	for (const id of ["handoffRedo", "handoffGo"]) $(id).hidden = false;
 	for (const id of ["handoffKeep", "handoffClose", "handoffRmWrap"]) $(id).hidden = true;
 	$("handoffDlg").hidden = false;
@@ -2795,17 +2802,17 @@ $("handoffGo").onclick = async () => {
 	const text = $("handoffText").value.trim();
 	if (!text) return;
 	$("handoffGo").disabled = true;
-	const r = await post(`/api/branch/${handoffBranch.id}/handoff`, { text }).catch(() => ({ error: "連不上管家" }));
+	const r = await post(`/api/branch/${handoffBranch.id}/handoff`, { text }).catch(() => ({ error: tr("連不上管家") }));
 	if (r.error) { $("handoffGo").disabled = false; $("handoffNote").textContent = r.error; return; }
-	if (r.status === "failed") { $("handoffDlg").hidden = true; return toast(`沒送出:${r.note || "主線已經關閉"}`); }
+	if (r.status === "failed") { $("handoffDlg").hidden = true; return toast(tr("沒送出:{value}", { value: r.note || tr("主線已經關閉") })); }
 	// 送出(或排隊)後問要不要關掉支線,預設保留
-	$("handoffNote").textContent = r.status === "sent" ? "已送給主線。要關掉這條支線嗎?" : "主線正在忙,閒下來就會送出。要關掉這條支線嗎?(關掉也會照樣送)";
+	$("handoffNote").textContent = r.status === "sent" ? tr("已送給主線。要關掉這條支線嗎?") : tr("主線正在忙,閒下來就會送出。要關掉這條支線嗎?(關掉也會照樣送)");
 	for (const id of ["handoffRedo", "handoffGo"]) $(id).hidden = true;
 	for (const id of ["handoffKeep", "handoffClose"]) $(id).hidden = false;
 	// worktree 支線:可以一併移除 worktree(預設不勾;改動會先存進支線分支,分支保留)
 	$("handoffRmWrap").hidden = !handoffBranch.worktree;
 	$("handoffRm").checked = false;
-	if (handoffBranch.worktree) $("handoffRmWrap").title = `移除前會把改動提交到 ${handoffBranch.worktree.gitBranch},分支保留`;
+	if (handoffBranch.worktree) $("handoffRmWrap").title = tr("移除前會把改動提交到 {gitBranch},分支保留", { gitBranch: handoffBranch.worktree.gitBranch });
 	termCurrent = (await fetchTermCurrent()) || termCurrent;
 	renderBranchBtns();
 };
@@ -2813,30 +2820,30 @@ $("handoffKeep").onclick = () => { $("handoffDlg").hidden = true; focusTerm(); }
 $("handoffClose").onclick = async () => {
 	$("handoffDlg").hidden = true;
 	const removeWorktree = !!handoffBranch.worktree && $("handoffRm").checked;
-	const x = await post(`/api/branch/${handoffBranch.id}/close`, { removeWorktree }).catch(() => ({ error: "連不上管家" }));
-	toast(x.error ? `沒關成:${x.error}` : removeWorktree ? `已關掉支線並移除 worktree(改動存在 ${handoffBranch.worktree.gitBranch})` : "已關掉支線");
+	const x = await post(`/api/branch/${handoffBranch.id}/close`, { removeWorktree }).catch(() => ({ error: tr("連不上管家") }));
+	toast(x.error ? tr("沒關成:{error}", { error: x.error }) : removeWorktree ? tr("已關掉支線並移除 worktree(改動存在 {gitBranch})", { gitBranch: handoffBranch.worktree.gitBranch }) : tr("已關掉支線"));
 	focusTerm();
 };
-const SOURCE_LABEL = { "看板": "最後在看板選的", "程式碼頁面": "最後在程式碼頁面選的", herdr: "最後在 herdr 切到的" };
+const SOURCE_LABEL = { "看板": tr("最後在看板選的"), "程式碼頁面": tr("最後在程式碼頁面選的"), herdr: tr("最後在 herdr 切到的") }; // i18n-ok: 物件的鍵比對伺服器的來源識別值,顯示文字另走翻譯
 function renderDrawer() {
 	const term = document.body.classList.contains("term");
 	if (!term && !document.body.classList.contains("code")) return;
 	const p = state.projects.find((x) => x.id === sel);
-	const why = SOURCE_LABEL[selSource] || (selSource ? `最後在${selSource}選的` : "目前的專案");
-	$("dTitle").innerHTML = p ? `<b>${esc(p.name)}</b><small>${esc(why)}</small>` : `<b>管家</b><small></small>`;
-	if (!p) { $("dBody").innerHTML = '<div class="empty">在看板、程式碼頁面或 herdr 選一個專案</div>'; return; }
+	const why = SOURCE_LABEL[selSource] || (selSource ? tr("最後在{selSource}選的", { selSource: selSource }) : tr("目前的專案"));
+	$("dTitle").innerHTML = p ? `<b>${esc(p.name)}</b><small>${esc(why)}</small>` : `<b>${tr("管家")}</b><small></small>`;
+	if (!p) { $("dBody").innerHTML = `<div class="empty">${tr("在看板、程式碼頁面或 herdr 選一個專案")}</div>`; return; }
 	// 終端機:herdr 不在這個專案時提示(例如還沒有 space、或停在家目錄)
 	const off = term && !termEntering && termCurrent.project !== p.id;
-	const herdrNote = off ? `<div class="note" style="margin-bottom:10px">${termNeedCreate === p.id ? "這個專案還沒有 herdr space" : `herdr 目前在${termCurrent.space ? `「${esc(termCurrent.space)}」` : "別的地方"},不在這個專案`}<div class="acts" style="margin-top:6px"><button class="small primary" id="dJump">${termNeedCreate === p.id ? "建立並跳過去" : "herdr 跳到這個專案"}</button></div></div>` : "";
+	const herdrNote = off ? `<div class="note" style="margin-bottom:10px">${termNeedCreate === p.id ? tr("這個專案還沒有 herdr space") : tr("herdr 目前在{value},不在這個專案", { value: termCurrent.space ? tr("「{space}」", { space: esc(termCurrent.space) }) : tr("別的地方") })}<div class="acts" style="margin-top:6px"><button class="small primary" id="dJump">${termNeedCreate === p.id ? tr("建立並跳過去") : tr("herdr 跳到這個專案")}</button></div></div>` : "";
 	const s = p.state || {};
 	const cards = state.cards.filter((c) => c.projectId === p.id && ["proposed", "running", "blocked"].includes(c.column));
-	const col = { proposed: "待核准", running: "進行中", blocked: "卡住" };
+	const col = { proposed: tr("待核准"), running: tr("進行中"), blocked: tr("卡住") };
 	const list = (t, a) => a?.length ? `<h4>${t}</h4><ul>${a.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
 	$("dBody").innerHTML = `
 		${herdrNote}${cards.length ? ["proposed", "running", "blocked"].map((k) => { const l = cards.filter((c) => c.column === k); return l.length ? `<h4>${col[k]} ${l.length}</h4>${l.map((c) => cardLine(c)).join("")}` : ""; }).join("") : ""}
-		${s.progress ? `<h4>目前進度 · ${ago(s.updatedAt)}</h4><p>${esc(s.progress)}</p>` : '<p class="empty">還沒有紀錄</p>'}
-		${list("下一步", s.nextSteps)}${list("卡住的地方", s.blockers)}
-		${document.body.classList.contains("code") ? '<p><button class="small" id="dFocus">herdr 跳到這個專案</button></p>' : ""}`;
+		${s.progress ? `<h4>${tr("目前進度 · {time}", { time: ago(s.updatedAt) })}</h4><p>${esc(s.progress)}</p>` : `<p class="empty">${tr("還沒有紀錄")}</p>`}
+		${list(tr("下一步"), s.nextSteps)}${list(tr("卡住的地方"), s.blockers)}
+		${document.body.classList.contains("code") ? `<p><button class="small" id="dFocus">${tr("herdr 跳到這個專案")}</button></p>` : ""}`;
 	const f = $("dFocus"); if (f) f.onclick = () => jumpTo(p.id);
 	const j = $("dJump"); if (j) j.onclick = () => enterTerminal({ create: true });
 }
@@ -2993,7 +3000,7 @@ function toggleBall(open = !ball.open) {
 /** 目前專案變了 → 面板換成那個專案的紀錄 */
 function syncBall() {
 	const p = state.projects.find((x) => x.id === sel);
-	$("bpTitle").textContent = p ? `問管家 · ${p.name}` : "問管家";
+	$("bpTitle").textContent = p ? tr("問管家 · {name}", { name: p.name }) : tr("問管家");
 	if (!ball.open || !sel || ball.pid === sel) return;
 	ball.pid = sel; ball.items = []; ball.more = false; ball.files = []; ball.images = []; $("bpPick").hidden = true; renderCtx();
 	loadBall(false);
@@ -3012,22 +3019,22 @@ async function loadBall(older) {
 	renderBall();
 	log.scrollTop = older ? log.scrollHeight - prevH + prevTop : 1e9;
 }
-const quoteLabel = (q) => `${q.path ?? ""}${q.from ? ` 第 ${q.from}${q.to && q.to !== q.from ? `–${q.to}` : ""} 行` : ""}`;
-const DRAFT_STATUS = { proposed: "已放進看板的「提案」", dispatched: "已派工" };
+const quoteLabel = (q) => !q.from ? `${q.path ?? ""}` : q.to && q.to !== q.from ? tr("{label} 第 {from}–{to} 行", { label: q.path ?? "", from: q.from, to: q.to }) : tr("{label} 第 {from} 行", { label: q.path ?? "", from: q.from });
+const DRAFT_STATUS = { proposed: tr("已放進看板的「提案」"), dispatched: tr("已派工") };
 function draftHtml(e) {
 	const d = e.draft;
 	const agentName = (id) => (ball.agents || []).find((a) => a.id === id)?.name || id;
 	if (d.status !== "draft") {
-		return `<div class="msg bot draft done"><div class="dh">📋 ${esc(d.title)}</div><div class="hint">交給 ${esc(agentName(d.agent))} · ${DRAFT_STATUS[d.status] || d.status}</div><button class="small" data-dview="${esc(d.cardId || "")}">在看板查看</button></div>`;
+		return `<div class="msg bot draft done"><div class="dh">📋 ${esc(d.title)}</div><div class="hint">${tr("交給 {value} · {status}", { value: esc(agentName(d.agent)), status: DRAFT_STATUS[d.status] || d.status })}</div><button class="small" data-dview="${esc(d.cardId || "")}">${tr("在看板查看")}</button></div>`;
 	}
 	const opts = (ball.agents?.length ? ball.agents : [{ id: d.agent, name: d.agent }]).map((a) => `<option value="${esc(a.id)}" ${a.id === d.agent ? "selected" : ""}>${esc(a.name)}</option>`).join("");
 	return `<div class="msg bot draft" data-draft="${esc(e.id)}">
-		<div class="dh">📋 工作卡草稿(可以直接改)</div>
-		<label>標題<input data-df="title" value="${esc(d.title)}"></label>
-		<label>交給<select data-df="agent">${opts}</select></label>
-		<label>工作說明<textarea data-df="instructions" rows="5">${esc(d.instructions)}</textarea></label>
-		<label>完成條件<textarea data-df="doneCriteria" rows="2">${esc(d.doneCriteria)}</textarea></label>
-		<div class="dbtns"><button class="small primary" data-dact="propose">放進提案</button><button class="small" data-dact="dispatch">直接派工</button><button class="small" data-dact="revise" title="說明要怎麼改,管家重擬一張">修改</button></div>
+		<div class="dh">${tr("📋 工作卡草稿(可以直接改)")}</div>
+		<label>${tr("標題")}<input data-df="title" value="${esc(d.title)}"></label>
+		<label>${tr("交給")}<select data-df="agent">${opts}</select></label>
+		<label>${tr("工作說明")}<textarea data-df="instructions" rows="5">${esc(d.instructions)}</textarea></label>
+		<label>${tr("完成條件")}<textarea data-df="doneCriteria" rows="2">${esc(d.doneCriteria)}</textarea></label>
+		<div class="dbtns"><button class="small primary" data-dact="propose">${tr("放進提案")}</button><button class="small" data-dact="dispatch">${tr("直接派工")}</button><button class="small" data-dact="revise" title="${esc(tr("說明要怎麼改,管家重擬一張"))}">${tr("修改")}</button></div>
 	</div>`;
 }
 function msgHtml(e) {
@@ -3035,35 +3042,36 @@ function msgHtml(e) {
 	const files = e.files?.length ? `<div class="mfiles">${e.files.map((f) => `<span title="${esc(f)}">📎 ${esc(f.split("/").pop())}</span>`).join("")}</div>` : "";
 	const via = e.via ? `<div class="via">↪ ${esc(e.via)}</div>` : "";
 	const imgs = e.images?.length ? `<div class="mimgs">${e.images.map((u) => `<img src="${esc(u)}" alt="">`).join("")}</div>` : "";
-	const q = via + imgs + files + (e.quote ? `<div class="q"><div>引用 ${esc(quoteLabel(e.quote))}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
-	const cloud = e.alt?.startsWith("看圖") ? `<span class="cloud" title="這一題有圖片,改用看得懂圖片的模型">${esc(e.alt)}</span>` : e.alt ? `<span class="cloud" title="這一則用備用模型回答:${esc(e.alt)}">備用 · ${esc(e.alt)}</span>` : e.cloud ? '<span class="cloud" title="這一則用雲端模型回答">雲端</span>' : "";
-	const retry = e.retryable ? `<button class="small retry" data-retry="${esc(e.id)}">改用備用模型回答這一題</button>` : "";
+	const q = via + imgs + files + (e.quote ? `<div class="q"><div>${tr("引用 {value}", { value: esc(quoteLabel(e.quote)) })}</div><pre>${esc(e.quote.text)}</pre></div>` : "");
+	const visionReply = e.alt?.startsWith("看圖"); // i18n-ok: 比對伺服器回傳的模型標記,不是介面文字
+	const cloud = visionReply ? `<span class="cloud" title="${esc(tr("這一題有圖片,改用看得懂圖片的模型"))}">${esc(e.alt)}</span>` : e.alt ? `<span class="cloud" title="${esc(tr("這一則用備用模型回答:{alt}", { alt: e.alt }))}">${tr("備用 · {alt}", { alt: esc(e.alt) })}</span>` : e.cloud ? `<span class="cloud" title="${esc(tr("這一則用雲端模型回答"))}">${tr("雲端")}</span>` : "";
+	const retry = e.retryable ? `<button class="small retry" data-retry="${esc(e.id)}">${tr("改用備用模型回答這一題")}</button>` : "";
 	// 管家的回答照 Markdown 顯示(粗體、清單、程式碼、表格…);自己問的照原文
 	const body = e.role === "bot" && !e.error ? `<div class="md">${chatMd.render(e.text)}</div>` : esc(e.text);
 	return `<div class="msg ${e.role}${e.error ? " err" : ""}">${q}${cloud}${body}${retry}</div>`;
 }
 function renderBall() {
 	const waiting = ball.pending.get(ball.pid) || 0;
-	$("bpLog").innerHTML = (ball.more ? '<div class="bp-more">往上捲載入更早的…</div>' : "")
-		+ (ball.items.length || waiting ? ball.items.map(msgHtml).join("") : '<div class="empty">問管家關於這個專案的事:進度、下一步、卡在哪裡,或貼一段程式碼問它。</div>')
-		+ (waiting ? '<div class="msg bot wait">思考中…</div>' : "");
+	$("bpLog").innerHTML = (ball.more ? `<div class="bp-more">${tr("往上捲載入更早的…")}</div>` : "")
+		+ (ball.items.length || waiting ? ball.items.map(msgHtml).join("") : `<div class="empty">${tr("問管家關於這個專案的事:進度、下一步、卡在哪裡,或貼一段程式碼問它。")}</div>`)
+		+ (waiting ? `<div class="msg bot wait">${tr("思考中…")}</div>` : "");
 	chatMd.typeset($("bpLog"));
 	$("stewardBall").classList.toggle("busy", [...ball.pending.values()].some(Boolean));
 }
 function renderQuote() {
 	const q = ball.quote, box = $("bpQuote");
 	box.hidden = !q;
-	box.innerHTML = q ? `<div class="qh"><span>引用 ${esc(quoteLabel(q))}</span><button class="small" data-unquote title="拿掉引用">×</button></div><pre>${esc(q.text)}</pre>` : "";
+	box.innerHTML = q ? `<div class="qh"><span>${tr("引用 {value}", { value: esc(quoteLabel(q)) })}</span><button class="small" data-unquote title="${esc(tr("拿掉引用"))}">×</button></div><pre>${esc(q.text)}</pre>` : "";
 }
 $("bpLog").addEventListener("scroll", () => { if ($("bpLog").scrollTop < 40 && ball.more && !ball.loading) loadBall(true); });
 $("bpQuote").addEventListener("click", (e) => { if (e.target.closest("[data-unquote]")) { ball.quote = null; renderQuote(); } });
 $("bpClose").onclick = () => toggleBall(false);
 $("bpClear").onclick = async () => {
-	if (Date.now() - ball.clearArmed > 3000) { ball.clearArmed = Date.now(); $("bpClear").textContent = "再按一次清除"; setTimeout(() => { $("bpClear").textContent = "清除紀錄"; }, 3000); return; }
-	ball.clearArmed = 0; $("bpClear").textContent = "清除紀錄";
+	if (Date.now() - ball.clearArmed > 3000) { ball.clearArmed = Date.now(); $("bpClear").textContent = tr("再按一次清除"); setTimeout(() => { $("bpClear").textContent = tr("清除紀錄"); }, 3000); return; }
+	ball.clearArmed = 0; $("bpClear").textContent = tr("清除紀錄");
 	await fetch(`/api/chat/${encodeURIComponent(ball.pid)}`, { method: "DELETE" }).catch(() => {});
 	ball.items = []; ball.more = false; renderBall();
-	toast("已清除這個專案的問答紀錄");
+	toast(tr("已清除這個專案的問答紀錄"));
 };
 $("bpInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("bpForm").requestSubmit(); });
 // ---- 帶檔案:目前檔案提示、已加入的檔案(之後每題都帶,直到拿掉或換專案)、＋ 檔案 ----
@@ -3077,14 +3085,14 @@ function renderCtx() {
 	const box = $("bpCtx");
 	if (!box) return;
 	const { last } = ctxFiles();
-	const sugg = last && !ball.files.includes(last) ? `<button type="button" class="ctx-sugg" data-add="${esc(last)}" title="把正在看的檔案加進來">目前檔案:${esc(fname(last))} <b>＋</b></button>` : "";
-	const chips = ball.files.map((f) => `<span class="ctx-chip" title="${esc(f)}">📎 ${esc(fname(f))}<button type="button" data-rm="${esc(f)}" title="拿掉">×</button></span>`).join("");
-	const imgs = ball.images.map((im, i) => `<span class="ctx-img" title="${esc(im.name)}"><img src="${im.thumb}" alt=""><button type="button" data-rmimg="${i}" title="拿掉">×</button></span>`).join("");
-	box.innerHTML = `${imgs}${chips}${sugg}<button type="button" class="ctx-add" data-pick>＋ 檔案</button><button type="button" class="ctx-add" data-addimg title="也可以直接貼上或拖進來">＋ 圖片</button>`;
+	const sugg = last && !ball.files.includes(last) ? `<button type="button" class="ctx-sugg" data-add="${esc(last)}" title="${esc(tr("把正在看的檔案加進來"))}">${tr("目前檔案:{value}", { value: esc(fname(last)) })} <b>${tr("＋")}</b></button>` : "";
+	const chips = ball.files.map((f) => `<span class="ctx-chip" title="${esc(f)}">📎 ${esc(fname(f))}<button type="button" data-rm="${esc(f)}" title="${esc(tr("拿掉"))}">×</button></span>`).join("");
+	const imgs = ball.images.map((im, i) => `<span class="ctx-img" title="${esc(im.name)}"><img src="${im.thumb}" alt=""><button type="button" data-rmimg="${i}" title="${esc(tr("拿掉"))}">×</button></span>`).join("");
+	box.innerHTML = `${imgs}${chips}${sugg}<button type="button" class="ctx-add" data-pick>${tr("＋ 檔案")}</button><button type="button" class="ctx-add" data-addimg title="${esc(tr("也可以直接貼上或拖進來"))}">${tr("＋ 圖片")}</button>`;
 }
 function addCtxFile(path) {
 	if (!path || ball.files.includes(path)) return;
-	if (ball.files.length >= 10) return toast("最多加 10 個檔案");
+	if (ball.files.length >= 10) return toast(tr("最多加 10 個檔案"));
 	ball.files.push(path); renderCtx();
 }
 $("bpCtx").addEventListener("click", (e) => {
@@ -3108,13 +3116,13 @@ function renderPick() {
 	if (pk.hidden) return;
 	const { open } = ctxFiles();
 	const row = (path, sub) => `<label class="pk-row"><input type="checkbox" data-pk="${esc(path)}" ${ball.files.includes(path) ? "checked" : ""}><span class="pk-name">${esc(fname(path))}</span><span class="pk-path">${esc(sub || path)}</span></label>`;
-	const openHtml = open.length ? open.map((f) => row(f.path, `${f.current ? "目前 · " : ""}${f.dirty ? "未存 · " : ""}${f.path}`)).join("") : '<div class="pk-hint">程式碼頁沒有開著的檔案</div>';
+	const openHtml = open.length ? open.map((f) => row(f.path, `${f.current ? tr("目前 · ") : ""}${f.dirty ? tr("未存 · ") : ""}${f.path}`)).join("") : `<div class="pk-hint">${tr("程式碼頁沒有開著的檔案")}</div>`;
 	const hits = (ball.pickHits || []).filter((p) => !open.some((f) => f.path === p));
 	const focused = document.activeElement?.id === "pkQ";
 	const caret = focused ? $("pkQ").selectionStart : null;
-	pk.innerHTML = `<input id="pkQ" type="search" placeholder="搜尋專案裡的檔案…" value="${esc(ball.pickQ || "")}" autocomplete="off">
-		<div class="pk-list">${ball.pickQ ? (hits.length ? hits.map((p) => row(p)).join("") : `<div class="pk-hint">${ball.pickBusy ? "搜尋中…" : "找不到"}</div>`) : `<div class="pk-sec">開著的檔案</div>${openHtml}`}</div>
-		<div class="pk-foot"><button type="button" class="small" data-pkclose>完成</button></div>`;
+	pk.innerHTML = `<input id="pkQ" type="search" placeholder="${esc(tr("搜尋專案裡的檔案…"))}" value="${esc(ball.pickQ || "")}" autocomplete="off">
+		<div class="pk-list">${ball.pickQ ? (hits.length ? hits.map((p) => row(p)).join("") : `<div class="pk-hint">${ball.pickBusy ? tr("搜尋中…") : tr("找不到")}</div>`) : `<div class="pk-sec">${tr("開著的檔案")}</div>${openHtml}`}</div>
+		<div class="pk-foot"><button type="button" class="small" data-pkclose>${tr("完成")}</button></div>`;
 	if (focused) { $("pkQ").focus(); $("pkQ").setSelectionRange(caret, caret); }
 }
 $("bpPick").addEventListener("input", (e) => {
@@ -3135,7 +3143,7 @@ $("bpPick").addEventListener("change", (e) => {
 	if (!path) return;
 	if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(path)) {
 		e.target.checked = false;
-		fetch(`/api/code/${encodeURIComponent(ball.pid)}/raw?path=${encodeURIComponent(path)}`).then((r) => (r.ok ? r.blob() : Promise.reject())).then((b) => addImageBlob(b, fname(path))).catch(() => toast("讀不到這張圖片"));
+		fetch(`/api/code/${encodeURIComponent(ball.pid)}/raw?path=${encodeURIComponent(path)}`).then((r) => (r.ok ? r.blob() : Promise.reject())).then((b) => addImageBlob(b, fname(path))).catch(() => toast(tr("讀不到這張圖片")));
 		return;
 	}
 	if (e.target.checked) addCtxFile(path); else { ball.files = ball.files.filter((f) => f !== path); renderCtx(); }
@@ -3144,9 +3152,9 @@ $("bpPick").addEventListener("click", (e) => { if (e.target.closest("[data-pkclo
 // 程式碼頁換了取得焦點的檔案(點分頁/編輯區、關分頁、換專案):只更新「目前檔案」提示,已加入的檔案不動
 addEventListener("steward:codefile", () => { if (ball.open) { renderCtx(); renderPick(); } });
 // ---- 圖片:縮到最長邊 1600px(省 token),另做一張 160px 縮圖給對話紀錄 ----
-async function addImageBlob(blob, name = "圖片") {
+async function addImageBlob(blob, name = tr("圖片")) {
 	if (!blob?.type?.startsWith("image/")) return;
-	if (ball.images.length >= 4) return toast("一題最多 4 張圖片");
+	if (ball.images.length >= 4) return toast(tr("一題最多 4 張圖片"));
 	try {
 		const bmp = await createImageBitmap(blob);
 		const draw = (max, type, q) => {
@@ -3162,13 +3170,13 @@ async function addImageBlob(blob, name = "圖片") {
 		const [head, data] = url.split(",");
 		ball.images.push({ name, mimeType: head.slice(5, head.indexOf(";")), data, thumb: draw(160, "image/jpeg", 0.7) });
 		renderCtx();
-	} catch { toast("這個圖片格式不支援"); }
+	} catch { toast(tr("這個圖片格式不支援")); }
 }
 $("bpInput").addEventListener("paste", (e) => {
 	const imgs = [...(e.clipboardData?.items || [])].filter((i) => i.kind === "file" && i.type.startsWith("image/"));
 	if (!imgs.length) return;
 	e.preventDefault();
-	for (const it of imgs) addImageBlob(it.getAsFile(), "貼上的圖片");
+	for (const it of imgs) addImageBlob(it.getAsFile(), tr("貼上的圖片"));
 });
 $("ballPanel").addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items || [])].some((i) => i.kind === "file")) { e.preventDefault(); $("ballPanel").classList.add("dropping"); } });
 $("ballPanel").addEventListener("dragleave", (e) => { if (!$("ballPanel").contains(e.relatedTarget)) $("ballPanel").classList.remove("dropping"); });
@@ -3194,12 +3202,12 @@ async function askBall(text, quote, opts = {}) {
 	const imgs = opts.images ?? ball.images;
 	if (!opts.images) { ball.images = []; renderCtx(); }
 	if (imgs.length) ball.lastImages.set(pid, imgs);
-	const r = await post("/api/chat", { project: pid, message: text, quote, files, images: imgs.map(({ data, mimeType }) => ({ data, mimeType })), thumbs: imgs.map((i) => i.thumb), ...(opts.cloud ? { fallback: true, retry: !!opts.retry } : {}) }).catch((err) => ({ error: `連不上管家:${err}` }));
+	const r = await post("/api/chat", { project: pid, message: text, quote, files, images: imgs.map(({ data, mimeType }) => ({ data, mimeType })), thumbs: imgs.map((i) => i.thumb), ...(opts.cloud ? { fallback: true, retry: !!opts.retry } : {}) }).catch((err) => ({ error: tr("連不上管家:{err}", { err: err }) }));
 	ball.pending.set(pid, Math.max(0, (ball.pending.get(pid) || 1) - 1));
 	if (ball.pid === pid) {
 		const i = temp ? ball.items.indexOf(temp) : -1;
 		if (i >= 0 && r.me) ball.items[i] = r.me;
-		ball.items.push(r.bot || { id: `tmp-${Date.now()}`, role: "bot", text: r.answer || r.error || "沒有回應", error: !r.answer });
+		ball.items.push(r.bot || { id: `tmp-${Date.now()}`, role: "bot", text: r.answer || r.error || tr("沒有回應"), error: !r.answer });
 		renderBall(); $("bpLog").scrollTop = 1e9;
 	}
 	// 面板沒開、或已經換到別的專案:球上亮小紅點
@@ -3226,18 +3234,18 @@ $("bpDraft").onclick = async () => {
 	if (!pid) return;
 	const text = $("bpInput").value.trim();
 	const reviseOf = ball.revise || null;
-	$("bpInput").value = ""; ball.revise = null; $("bpInput").placeholder = "問管家這個專案的事…(⌘/Ctrl+Enter 送出)";
+	$("bpInput").value = ""; ball.revise = null; $("bpInput").placeholder = tr("問管家這個專案的事…(⌘/Ctrl+Enter 送出)");
 	await loadAgents();
-	const temp = { id: `tmp-${Date.now()}`, role: "me", text: `${reviseOf ? "修改工作卡" : "開工作卡"}${text ? `:${text}` : ""}`, files: [...ball.files] };
+	const temp = { id: `tmp-${Date.now()}`, role: "me", text: `${reviseOf ? tr("修改工作卡") : tr("開工作卡")}${text ? `:${text}` : ""}`, files: [...ball.files] };
 	if (ball.pid === pid) ball.items.push(temp);
 	ball.pending.set(pid, (ball.pending.get(pid) || 0) + 1);
 	renderBall(); $("bpLog").scrollTop = 1e9;
-	const r = await post(`/api/chat/${encodeURIComponent(pid)}/draft`, { message: text, files: ball.files, reviseOf }).catch((err) => ({ error: `連不上管家:${err}` }));
+	const r = await post(`/api/chat/${encodeURIComponent(pid)}/draft`, { message: text, files: ball.files, reviseOf }).catch((err) => ({ error: tr("連不上管家:{err}", { err: err }) }));
 	ball.pending.set(pid, Math.max(0, (ball.pending.get(pid) || 1) - 1));
 	if (ball.pid === pid) {
 		const i = ball.items.indexOf(temp);
 		if (i >= 0 && r.me) ball.items[i] = r.me;
-		ball.items.push(r.bot || { id: `tmp-${Date.now()}`, role: "bot", text: r.error || "沒有回應", error: true });
+		ball.items.push(r.bot || { id: `tmp-${Date.now()}`, role: "bot", text: r.error || tr("沒有回應"), error: true });
 		renderBall(); $("bpLog").scrollTop = 1e9;
 	}
 	if (!ball.open || ball.pid !== pid) $("stewardBall").classList.add("unread");
@@ -3263,18 +3271,18 @@ $("bpLog").addEventListener("click", async (e) => {
 	if (!it?.draft) return;
 	if (act === "revise") {
 		ball.revise = it.id;
-		$("bpInput").placeholder = "說明要怎麼改這張卡,再按「開工作卡」…";
+		$("bpInput").placeholder = tr("說明要怎麼改這張卡,再按「開工作卡」…");
 		$("bpInput").focus();
-		return toast("在輸入框說明要怎麼改,再按「開工作卡」");
+		return toast(tr("在輸入框說明要怎麼改,再按「開工作卡」"));
 	}
-	if (act === "dispatch" && !(await window.confirmBox("直接派工", `馬上把「${it.draft.title}」交給 ${(ball.agents || []).find((a) => a.id === it.draft.agent)?.name || it.draft.agent} 開工?`, "派工"))) return;
+	if (act === "dispatch" && !(await window.confirmBox(tr("直接派工"), tr("馬上把「{title}」交給 {agent} 開工?", { title: it.draft.title, agent: (ball.agents || []).find((a) => a.id === it.draft.agent)?.name || it.draft.agent }), tr("派工")))) return;
 	box.querySelectorAll("button").forEach((b) => (b.disabled = true));
 	clearTimeout(it._saveT);
 	const r = await post(`/api/chat/${encodeURIComponent(ball.pid)}/draft/${it.id}`, { action: act, draft: it.draft }).catch((err) => ({ error: String(err) }));
 	if (r.error) { toast(r.error); box.querySelectorAll("button").forEach((b) => (b.disabled = false)); return; }
 	Object.assign(it, r.bot);
 	renderBall();
-	toast(act === "dispatch" ? "已派工,進度看看板「進行中」" : "已放進看板的「提案」");
+	toast(act === "dispatch" ? tr("已派工,進度看看板「進行中」") : tr("已放進看板的「提案」"));
 	load();
 });
 // 失敗的回答:「改用雲端回答這一題」→ 用前一則問題重問
@@ -3283,7 +3291,7 @@ $("bpLog").addEventListener("click", (e) => {
 	if (!id) return;
 	const i = ball.items.findIndex((x) => x.id === id);
 	const me = ball.items.slice(0, i).reverse().find((x) => x.role === "me");
-	if (!me) return toast("找不到原本的問題");
+	if (!me) return toast(tr("找不到原本的問題"));
 	ball.items[i] = { ...ball.items[i], retryable: false };
 	askBall(me.text, me.quote, { cloud: true, retry: true, files: me.files || [], images: me.images?.length ? ball.lastImages.get(ball.pid) || [] : [] });
 });
@@ -3316,8 +3324,8 @@ function renderSugg() {
 	box.hidden = !items.length && !ball.sugg.loading;
 	box.classList.toggle("dim", busy || ball.sugg.loading);
 	box.innerHTML = items.length
-		? `<div class="chips">${items.map((q) => `<button type="button" class="chip-q" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div><button type="button" class="small sref" data-sref title="換一組建議問題">↻</button>`
-		: `<div class="chips"><span class="hint">建議問題產生中…</span></div>`;
+		? `<div class="chips">${items.map((q) => `<button type="button" class="chip-q" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div><button type="button" class="small sref" data-sref title="${esc(tr("換一組建議問題"))}">↻</button>`
+		: `<div class="chips"><span class="hint">${tr("建議問題產生中…")}</span></div>`;
 }
 $("bpSugg").addEventListener("click", (e) => {
 	const q = e.target.closest("[data-q]")?.dataset.q;

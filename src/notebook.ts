@@ -1,5 +1,6 @@
 // 程式碼頁的 Notebook 執行:每個 .ipynb 一個 Jupyter kernel(用 nbkernel.py 橋接),輸出用 SSE 即時送到網頁。
 // 可選已註冊的 kernelspec 或偵測到的 Python 環境;缺少橋接套件時可以一鍵安裝。
+import { tr } from "./i18n.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -27,6 +28,7 @@ export interface PythonEnv {
 	version?: string;
 	ready: boolean;
 	why?: string;
+	needsBridge?: boolean;
 	own?: boolean;
 	name?: string;
 	displayName?: string;
@@ -52,13 +54,13 @@ export const pyId = (python: string) => `py:${pyKey(python)}`;
 function clearChecks(): void { checkCaches.clear(); }
 function cachedCheck(python: string, checker: Checker): Promise<PythonCheck> {
 	let mtime: number;
-	try { mtime = statSync(python).mtimeMs; } catch { return Promise.resolve({ ready: false, why: "找不到 Python 程式" }); }
-	const key = `${pyKey(python)}:${mtime}`;
+	try { mtime = statSync(python).mtimeMs; } catch { return Promise.resolve({ ready: false, why: tr("找不到 Python 程式") }); }
+	const key = `${settings().ui.lang}:${pyKey(python)}:${mtime}`;
 	let cache = checkCaches.get(checker);
 	if (!cache) checkCaches.set(checker, (cache = new Map()));
 	const old = cache.get(key);
 	if (old && Date.now() - old.at < 5 * 60_000) return old.value;
-	const value = Promise.resolve().then(() => checker(python)).catch(() => ({ ready: false, why: "執行失敗" }));
+	const value = Promise.resolve().then(() => checker(python)).catch(() => ({ ready: false, why: tr("執行失敗") }));
 	cache.set(key, { at: Date.now(), value });
 	return value;
 }
@@ -73,14 +75,14 @@ def has(name):
   return False
 print(json.dumps({"version":v,"ipykernel":has("ipykernel"),"jupyterClient":has("jupyter_client")}))`;
 	execFile(python, ["-c", script], { timeout: 20_000, windowsHide: true }, (err, out) => {
-		if (err) return ok({ ready: false, why: "執行失敗" });
+		if (err) return ok({ ready: false, why: tr("執行失敗") });
 		try {
 			const result = JSON.parse(String(out).trim().split("\n").at(-1)!);
 			if (typeof result.version !== "string" || !/^\d+\.\d+\.\d+[a-zA-Z0-9.+-]*$/.test(result.version)) throw new Error("version");
 			const jupyterClient = result.jupyterClient === true;
 			const ready = result.ipykernel === true && jupyterClient;
-			ok({ version: result.version, ready, jupyterClient, why: ready ? undefined : !jupyterClient ? "沒有安裝 jupyter_client" : "沒有安裝 ipykernel" });
-		} catch { ok({ ready: false, why: "無法確認 Python 版本" }); }
+			ok({ version: result.version, ready, jupyterClient, why: ready ? undefined : !jupyterClient ? tr("沒有安裝 jupyter_client") : tr("沒有安裝 ipykernel") });
+		} catch { ok({ ready: false, why: tr("無法確認 Python 版本") }); }
 	});
 });
 /** 分別檢查 jupyter_client 與 Python kernel 能力;手動加入時還必須有可信的 version。 */
@@ -112,7 +114,7 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 		const python = win && basename(dir) === ".conda" ? condaPython(dir) : envPython(dir);
 		if (projectSeen.size >= 30 || !isFile(python) || projectSeen.has(pyKey(python))) return;
 		projectSeen.add(pyKey(python));
-		cands.push({ python, group: "project", label: `${relative(root, dir).split(sep).join("/")}（專案環境）` });
+		cands.push({ python, group: "project", label: tr("{path}（專案環境）", { path: relative(root, dir).split(sep).join("/") }) });
 	};
 	for (let d = nbDir; ; d = dirname(d)) {
 		for (const name of [".venv", "venv", "env"]) addProject(join(d, name));
@@ -166,14 +168,14 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 	}
 	// 設定也可能被直接改過,列出前再檢查一次:只收絕對路徑、檔名像 Python 的檔案。
 	for (const python of settings().plugins.notebook.pythons) if (isAbsolute(python) && PYTHON_NAME.test(basename(python)) && isFile(python)) cands.push({ python, group: "custom", label: python });
-	cands.push({ python: envPython(OWN_ENV), group: "own", label: "專案管家的 Jupyter 環境", own: true });
+	cands.push({ python: envPython(OWN_ENV), group: "own", label: tr("專案管家的 Jupyter 環境"), own: true });
 	const systemSeen = new Set(cands.filter((c) => isFile(c.python)).map((c) => pyKey(c.python)));
 	let systemCount = 0;
 	for (const python of findOnPath(win ? ["python.exe", "py.exe"] : ["python3", "python"])) {
 		if (systemCount >= 5) break;
 		if (systemSeen.has(pyKey(python))) continue;
 		systemSeen.add(pyKey(python)); systemCount++;
-		cands.push({ python, group: "system", label: `系統的 ${basename(python)} (${python})` });
+		cands.push({ python, group: "system", label: tr("系統的 {name} ({python})", { name: basename(python), python }) });
 	}
 	const seen = new Set<string>();
 	const unique = cands.filter((c) => {
@@ -181,7 +183,7 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 		seen.add(pyKey(c.python)); return true;
 	});
 	const pythons = await Promise.all(unique.map(async (c): Promise<PythonEnv> => {
-		const result: PythonCheck = isFile(c.python) ? await inspect(c.python) : { ready: false, why: "還沒建立" };
+		const result: PythonCheck = isFile(c.python) ? await inspect(c.python) : { ready: false, why: tr("還沒建立") };
 		return { ...c, id: pyId(c.python), kind: "python", version: result.version, ready: result.ready, why: result.why };
 	}));
 
@@ -221,7 +223,7 @@ export async function pythonEnvs(p: Project, rel: string, options: PythonEnvOpti
 		}
 		bridge ??= fallback?.python;
 		return { id: `ks:${real(specDir)}`, kind: "kernelspec", group: "kernel", python: program, label: displayName, name, displayName, language, specDir, bridge,
-			ready: !missing && !!bridge, why: missing ? "核心指定的程式不存在" : bridge ? undefined : "需要一個有 jupyter_client 的 Python 才能啟動這個核心" };
+			ready: !missing && !!bridge, ...(!missing && !bridge ? { needsBridge: true } : {}), why: missing ? tr("核心指定的程式不存在") : bridge ? undefined : tr("需要一個有 jupyter_client 的 Python 才能啟動這個核心") };
 	}));
 	return [...kernels, ...pythons];
 }
@@ -242,7 +244,7 @@ export async function installKernel(python: string, own: boolean): Promise<strin
 			if (uv) await run(uv, ["venv", "--seed", OWN_ENV]);
 			else {
 				const sys = which(IS_WIN ? "python" : "python3") ?? which("python");
-				if (!sys) throw new Error("這台電腦找不到 Python,請先安裝 Python 3");
+				if (!sys) throw new Error(tr("這台電腦找不到 Python,請先安裝 Python 3"));
 				await run(sys, ["-m", "venv", OWN_ENV]);
 			}
 		}
@@ -256,7 +258,7 @@ export async function installKernel(python: string, own: boolean): Promise<strin
 	}
 	clearChecks();
 	const r = await check(python);
-	if (!r.ready) throw new Error("裝完還是不能用,請確認這個 Python 環境");
+	if (!r.ready) throw new Error(tr("裝完還是不能用,請確認這個 Python 環境"));
 	return python;
 }
 
@@ -293,7 +295,7 @@ export function startKernel(p: Project, rel: string, env: PythonEnv): { id: stri
 	if (old) stopKernel(key);
 	const cwd = dirname(inProject(p, rel));
 	const executable = env.kind === "kernelspec" ? env.bridge : python;
-	if (!executable || (env.kind === "kernelspec" && !env.specDir)) throw new Error("找不到核心的 Python 橋接環境");
+	if (!executable || (env.kind === "kernelspec" && !env.specDir)) throw new Error(tr("找不到核心的 Python 橋接環境"));
 	const args = ["-u", BRIDGE, ...(env.kind === "kernelspec" ? ["--spec-dir", env.specDir!] : [])];
 	const child = spawn(executable, args, { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env, PYTHONIOENCODING: "utf-8", PYDEVD_DISABLE_FILE_VALIDATION: "1" } });
 	const s: Session = { key, child, id, python, state: "starting", buf: "" };

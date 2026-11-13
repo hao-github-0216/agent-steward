@@ -25,7 +25,7 @@
 		// 連結 [文字](網址)
 		s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, (_, t, u) => hold(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${inlineFmt(esc(t))}</a>`));
 		// 直接寫出來的網址
-		s = s.replace(/https?:\/\/[^\s<>()　-〿＀-￯]+[^\s<>()　-〿＀-￯.,;:!?'"]/g, (u) => hold(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`));
+		s = s.replace(/https?:\/\/[^\s<>()　-〿＀-￯]+[^\s<>()　-〿＀-￯.,;:!?'"]/g, (u) => hold(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`)); // i18n-ok: 正則用全形字元範圍判斷網址邊界，不是介面文字。
 		return inlineFmt(esc(s));
 	}
 	function inlineFmt(s) {

@@ -5,6 +5,7 @@
 //  - 工作說明:在 agent 的全域說明檔加一段「有專案管家可以用」
 // 另外:herdr 支援的 agent 都能從看板派工。
 // 每個被改的設定檔都先備份成 *.bak-steward-<日期>;拿掉時只移除我們加的部分。
+import { tr } from "./i18n.ts";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -209,7 +210,7 @@ export const AGENTS: AgentDef[] = [
 						if (WIN) copyFileSync(target, link); else symlinkSync(target, link);
 						changed.push(link);
 					}
-				} else if (exists) { unlinkSync(link); changed.push(`移除 ${link}`); }
+				} else if (exists) { unlinkSync(link); changed.push(tr("移除 {path}", { path: link })); }
 			}
 			if (want.mcp !== undefined) jsonEntry(join(HOME, ".pi", "agent", "mcp.json"), ["mcpServers"], want.mcp ? { ...mcpStdio("pi"), exposure: "deferred", toolExposure: { steward_brief: "direct", steward_ask: "direct" } } : null, changed);
 			if (want.instructions !== undefined) instructions(join(HOME, ".pi", "agent", "AGENTS.md"), want.instructions, changed);
@@ -309,7 +310,7 @@ export function agentStatus(def: AgentDef): AgentStatus {
 	return {
 		id: def.id, name: def.name, installed: !!path, path, dispatch: !!def.herdrKind, records: !!def.records,
 		can: def.can, on, integrated: parts.length > 0 && parts.some((k) => on[k]),
-		manual: def.manual ? `${def.manual}${JSON.stringify({ steward: mcpStdio(def.id) })}` : undefined,
+		manual: def.manual ? `${tr(def.manual)}${JSON.stringify({ steward: mcpStdio(def.id) })}` : undefined,
 	};
 }
 export function listAgents(): AgentStatus[] {
@@ -318,7 +319,7 @@ export function listAgents(): AgentStatus[] {
 /** 接上 / 拿掉;回傳改了哪些檔案 */
 export function setAgent(id: string, on: boolean): { changed: string[]; status: AgentStatus } {
 	const def = AGENTS.find((a) => a.id === id);
-	if (!def?.apply) throw new Error("這個 agent 不能自動設定");
+	if (!def?.apply) throw new Error(tr("這個 agent 不能自動設定"));
 	const changed: string[] = [];
 	def.apply(allParts(def, on), changed);
 	return { changed, status: agentStatus(def) };
@@ -354,18 +355,18 @@ export function chooseCardAgent(requested: string | undefined, opts: { available
 	const { available, defaultAgent } = opts;
 	const requestedId = requested ? agentIdOf(requested) : undefined;
 	const fixed = defaultAgent ? available.find((a) => a.id === agentIdOf(defaultAgent)) : undefined;
-	if (fixed) return { agent: fixed.id, ...(requested && requestedId !== fixed.id ? { note: `設定固定交給 ${fixed.name}` } : {}) };
+	if (fixed) return { agent: fixed.id, ...(requested && requestedId !== fixed.id ? { note: tr("設定固定交給 {name}", { name: fixed.name }) } : {}) };
 	const wanted = available.find((a) => a.id === requestedId);
 	if (wanted) return { agent: wanted.id };
 	const fallback = available.find((a) => a.id === "pi") ?? available[0];
-	if (fallback) return { agent: fallback.id, ...(requested ? { note: `「${requested}」這台電腦沒有裝或不能派工,改交給 ${fallback.name}` } : {}) };
-	return { agent: requestedId ?? (requested?.trim() || "pi"), note: "這台電腦沒有偵測到能派工的 agent" };
+	if (fallback) return { agent: fallback.id, ...(requested ? { note: tr("「{requested}」這台電腦沒有裝或不能派工,改交給 {name}", { requested, name: fallback.name }) } : {}) };
+	return { agent: requestedId ?? (requested?.trim() || "pi"), note: tr("這台電腦沒有偵測到能派工的 agent") };
 }
 
 export function dispatchProblem(agent: string, available: { id: string; name: string }[]): string | undefined {
 	const id = agentIdOf(agent);
-	if (!id) return `不認得「${agent}」這個 agent,請在工作卡上改選一個再重新派工`;
-	if (!available.some((a) => a.id === id)) return `這台電腦沒有裝 ${AGENTS.find((a) => a.id === id)!.name},請在工作卡上改選一個再重新派工`;
+	if (!id) return tr("不認得「{agent}」這個 agent,請在工作卡上改選一個再重新派工", { agent });
+	if (!available.some((a) => a.id === id)) return tr("這台電腦沒有裝 {name},請在工作卡上改選一個再重新派工", { name: AGENTS.find((a) => a.id === id)!.name });
 	return undefined;
 }
 

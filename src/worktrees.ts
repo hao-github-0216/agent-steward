@@ -5,6 +5,7 @@
 //    但只有「改動碰到這個專案資料夾」或「從這個專案開的」才算進徽章(relevant)
 //  - Claude Code 背景 session 換進 worktree 後,herdr 窗格的資料夾還是舊的,所以靠紀錄檔裡的 worktree-state 找 session ID,
 //    再用窗格的 agent_session 對回窗格
+import { tr } from "./i18n.ts";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
@@ -93,7 +94,7 @@ export function run(cwd: string, args: string[], timeout = 20_000): Promise<{ co
 }
 async function ok(cwd: string, args: string[], timeout?: number): Promise<string> {
 	const r = await run(cwd, args, timeout);
-	if (r.code !== 0) throw new WorktreesError(400, (r.err || r.out).trim().split("\n").slice(-6).join("\n") || `git ${args[0]} 失敗`);
+	if (r.code !== 0) throw new WorktreesError(400, (r.err || r.out).trim().split("\n").slice(-6).join("\n") || tr("git {action} 失敗", { action: args[0] }));
 	return r.out;
 }
 
@@ -396,9 +397,9 @@ export async function worktreeView(p: Project, id: string): Promise<{ path: stri
 	const hit = viewCache.get(key);
 	if (hit && Date.now() - hit.at < 10_000) return hit.v;
 	const info = await repoOf(p.root);
-	if (!info) throw new WorktreesError(400, "這個專案不是 git repo");
+	if (!info) throw new WorktreesError(400, tr("這個專案不是 git repo"));
 	const w = parsePorcelain(await ok(info.repoRoot, ["worktree", "list", "--porcelain"])).find((x) => !x.bare && worktreeId(x.path) === id);
-	if (!w) throw new WorktreesError(404, "找不到這個 worktree(可能已經移除),請重新整理");
+	if (!w) throw new WorktreesError(404, tr("找不到這個 worktree(可能已經移除),請重新整理"));
 	const cwd = info.prefix ? join(w.path, info.prefix) : w.path;
 	const v = { path: w.path, cwd, exists: existsSync(w.path) && !w.prunable };
 	viewCache.set(key, { at: Date.now(), v });
@@ -407,18 +408,18 @@ export async function worktreeView(p: Project, id: string): Promise<{ path: stri
 
 export async function findWorktree(store: Store, p: Project, id: string, deps: WorktreeDeps = {}): Promise<{ list: WorktreeList; item: WorktreeItem }> {
 	const list = await listWorktrees(store, p, deps);
-	if (!list.repo) throw new WorktreesError(400, "這個專案不是 git repo");
+	if (!list.repo) throw new WorktreesError(400, tr("這個專案不是 git repo"));
 	const item = list.items.find((x) => x.id === id);
-	if (!item) throw new WorktreesError(404, "找不到這個 worktree(可能已經移除),請重新整理");
+	if (!item) throw new WorktreesError(404, tr("找不到這個 worktree(可能已經移除),請重新整理"));
 	return { list, item };
 }
 
 /** 合併前預覽:改了哪些檔案、diff、會不會被擋 */
 export async function mergePreview(store: Store, p: Project, id: string, deps: WorktreeDeps = {}) {
 	const { list, item } = await findWorktree(store, p, id, deps);
-	if (item.source === "main") throw new WorktreesError(400, "這是主資料夾,不能合併到自己");
-	if (!item.branch) throw new WorktreesError(400, "這個 worktree 不在任何分支上(detached HEAD),請先讓 agent 建一條分支");
-	if (!list.target) throw new WorktreesError(400, "主資料夾目前不在任何分支上(detached HEAD),沒有合併的目標");
+	if (item.source === "main") throw new WorktreesError(400, tr("這是主資料夾,不能合併到自己"));
+	if (!item.branch) throw new WorktreesError(400, tr("這個 worktree 不在任何分支上(detached HEAD),請先讓 agent 建一條分支"));
+	if (!list.target) throw new WorktreesError(400, tr("主資料夾目前不在任何分支上(detached HEAD),沒有合併的目標"));
 	const range = `${list.target}...${item.branch}`;
 	const stat = (await ok(list.repoRoot, ["diff", "--stat", range])).trimEnd();
 	const files = (await ok(list.repoRoot, ["diff", "--name-status", range])).split("\n").filter(Boolean).map((l) => {
@@ -430,31 +431,31 @@ export async function mergePreview(store: Store, p: Project, id: string, deps: W
 		const [hash, ...s] = l.split("\t");
 		return { hash, subject: s.join("\t") };
 	});
-	return { target: list.target, branch: item.branch, commits, files, stat, diff: diff.length > 400_000 ? `${diff.slice(0, 400_000)}\n…(太長,只顯示前面一部分)` : diff, blocker: await mergeBlocker(list), uncommitted: item.dirty };
+	return { target: list.target, branch: item.branch, commits, files, stat, diff: diff.length > 400_000 ? tr("{diff}\n…(太長,只顯示前面一部分)", { diff: diff.slice(0, 400_000) }) : diff, blocker: await mergeBlocker(list), uncommitted: item.dirty };
 }
 
 /** 主資料夾有沒 commit 的改動(不算沒追蹤的新檔、不算誤 commit 的子專案)就不合併 */
 async function mergeBlocker(list: WorktreeList): Promise<string | undefined> {
 	const st = (await ok(list.repoRoot, ["status", "--porcelain=v1", "--ignore-submodules=all", "--untracked-files=no"])).split("\n").filter(Boolean);
-	if (st.length) return `主資料夾(${list.target})還有 ${st.length} 個沒 commit 的改動:${st.slice(0, 5).map((l) => l.slice(3)).join("、")}${st.length > 5 ? "…" : ""}。請先 commit 或收起來再合併`;
+	if (st.length) return tr("主資料夾({target})還有 {n} 個沒 commit 的改動:{files}{more}。請先 commit 或收起來再合併", { target: list.target, n: st.length, files: st.slice(0, 5).map((l) => l.slice(3)).join(tr("、")), more: st.length > 5 ? "…" : "" });
 	const merging = (await run(list.repoRoot, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])).code === 0;
-	if (merging) return "主資料夾正在合併中(有還沒完成的合併),請先處理完";
+	if (merging) return tr("主資料夾正在合併中(有還沒完成的合併),請先處理完");
 	return undefined;
 }
 
 export async function mergeWorktree(store: Store, p: Project, id: string, deps: WorktreeDeps = {}): Promise<{ merged: true; target: string; branch: string; commit: string } > {
 	const { list, item } = await findWorktree(store, p, id, deps);
-	if (item.source === "main") throw new WorktreesError(400, "這是主資料夾,不能合併到自己");
-	if (!item.branch || !list.target) throw new WorktreesError(400, "沒有分支可以合併(detached HEAD)");
+	if (item.source === "main") throw new WorktreesError(400, tr("這是主資料夾,不能合併到自己"));
+	if (!item.branch || !list.target) throw new WorktreesError(400, tr("沒有分支可以合併(detached HEAD)"));
 	const blocker = await mergeBlocker(list);
 	if (blocker) throw new WorktreesError(409, blocker, "main-dirty");
-	if (!item.ahead) throw new WorktreesError(400, `「${item.branch}」沒有比 ${list.target} 多的 commit,不需要合併${item.dirty ? "(worktree 裡的改動還沒 commit)" : ""}`, "nothing");
+	if (!item.ahead) throw new WorktreesError(400, tr("「{branch}」沒有比 {target} 多的 commit,不需要合併{dirty}", { branch: item.branch, target: list.target, dirty: item.dirty ? tr("(worktree 裡的改動還沒 commit)") : "" }), "nothing");
 	const r = await run(list.repoRoot, ["merge", "--no-ff", "--no-edit", item.branch], 120_000);
 	if (r.code !== 0) {
 		const conflicts = (await run(list.repoRoot, ["diff", "--name-only", "--diff-filter=U"])).out.split("\n").filter(Boolean);
 		await run(list.repoRoot, ["merge", "--abort"]);
-		if (conflicts.length) throw new WorktreesError(409, `有衝突,已取消合併,主資料夾沒有變動。衝突的檔案:${conflicts.join("、")}。可以請 agent 在 worktree 裡先合併 ${list.target} 解好衝突再試`, "conflict", { conflicts });
-		throw new WorktreesError(400, `合併失敗:${(r.err || r.out).trim().split("\n").slice(-4).join(" ")}`);
+		if (conflicts.length) throw new WorktreesError(409, tr("有衝突,已取消合併,主資料夾沒有變動。衝突的檔案:{files}。可以請 agent 在 worktree 裡先合併 {target} 解好衝突再試", { files: conflicts.join(tr("、")), target: list.target }), "conflict", { conflicts });
+		throw new WorktreesError(400, tr("合併失敗:{error}", { error: (r.err || r.out).trim().split("\n").slice(-4).join(" ") }));
 	}
 	clearWorktreeCounts();
 	return { merged: true, target: list.target, branch: item.branch, commit: (await ok(list.repoRoot, ["rev-parse", "--short", "HEAD"])).trim() };
@@ -478,20 +479,20 @@ export const SAVED_ON_REMOVE = "移除 worktree 前保留的未提交改動";
  */
 export async function removeWorktreeItem(store: Store, p: Project, id: string, confirm: { dirty?: boolean | "commit" | "discard"; locked?: boolean; alive?: boolean } = {}, deps: WorktreeDeps = {}) {
 	const { list, item } = await findWorktree(store, p, id, deps);
-	if (item.source === "main") throw new WorktreesError(400, "主資料夾不能移除");
-	if (item.session?.alive && !confirm.alive) throw new WorktreesError(409, `開它的 ${item.session.agent} 窗格還開著,移除後它就沒有資料夾可以用了。確定要移除嗎?`, "alive");
-	if (item.locked && !confirm.locked) throw new WorktreesError(409, `這個 worktree 被鎖住了(${item.locked})。通常是 Claude Code 的 session 還在用它;確定要解鎖並移除嗎?`, "locked");
+	if (item.source === "main") throw new WorktreesError(400, tr("主資料夾不能移除"));
+	if (item.session?.alive && !confirm.alive) throw new WorktreesError(409, tr("開它的 {agent} 窗格還開著,移除後它就沒有資料夾可以用了。確定要移除嗎?", { agent: item.session.agent }), "alive");
+	if (item.locked && !confirm.locked) throw new WorktreesError(409, tr("這個 worktree 被鎖住了({reason})。通常是 Claude Code 的 session 還在用它;確定要解鎖並移除嗎?", { reason: item.locked }), "locked");
 	const dirtyMode = confirm.dirty === true ? "commit" : confirm.dirty || undefined;
 	if (item.exists && item.dirty && !dirtyMode) {
 		const files = (await run(item.path, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=all"])).out.split("\0").filter(Boolean).filter((l) => /^.. /.test(l)).map((l) => l.slice(3));
 		const merged = !!item.branch && !!list.target && (await run(list.repoRoot, ["merge-base", "--is-ancestor", item.head, list.target])).code === 0;
 		const msg = merged
-			? `還有 ${item.dirty} 個沒 commit 的改動。這條分支已經合併回 ${list.target},建議「捨棄」;存進分支會讓它多一個 commit、看起來又沒合併。`
-			: `還有 ${item.dirty} 個沒 commit 的改動。「存進分支」會先 commit 到「${item.branch ?? "(無分支)"}」再移除,改動不會丟;「捨棄」會直接丟掉。`;
+			? tr("還有 {n} 個沒 commit 的改動。這條分支已經合併回 {target},建議「捨棄」;存進分支會讓它多一個 commit、看起來又沒合併。", { n: item.dirty, target: list.target })
+			: tr("還有 {n} 個沒 commit 的改動。「存進分支」會先 commit 到「{branch}」再移除,改動不會丟;「捨棄」會直接丟掉。", { n: item.dirty, branch: item.branch ?? tr("(無分支)") });
 		throw new WorktreesError(409, msg, "dirty", { files: files.slice(0, 200), total: files.length, merged, suggest: merged ? "discard" : "commit", canCommit: !!item.branch });
 	}
 	if (item.exists && item.dirty && dirtyMode === "commit") {
-		if (!item.branch) throw new WorktreesError(400, "這個 worktree 不在分支上,沒 commit 的改動沒地方存;要移除請選「捨棄」");
+		if (!item.branch) throw new WorktreesError(400, tr("這個 worktree 不在分支上,沒 commit 的改動沒地方存;要移除請選「捨棄」"));
 		await ok(item.path, ["add", "-A"], 120_000);
 		await ok(item.path, ["-c", "user.name=agent-steward", "-c", "user.email=steward@localhost", "commit", "-q", "--no-verify", "-m", SAVED_ON_REMOVE], 120_000);
 	}
@@ -509,7 +510,7 @@ export async function removeWorktreeItem(store: Store, p: Project, id: string, c
 /** 把沒被排除的 worktree 加進 .gitignore(只加還沒有的那幾行;不 commit) */
 export async function ignoreWorktrees(store: Store, p: Project, deps: WorktreeDeps = {}, extra: string[] = []) {
 	const list = await listWorktrees(store, p, deps);
-	if (!list.repo) throw new WorktreesError(400, "這個專案不是 git repo");
+	if (!list.repo) throw new WorktreesError(400, tr("這個專案不是 git repo"));
 	const patterns = [...new Set([...list.warnings.unignored.map((x) => x.pattern), ...extra])];
 	if (!patterns.length) return { added: [] as string[], file: join(list.repoRoot, ".gitignore") };
 	const file = join(list.repoRoot, ".gitignore");
@@ -524,13 +525,13 @@ export async function ignoreWorktrees(store: Store, p: Project, deps: WorktreeDe
 /** 被誤 commit 成子專案的 worktree:從版本控制拿掉(git rm --cached,檔案不刪、不 commit),並順便加進 .gitignore */
 export async function untrackGitlinks(store: Store, p: Project, deps: WorktreeDeps = {}) {
 	const list = await listWorktrees(store, p, deps);
-	if (!list.repo) throw new WorktreesError(400, "這個專案不是 git repo");
+	if (!list.repo) throw new WorktreesError(400, tr("這個專案不是 git repo"));
 	const links = list.warnings.gitlinks;
 	if (links.length) await ok(list.repoRoot, ["rm", "--cached", "-q", "--", ...links]);
 	// Claude Code 之後還會在 .claude/worktrees/ 開新的:就算那個 worktree 已經不在,也一起排除
 	const ig = await ignoreWorktrees(store, p, deps, links.some((l) => l.startsWith(".claude/worktrees/")) ? [".claude/worktrees/"] : []);
 	if (ig.added.length) await ok(list.repoRoot, ["add", "--", ".gitignore"]);
-	return { untracked: links, ignoreAdded: ig.added, note: "已經放進暫存區,還沒 commit;到程式碼頁的 git 區塊 commit 就完成了" };
+	return { untracked: links, ignoreAdded: ig.added, note: tr("已經放進暫存區,還沒 commit;到程式碼頁的 git 區塊 commit 就完成了") };
 }
 
 // ---------- 跟它對話 ----------

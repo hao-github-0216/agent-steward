@@ -47,7 +47,7 @@ Download the file for your system from [Releases](https://github.com/hao-github-
 
 The App has no window and doesn't appear in the Dock or the taskbar. When it starts, an icon appears in the Mac menu bar (on Windows, in the system tray at the bottom right), and your default browser opens `http://127.0.0.1:8791/`. To open it again later, click the icon and choose "Open Agent Steward".
 
-The first time, a setup wizard walks you through the same steps as the [one-line install](#one-line-install), plus one extra step, 元件與背景執行 (Components and background), which asks three separate questions:
+The first time, a setup wizard walks you through the same steps as the [one-line install](#one-line-install), plus one extra step, Components and background, which asks three separate questions:
 
 - Whether to make the `herdr` command available in your terminal
 - Whether to add the herdr shortcut and plugins (this changes herdr's `config.toml`)
@@ -143,14 +143,20 @@ What gets installed:
 - To install a specific version, replace `latest/download` in the URL with `download/vX.Y.Z`.
 - agent-steward and its installer send no usage data.
 
+## Language
+
+The web interface, the installer, and the App menus are available in 繁體中文 and English. The installer and the App start in your system's language, and the web interface follows the same setting. To switch, go to Settings → General → Language. The page reloads in the new language.
+
+The language also applies to what the steward writes from then on: progress notes, briefs, suggested questions, and notifications. Notes written before the switch stay in their original language. Your own cards, chats, and files are never translated.
+
 ## Update and uninstall
 
-- **Update (one-line install)**: Settings → 關於 (About) → check for updates → update. A confirmation dialog first explains what will be downloaded. You can also run the install command again. Updates keep your previous choices, and settings you removed yourself stay removed.
+- **Update (one-line install)**: Settings → About → check for updates → update. A confirmation dialog first explains what will be downloaded. You can also run the install command again. Updates keep your previous choices, and settings you removed yourself stay removed.
 - **Update (desktop App)**: from v0.4.0, the App checks for new versions itself.
   - It checks a few minutes after it starts, then once a day. When a new version is out, it asks first, and it downloads and installs only after you click "Update".
   - Every update file must pass an update-signature check before it's installed. Only then does the App stop the services, install the new version, and restart itself. The web terminal disconnects once, and agents in herdr keep running.
   - On Windows, if herdr is running, the update has to close all terminals and agents. The App explains this and asks first, so you can choose "Later" and update once your work is done.
-  - You can also check by hand from "Check for updates…" in the menu or Settings → 關於 (About). Settings → 一般 (General) turns off automatic checks.
+  - You can also check by hand from "Check for updates…" in the menu or Settings → About. Settings → General turns off automatic checks.
   - v0.3.0 doesn't have this yet, so install v0.4.0 by hand once: quit Agent Steward from the menu, then install the new version with the steps above (on a Mac, replace the old copy in Applications). Your settings and data are kept.
 - **Uninstall (one-line install)** (keeps your data; add `--purge` / `-Purge` to delete it too):
 
@@ -170,20 +176,20 @@ What gets installed:
   Any backup files from installation are listed so you can decide whether to delete them.
 
 - **Uninstall (desktop App)**:
-  1. To also remove what the steward added to each agent's config files, disconnect each agent first in Settings → Agent. If you turned on Tailscale or LAN access, turn it off in Settings → 存取 (Access).
+  1. To also remove what the steward added to each agent's config files, disconnect each agent first in Settings → Agent. If you turned on Tailscale or LAN access, turn it off in Settings → Access.
   2. Uncheck "Start at login" in the menu, then quit Agent Steward. If you skip this, the login item setting stays behind on your system.
   3. Mac: drag Agent Steward from Applications to the Trash. Windows: Settings → Apps → Installed apps → Agent Steward → Uninstall.
   4. Your settings and data stay in `~/.agent-steward/`. The `~/.local/bin/steward` command the App created (`steward.cmd` on Windows), and the `herdr` command if you agreed to it, also stay. Delete them yourself if you don't need them.
 
 ## AI providers and routing
 
-The steward uses AI itself: answering questions, digesting agent reports, deciding what to propose, writing commit messages. Under Settings → AI 接口 you can add:
+The steward uses AI itself: answering questions, digesting agent reports, deciding what to propose, writing commit messages. Under Settings → AI providers you can add:
 
 - Cloud providers: OpenAI, Anthropic, Google Gemini, OpenRouter, DeepSeek, Groq, Mistral, xAI (API key)
 - Any OpenAI-compatible endpoint: Ollama, LM Studio, vLLM, your own server…
 - If you use [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), reuse its logins and model configuration
 
-Under Settings → 路由 (routing), pick a primary and fallback model for each job (e.g. cloud for chat, a local model for digests).
+Under Settings → Routing, pick a primary and fallback model for each job (e.g. cloud for chat, a local model for digests).
 **Private projects** (or anything under a private folder) only ever use the model you designate.
 
 ## Supported agents

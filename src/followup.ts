@@ -1,6 +1,7 @@
 // 工作卡追問:完成/卡住的卡可以接著問做這張卡的 agent(同一個窗格:它記得剛剛做了什麼、也能看檔案或改檔)。
 //   進行中的先排隊,這一輪做完(卡片回到完成/卡住)再送;窗格關掉了就開新的 agent,把卡片的紀錄帶過去。
 //   agent 回答完(工作過、停下來一小段時間)就把它最後的回答放進對話,卡片回到完成。
+import { tr } from "./i18n.ts";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { herdrKindOf } from "./agents.ts";
@@ -46,10 +47,10 @@ const firstLine = (s: string) => (s.split("\n").find((l) => l.trim()) ?? "").tri
 /** 加一個問題(先排隊,送出交給 deliverFollowUps) */
 export function askCard(store: Store, cardId: string, text: string): Card {
 	const card = store.card(cardId);
-	if (!card) throw new FollowUpError(404, "找不到這張卡");
-	if (!ASKABLE.has(card.column)) throw new FollowUpError(409, "這張卡還沒做過,不能追問");
+	if (!card) throw new FollowUpError(404, tr("找不到這張卡"));
+	if (!ASKABLE.has(card.column)) throw new FollowUpError(409, tr("這張卡還沒做過,不能追問"));
 	const q = text.trim().slice(0, MAX_QUESTION);
-	if (!q) throw new FollowUpError(400, "請輸入問題");
+	if (!q) throw new FollowUpError(400, tr("請輸入問題"));
 	const turn: CardTurn = { id: newId(), role: "user", text: q, at: new Date().toISOString(), status: "queued" };
 	return store.updateCard(card.id, { thread: keepLast([...(card.thread ?? []), turn]) });
 }
@@ -57,19 +58,19 @@ export function askCard(store: Store, cardId: string, text: string): Card {
 /** 取消還沒送出的問題(排隊中、送不出去的) */
 export function cancelQuestion(store: Store, cardId: string, id: string): Card {
 	const card = store.card(cardId);
-	if (!card) throw new FollowUpError(404, "找不到這張卡");
+	if (!card) throw new FollowUpError(404, tr("找不到這張卡"));
 	const t = card.thread?.find((x) => x.id === id && x.role === "user");
-	if (!t) throw new FollowUpError(404, "找不到這個問題");
-	if (t.status !== "queued" && t.status !== "failed") throw new FollowUpError(409, "已經送出去了,不能取消");
+	if (!t) throw new FollowUpError(404, tr("找不到這個問題"));
+	if (t.status !== "queued" && t.status !== "failed") throw new FollowUpError(409, tr("已經送出去了,不能取消"));
 	return store.updateCard(card.id, { thread: card.thread!.filter((x) => x.id !== id) });
 }
 
 /** 送不出去的問題再排一次 */
 export function retryQuestion(store: Store, cardId: string, id: string): Card {
 	const card = store.card(cardId);
-	if (!card) throw new FollowUpError(404, "找不到這張卡");
+	if (!card) throw new FollowUpError(404, tr("找不到這張卡"));
 	const t = card.thread?.find((x) => x.id === id && x.role === "user");
-	if (!t || t.status !== "failed") throw new FollowUpError(409, "這個問題不需要重送");
+	if (!t || t.status !== "failed") throw new FollowUpError(409, tr("這個問題不需要重送"));
 	return store.updateCard(card.id, { thread: card.thread!.map((x) => (x.id === id ? { ...x, status: "queued" as const, note: undefined } : x)) });
 }
 
@@ -89,7 +90,7 @@ export function deliverFollowUps(store: Store, panes: HerdrPane[], hooks: Follow
 		// 等回覆中的問題,卡片卻已經不在進行中(超時被改成卡住、被手動移走):算沒回答到,下一題才送得出去
 		const stale = card.column !== "running" && card.thread.find((t) => t.status === "sent");
 		if (stale) {
-			store.updateCard(card.id, { thread: card.thread.map((t) => (t.id === stale.id ? { ...t, status: "failed" as const, note: "沒有收到回覆" } : t)) });
+			store.updateCard(card.id, { thread: card.thread.map((t) => (t.id === stale.id ? { ...t, status: "failed" as const, note: tr("沒有收到回覆") } : t)) });
 			continue;
 		}
 		const q = card.thread.find((t) => t.role === "user" && t.status === "queued");
@@ -108,7 +109,7 @@ export function deliverFollowUps(store: Store, panes: HerdrPane[], hooks: Follow
 				restart(store, withOriginal(store, card, undefined), q, pane, hooks);
 			}
 		} catch (e) {
-			markFailed(store, card.id, q.id, `送不出去:${String((e as Error)?.message ?? e).slice(0, 200)}`);
+			markFailed(store, card.id, q.id, tr("送不出去:{error}", { error: String((e as Error)?.message ?? e).slice(0, 200) }));
 		}
 	}
 }
@@ -124,30 +125,30 @@ function withOriginal(store: Store, card: Card, pane: HerdrPane | undefined): Ca
 
 function send(store: Store, card: Card, q: CardTurn, paneId: string, terminalId: string | undefined, text: string, hooks: FollowUpHooks): void {
 	const r = herdrCli(["agent", "prompt", paneId, text], 20_000);
-	if (r?.error) return markFailed(store, card.id, q.id, `送不出去:${String(r.error.message ?? "").slice(0, 200)}`);
+	if (r?.error) return markFailed(store, card.id, q.id, tr("送不出去:{error}", { error: String(r.error.message ?? "").slice(0, 200) }));
 	const now = new Date().toISOString();
 	const thread = card.thread!.map((t) => (t.id === q.id ? { ...t, status: "sent" as const, sentAt: now, note: undefined } : t));
-	const c = store.updateCard(card.id, { thread, column: "running", paneId, ...(terminalId ? { terminalId } : {}), note: "追問中,等 agent 回覆…" });
+	const c = store.updateCard(card.id, { thread, column: "running", paneId, ...(terminalId ? { terminalId } : {}), note: tr("追問中,等 agent 回覆…") });
 	hooks.onSent?.(c, paneId, terminalId);
 }
 
 /** 窗格關掉了(或 agent 已經結束):開新的 agent(同一種),把卡片的紀錄和這次的問題帶過去 */
 function restart(store: Store, card: Card, q: CardTurn, pane: HerdrPane | undefined, hooks: FollowUpHooks): void {
 	const project = store.project(card.projectId);
-	if (!project) return markFailed(store, card.id, q.id, "找不到這張卡的專案");
+	if (!project) return markFailed(store, card.id, q.id, tr("找不到這張卡的專案"));
 	const kind = herdrKindOf(card.agent) ?? "pi";
 	let paneId = pane?.pane_id;
 	let terminalId = pane?.terminal_id;
 	if (!paneId) {
 		const ws = pickWorkspace(store, project);
-		const created = herdrCli(["tab", "create", "--workspace", ws, "--cwd", project.root, "--label", `#${card.id} 追問 ${card.title}`.slice(0, 40), "--no-focus"]);
+		const created = herdrCli(["tab", "create", "--workspace", ws, "--cwd", project.root, "--label", tr("#{id} 追問 {title}", { id: card.id, title: card.title }).slice(0, 40), "--no-focus"]);
 		paneId = created?.result?.root_pane?.pane_id;
 		terminalId = created?.result?.root_pane?.terminal_id;
-		if (!paneId) return markFailed(store, card.id, q.id, `開 tab 失敗:${JSON.stringify(created?.error ?? created).slice(0, 200)}`);
+		if (!paneId) return markFailed(store, card.id, q.id, tr("開 tab 失敗:{error}", { error: JSON.stringify(created?.error ?? created).slice(0, 200) }));
 	}
 	const n = (card.thread ?? []).filter((t) => t.role === "user" && (t.status === "sent" || t.status === "answered")).length + 1;
 	const started = herdrCli(["agent", "start", `steward-${card.id}-q${n}`, "--kind", kind, "--pane", paneId, "--timeout", "60000"], 70_000);
-	if (started?.error) return markFailed(store, card.id, q.id, `啟動 ${kind} 失敗:${String(started.error.message ?? "").slice(0, 200)}`);
+	if (started?.error) return markFailed(store, card.id, q.id, tr("啟動 {agent} 失敗:{error}", { agent: kind, error: String(started.error.message ?? "").slice(0, 200) }));
 	send(store, store.card(card.id) ?? card, q, paneId, terminalId, historyPrompt(card, project, q), hooks);
 }
 
@@ -254,9 +255,9 @@ export function collectReplies(store: Store, panes: HerdrPane[], activity: (pane
 		} else {
 			reply = paneExcerpt(pane.pane_id)?.text.slice(-4000) ?? "";
 		}
-		const text = reply.trim() ? clip(reply.trim(), MAX_REPLY) : "(讀不到 agent 的回覆,請到終端機看這個窗格)";
+		const text = reply.trim() ? clip(reply.trim(), MAX_REPLY) : tr("(讀不到 agent 的回覆,請到終端機看這個窗格)");
 		const thread = keepLast([...card.thread!.map((t) => (t.id === q.id ? { ...t, status: "answered" as const } : t)), { id: newId(), role: "agent" as const, text, at: new Date(now).toISOString() }]);
-		answered.push(store.updateCard(card.id, { thread, column: "done", note: `追問有回覆:${firstLine(text)}` }));
+		answered.push(store.updateCard(card.id, { thread, column: "done", note: tr("追問有回覆:{text}", { text: firstLine(text) }) }));
 	}
 	return answered;
 }

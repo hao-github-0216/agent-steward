@@ -1,5 +1,6 @@
 // 監看 herdr:每 10 秒讀一次窗格清單,agent 從「工作中」變成「閒置」且持續一段時間後,
 // 讀它的新對話內容送給管家消化。也負責把派出去的工作卡和窗格對上。
+import { tr } from "./i18n.ts";
 import { statSync } from "node:fs";
 import { agentIdOf, dispatchableAgents } from "./agents.ts";
 import { settings } from "./settings.ts";
@@ -68,7 +69,7 @@ export class Watcher {
 	private async poll(): Promise<void> {
 		const panes = listPanes();
 		if (!panes) {
-			this.lastError = "讀不到 herdr 窗格清單";
+			this.lastError = tr("讀不到 herdr 窗格清單");
 			return;
 		}
 		this.lastPollAt = new Date().toISOString();
@@ -108,7 +109,7 @@ export class Watcher {
 						.then(() => (track.workedSinceReport = false))
 						.catch((e) => {
 							// 失敗時讀取進度沒推進;再等一個 SETTLE 週期重試
-							this.lastError = `回報失敗 ${pane.pane_id}: ${e}`;
+							this.lastError = tr("回報失敗 {pane}: {error}", { pane: pane.pane_id, error: e });
 							track.idleSince = Date.now();
 						})
 						.finally(() => (track.reporting = false));
@@ -227,7 +228,7 @@ export class Watcher {
 			const excerpt = ref && path ? transcriptExcerpt(ref, Math.max(0, statSync(path).size - FIRST_LOOK_BYTES)) : paneExcerpt(pane.pane_id);
 			if (excerpt?.text.trim()) parts.push(`【${pane.agent} 窗格 ${pane.pane_id} 最近的對話記錄】\n${excerpt.text}`);
 		}
-		if (!parts.length) return "找不到可以補建的資料:上層專案沒有提到這個資料夾(或資料夾是空的),這個資料夾裡也沒有開著的 agent。";
+		if (!parts.length) return tr("找不到可以補建的資料:上層專案沒有提到這個資料夾(或資料夾是空的),這個資料夾裡也沒有開著的 agent。");
 		const msg = bootstrapMessage(p.name, p.root, parts);
 		const answer = await this.steward.send(p, msg, { role: "digest" });
 		this.store.updateProject(p.id, { lastActivityAt: new Date().toISOString() });
@@ -245,7 +246,7 @@ export class Watcher {
 			const available = fixed ? `只用 ${fixed.id}(使用者設定固定交給它)` : agents.map((a) => a.id).join(" / ") || "(這台電腦沒有偵測到)";
 			await this.steward.send(p, `【提案檢查】專案狀態剛更新。看有沒有現在就能派給 agent、而且不碰任何等待放行事項的工作;有就提案一張,沒有就回「無」。\n可派工的 agent:${available}`, { role: "judge" });
 		} catch (e) {
-			this.lastError = `提案檢查失敗 ${p.name}: ${e}`;
+			this.lastError = tr("提案檢查失敗 {project}: {error}", { project: p.name, error: e });
 		}
 	}
 

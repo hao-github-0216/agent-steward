@@ -1,5 +1,6 @@
 // 網頁終端機貼圖片:瀏覽器的剪貼簿圖片傳不進終端機,改成先上傳存檔,再把檔案路徑貼進去
 // (Claude Code、Codex、pi 都看得懂圖片路徑)。檔案放 ~/.agent-steward/pastes/,7 天後自動清掉。
+import { tr } from "./i18n.ts";
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -30,15 +31,15 @@ function cleanup(): void {
 export async function savePastedImage(req: IncomingMessage, type: string): Promise<string> {
 	const mime = type.split(";")[0].trim().toLowerCase();
 	const ext = EXT[mime];
-	if (!ext) throw new PasteError(415, `不支援的圖片格式:${mime || "未知"}`);
+	if (!ext) throw new PasteError(415, tr("不支援的圖片格式:{mime}", { mime: mime || tr("未知") }));
 	const chunks: Buffer[] = [];
 	let size = 0;
 	for await (const c of req) {
 		size += (c as Buffer).length;
-		if (size > MAX_PASTE_BYTES) throw new PasteError(413, "圖片超過 25MB");
+		if (size > MAX_PASTE_BYTES) throw new PasteError(413, tr("圖片超過 25MB"));
 		chunks.push(c as Buffer);
 	}
-	if (!size) throw new PasteError(400, "沒有收到圖片");
+	if (!size) throw new PasteError(400, tr("沒有收到圖片"));
 	mkdirSync(DIR, { recursive: true });
 	cleanup();
 	const d = new Date();

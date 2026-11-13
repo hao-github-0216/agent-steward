@@ -1,3 +1,4 @@
+import { tr } from "./i18n.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { GenerationHooks } from "@earendil-works/pi-durable";
 import { compatInfo, embeddingRef } from "./models.ts";
@@ -161,19 +162,19 @@ export async function embedTexts(config: { baseUrl: string; apiKey?: string; mod
 	const response = await fetch(`${config.baseUrl.replace(/\/+$/, "")}/embeddings`, {
 		method: "POST", headers, body: JSON.stringify({ model: config.model, input: texts }), signal: AbortSignal.timeout(timeoutMs),
 	});
-	if (!response.ok) throw new Error(`向量接口回應 ${response.status}`);
+	if (!response.ok) throw new Error(tr("向量接口回應 {status}", { status: response.status }));
 	const body: unknown = await response.json();
-	if (!body || typeof body !== "object" || !("data" in body) || !Array.isArray(body.data) || body.data.length !== texts.length) throw new Error("向量回應格式錯誤");
+	if (!body || typeof body !== "object" || !("data" in body) || !Array.isArray(body.data) || body.data.length !== texts.length) throw new Error(tr("向量回應格式錯誤"));
 	const vectors: Float32Array[] = new Array(texts.length);
 	let dimensions: number | undefined;
 	for (const item of body.data) {
 		if (!item || typeof item !== "object" || !Number.isInteger(item.index) || item.index < 0 || item.index >= texts.length || vectors[item.index]
-			|| !Array.isArray(item.embedding) || !item.embedding.length || !item.embedding.every((n: unknown) => typeof n === "number" && Number.isFinite(n))) throw new Error("向量回應資料錯誤");
-		if (dimensions !== undefined && dimensions !== item.embedding.length) throw new Error("向量維度不一致");
+			|| !Array.isArray(item.embedding) || !item.embedding.length || !item.embedding.every((n: unknown) => typeof n === "number" && Number.isFinite(n))) throw new Error(tr("向量回應資料錯誤"));
+		if (dimensions !== undefined && dimensions !== item.embedding.length) throw new Error(tr("向量維度不一致"));
 		dimensions = item.embedding.length;
 		const values: number[] = item.embedding;
 		const scale = values.reduce((max, n) => Math.max(max, Math.abs(n)), 0);
-		if (scale === 0) throw new Error("向量長度無效");
+		if (scale === 0) throw new Error(tr("向量長度無效"));
 		const norm = Math.sqrt(values.reduce((sum, n) => sum + (n / scale) ** 2, 0));
 		vectors[item.index] = Float32Array.from(values, (n) => (n / scale) / norm);
 	}
@@ -209,7 +210,7 @@ const yieldLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
-		return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("記憶搜尋逾時")), ms); })]);
+		return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("記憶搜尋逾時")), ms); })]); // i18n-ok: 背景記憶索引的錯誤只寫入紀錄
 	} finally { clearTimeout(timer); }
 }
 
@@ -291,7 +292,7 @@ export class Recall {
 					const embedder = embedders.get(projectId)!;
 					const vectors = await embedder(group.map((row) => row.text));
 					if (this.stopped) return;
-					if (vectors.length !== group.length) throw new Error("向量回應數量錯誤");
+					if (vectors.length !== group.length) throw new Error("向量回應數量錯誤"); // i18n-ok: 背景記憶索引的錯誤只寫入紀錄
 					for (const [i, row] of group.entries()) {
 						this.deps.store.setVector(row.id, vectors[i], embedder.model);
 						const cache = this.cache.get(projectId);
@@ -317,7 +318,7 @@ export class Recall {
 				const embedder = this.deps.embedder(p);
 				if (embedder) {
 					const [queryVector] = await withTimeout(Promise.resolve().then(() => embedder([query.slice(0, 2000)])), 4000);
-					if (!queryVector?.length) throw new Error("查詢向量無效");
+					if (!queryVector?.length) throw new Error("查詢向量無效"); // i18n-ok: 背景記憶索引的錯誤只寫入紀錄
 					let cache = this.cache.get(p.id);
 					if (!cache || cache.model !== embedder.model) {
 						const rows = this.deps.store.vectors(p.id, embedder.model);

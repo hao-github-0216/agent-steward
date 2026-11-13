@@ -4,9 +4,9 @@
 (() => {
 	const KEY_DEFAULT = "Alt+S";
 	const QUICK = [
-		["解釋", "解釋這段內容"],
-		["翻譯", "把這段翻譯成繁體中文;如果本來就是中文,翻成英文"],
-		["找錯", "這裡有什麼錯誤或問題?說明原因和怎麼修"],
+		[tr("解釋"), tr("解釋這段內容")],
+		[tr("翻譯"), tr("把這段翻譯成繁體中文;如果本來就是中文,翻成英文")],
+		[tr("找錯"), tr("這裡有什麼錯誤或問題?說明原因和怎麼修")],
 	];
 	const S = { layer: null, pop: null, mark: null, pts: [], snap: null, images: [], asked: false, answer: "", project: null, pane: null, busy: false };
 	const isTouch = () => matchMedia("(pointer: coarse)").matches;
@@ -31,16 +31,16 @@
 		if (e.key === "Escape" || e.key === "Backspace") return true;
 		const k = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : e.key.length === 1 ? e.key.toUpperCase() : e.key;
 		const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Cmd"].filter(Boolean);
-		if (!mods.length) { toast("至少要加一個 Ctrl / Alt / Shift / Cmd,免得打字時誤觸"); return true; }
+		if (!mods.length) { toast(tr("至少要加一個 Ctrl / Alt / Shift / Cmd,免得打字時誤觸")); return true; }
 		const spec = [...mods, k].join("+");
-		e.target.value = spec; pref("steward.snapKey", spec); toast(`圈選快捷鍵改成 ${spec}`);
+		e.target.value = spec; pref("steward.snapKey", spec); toast(tr("圈選快捷鍵改成 {key}", { key: spec }));
 		return true;
 	}
 	document.addEventListener("click", (e) => {
 		if (e.target.id !== "snapKeyReset") return;
 		pref("steward.snapKey", KEY_DEFAULT);
 		const i = $("snapKeyIn"); if (i) i.value = KEY_DEFAULT;
-		toast(`圈選快捷鍵還原成 ${KEY_DEFAULT}`);
+		toast(tr("圈選快捷鍵還原成 {key}", { key: KEY_DEFAULT }));
 	});
 	function onKey(e) {
 		if (e.target?.id === "snapKeyIn" && e.target.offsetParent !== null && recordKey(e)) return;
@@ -80,7 +80,7 @@
 			const track = stream.getVideoTracks()[0];
 			if (track?.getSettings?.().displaySurface && track.getSettings().displaySurface !== "browser") {
 				stream.getTracks().forEach((t) => t.stop());
-				toast("要選「這個分頁」才能截圖;這次先只送文字");
+				toast(tr("要選「這個分頁」才能截圖;這次先只送文字"));
 				return false;
 			}
 			const v = document.createElement("video");
@@ -135,7 +135,7 @@
 		S.frame = capGrab();
 		const L = document.createElement("div");
 		L.id = "snapLayer";
-		L.innerHTML = `<canvas></canvas><div class="snap-hint">${isTouch() ? "用手指圈出想問的地方" : "圈出或拉框選出想問的地方 · Esc 取消"}</div>`;
+		L.innerHTML = `<canvas></canvas><div class="snap-hint">${isTouch() ? tr("用手指圈出想問的地方") : tr("圈出或拉框選出想問的地方 · Esc 取消")}</div>`;
 		document.body.appendChild(L);
 		S.layer = L; S.pts = [];
 		const c = L.querySelector("canvas"), dpr = devicePixelRatio || 1;
@@ -178,7 +178,7 @@
 		else if (shot && !res) res = { snap: { kind: "page", label: pageLabel(), text: "" }, text: "", images: [shot] };
 		if (res?.error || (!res?.text && !res?.images?.length)) {
 			hideMark();
-			toast(res?.error || "這一塊沒有文字,也截不到圖片");
+			toast(res?.error || tr("這一塊沒有文字,也截不到圖片"));
 			return;
 		}
 		openPop(rect, res);
@@ -209,26 +209,26 @@
 		}
 		return domExtract(document.body, rect, { label: pageLabel(), kind: "page" });
 	}
-	const pageLabel = () => (document.body.classList.contains("term") ? "終端機" : document.body.classList.contains("code") ? "程式碼頁" : "看板");
+	const pageLabel = () => (document.body.classList.contains("term") ? tr("終端機") : document.body.classList.contains("code") ? tr("程式碼頁") : tr("看板"));
 
 	function termExtract(rect) {
-		const fr = $("term"), t = xterm();
-		if (!t) return { error: "終端機還沒準備好" };
+		const fr = $("term"), term = xterm();
+		if (!term) return { error: tr("終端機還沒準備好") };
 		const fo = fr.getBoundingClientRect();
-		const scr = t.element.querySelector(".xterm-screen").getBoundingClientRect();
-		const cell = t._core?._renderService?.dimensions?.css?.cell;
-		if (!cell?.width) return { error: "讀不到終端機的字格大小" };
+		const scr = term.element.querySelector(".xterm-screen").getBoundingClientRect();
+		const cell = term._core?._renderService?.dimensions?.css?.cell;
+		if (!cell?.width) return { error: tr("讀不到終端機的字格大小") };
 		const ox = fo.left + fr.clientLeft + scr.left, oy = fo.top + fr.clientTop + scr.top;
 		// 字格的中心落在圈選範圍裡才算(只擦到邊的那一行、那一欄不算)
-		const c0 = Math.max(0, Math.ceil((rect.left - ox) / cell.width - 0.5)), c1 = Math.min(t.cols, Math.floor((rect.right - ox) / cell.width + 0.5));
-		const r0 = Math.max(0, Math.ceil((rect.top - oy) / cell.height - 0.5)), r1 = Math.min(t.rows - 1, Math.floor((rect.bottom - oy) / cell.height - 0.5));
-		if (r1 < r0 || c1 <= c0) return { error: "圈的範圍太小,沒有圈到字" };
-		const buf = t.buffer.active, lines = [];
+		const c0 = Math.max(0, Math.ceil((rect.left - ox) / cell.width - 0.5)), c1 = Math.min(term.cols, Math.floor((rect.right - ox) / cell.width + 0.5));
+		const r0 = Math.max(0, Math.ceil((rect.top - oy) / cell.height - 0.5)), r1 = Math.min(term.rows - 1, Math.floor((rect.bottom - oy) / cell.height - 0.5));
+		if (r1 < r0 || c1 <= c0) return { error: tr("圈的範圍太小,沒有圈到字") };
+		const buf = term.buffer.active, lines = [];
 		for (let r = r0; r <= r1; r++) lines.push((buf.getLine(buf.viewportY + r)?.translateToString(true, c0, c1) ?? "").replace(/\s+$/, ""));
 		while (lines.length && !lines[0].trim()) lines.shift();
 		while (lines.length && !lines.at(-1).trim()) lines.pop();
 		const text = dedent(lines).join("\n");
-		return { snap: { kind: "terminal", label: "終端機", text }, text, images: [] };
+		return { snap: { kind: "terminal", label: tr("終端機"), text }, text, images: [] };
 	}
 	const dedent = (lines) => {
 		const pad = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
@@ -274,7 +274,7 @@
 		// 出處:PDF 標頁碼
 		let label = info.label;
 		const page = (firstNode?.parentElement ?? document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2))?.closest?.(".pdfpage");
-		if (page) label += ` 第 ${[...page.parentElement.children].indexOf(page) + 1} 頁`;
+		if (page) label = tr("{label} 第 {n} 頁", { label, n: [...page.parentElement.children].indexOf(page) + 1 });
 		const context = contextOf(firstNode?.parentElement, root, text);
 		return { snap: { kind: info.kind, label, path: info.path, text, context }, text, images };
 	}
@@ -353,17 +353,22 @@
 		S.pop?.remove(); S.pop = null; // 換掉舊的小框,圈選框留著
 		Object.assign(S, { snap: res.snap, images: res.images || [], asked: false, answer: "", project: null, pane: null, busy: false });
 		const lines = res.text ? res.text.split("\n").length : 0;
-		const src = `${res.snap.label}${res.snap.from ? ` 第 ${res.snap.from}${res.snap.to !== res.snap.from ? `–${res.snap.to}` : ""} 行` : lines ? ` · ${lines} 行` : ""}${S.images.length ? " · 圖片" : ""}`;
+		let src = res.snap.label;
+		if (res.snap.from) src = res.snap.to !== res.snap.from
+			? tr("{label} 第 {from}–{to} 行", { label: src, from: res.snap.from, to: res.snap.to })
+			: tr("{label} 第 {from} 行", { label: src, from: res.snap.from });
+		else if (lines) src = tr("{label} · {n} 行", { label: src, n: lines });
+		if (S.images.length) src = tr("{source} · 圖片", { source: src });
 		const P = document.createElement("div");
 		P.id = "snapPop";
 		P.setAttribute("role", "dialog");
-		P.setAttribute("aria-label", "圈選提問");
-		P.innerHTML = `<div class="sp-head"><span class="sp-src" title="${esc(src)}">⊙ ${esc(src)}</span><button class="small" data-sp="close" title="關閉(Esc)">×</button></div>
-			<details class="sp-peek"><summary>圈到的內容</summary>${res.text ? `<pre>${esc(res.text.slice(0, 4000))}</pre>` : ""}${S.images.map((i) => `<img src="${i.thumb}" alt="">`).join("")}</details>
-			<div class="sp-chips">${QUICK.map(([l, q]) => `<button class="small" data-q="${esc(q)}">${l}</button>`).join("")}<button class="small" data-sp="card">開工作卡</button></div>
-			<form class="sp-form"><input type="text" placeholder="問這一塊,或寫要做的事(再按「開工作卡」)…" autocomplete="off"><button class="small primary">送出</button></form>
+		P.setAttribute("aria-label", tr("圈選提問"));
+		P.innerHTML = `<div class="sp-head"><span class="sp-src" title="${esc(src)}">⊙ ${esc(src)}</span><button class="small" data-sp="close" title="${esc(tr("關閉(Esc)"))}">×</button></div>
+			<details class="sp-peek"><summary>${tr("圈到的內容")}</summary>${res.text ? `<pre>${esc(res.text.slice(0, 4000))}</pre>` : ""}${S.images.map((i) => `<img src="${i.thumb}" alt="">`).join("")}</details>
+			<div class="sp-chips">${QUICK.map(([l, q]) => `<button class="small" data-q="${esc(q)}">${l}</button>`).join("")}<button class="small" data-sp="card">${tr("開工作卡")}</button></div>
+			<form class="sp-form"><input type="text" placeholder="${esc(tr("問這一塊,或寫要做的事(再按「開工作卡」)…"))}" autocomplete="off"><button class="small primary">${tr("送出")}</button></form>
 			<div class="sp-ans" hidden></div>
-			<div class="sp-acts" hidden><button class="small" data-sp="copy">複製</button><button class="small" data-sp="ball">${inApp() ? "到問管家繼續" : "到浮動球繼續"}</button><button class="small" data-sp="card">開工作卡</button><button class="small primary" data-sp="agent" hidden>交給這個 agent</button></div>`;
+			<div class="sp-acts" hidden><button class="small" data-sp="copy">${tr("複製")}</button><button class="small" data-sp="ball">${inApp() ? tr("到問管家繼續") : tr("到浮動球繼續")}</button><button class="small" data-sp="card">${tr("開工作卡")}</button><button class="small primary" data-sp="agent" hidden>${tr("交給這個 agent")}</button></div>`;
 		document.body.appendChild(P);
 		S.pop = P;
 		place(P, rect);
@@ -392,25 +397,25 @@
 		const P = S.pop, ans = P.querySelector(".sp-ans"), acts = P.querySelector(".sp-acts");
 		S.busy = true;
 		ans.hidden = false; ans.classList.remove("err");
-		ans.innerHTML = `<div class="sp-q">${esc(q)}</div><div class="sp-wait">思考中…</div>`;
+		ans.innerHTML = `<div class="sp-q">${esc(q)}</div><div class="sp-wait">${tr("思考中…")}</div>`;
 		acts.hidden = true;
 		P.querySelector(".sp-chips").hidden = true;
 		const pid = S.project || sel;
 		// 第一題帶圈選內容;接著問就在同一個專案對話裡繼續(管家記得前面圈過什麼)
 		const payload = S.asked ? { project: pid, message: q } : { project: pid, message: q, snap: S.snap, images: S.images.map(({ data, mimeType }) => ({ data, mimeType })), thumbs: S.images.map((i) => i.thumb) };
-		const r = await post("/api/chat", payload).catch((e) => ({ error: `連不上管家:${e}` }));
+		const r = await post("/api/chat", payload).catch((e) => ({ error: tr("連不上管家:{error}", { error: e }) }));
 		S.busy = false;
 		if (!S.pop) return;
 		S.asked = true;
 		if (r.snap) { S.project = r.snap.project; S.pane = r.snap.pane || S.pane; }
 		S.answer = r.answer || "";
-		ans.innerHTML = `<div class="sp-q">${esc(q)}</div><div class="sp-text${r.answer ? " md" : ""}">${r.answer ? chatMd.render(r.answer) : esc(r.error || "沒有回應")}</div>`;
+		ans.innerHTML = `<div class="sp-q">${esc(q)}</div><div class="sp-text${r.answer ? " md" : ""}">${r.answer ? chatMd.render(r.answer) : esc(r.error || tr("沒有回應"))}</div>`;
 		chatMd.typeset(ans);
 		ans.classList.toggle("err", !r.answer);
 		acts.hidden = false;
 		acts.querySelector('[data-sp="agent"]').hidden = !(S.snap?.kind === "terminal" && S.pane?.agent && S.answer);
 		acts.querySelector('[data-sp="copy"]').hidden = !S.answer;
-		if (r.snap?.project && r.snap.project !== sel) toast(`記在「${state.projects.find((p) => p.id === r.snap.project)?.name ?? "另一個專案"}」的管家紀錄`);
+		if (r.snap?.project && r.snap.project !== sel) toast(tr("記在「{project}」的管家紀錄", { project: state.projects.find((p) => p.id === r.snap.project)?.name ?? tr("另一個專案") }));
 		if (P.classList.contains("sheet") === false) place(P, S.mark?.getBoundingClientRect() ?? P.getBoundingClientRect());
 	}
 
@@ -420,9 +425,9 @@
 		const act = e.target.closest("[data-sp]")?.dataset.sp;
 		if (!act) return;
 		if (act === "close") return closePop();
-		if (act === "copy") { copyText(window, S.answer).then((ok) => (ok ? toast("已複製") : manualCopy(S.answer))); return; }
+		if (act === "copy") { copyText(window, S.answer).then((ok) => (ok ? toast(tr("已複製")) : manualCopy(S.answer))); return; }
 		const pid = S.project || sel;
-		const go = async () => { if (pid && pid !== sel) await selectProject(pid, "圈選"); };
+		const go = async () => { if (pid && pid !== sel) await selectProject(pid, "圈選"); }; // i18n-ok: 保留同步目前專案時使用的來源識別值。
 		if (act === "ball") { await go(); closePop(); toggleBall(true); return; }
 		if (act === "card") {
 			const s = S.snap, answer = S.answer;
@@ -430,7 +435,12 @@
 			const box = S.pop?.querySelector(".sp-form input");
 			const task = box?.value.trim() || "";
 			if (box) box.value = "";
-			const msg = `依照這段圈選的內容開工作卡${task ? `\n要做的事:${task}` : ""}\n出處:${s.label}${s.from ? ` 第 ${s.from}–${s.to} 行` : ""}\n${s.text ? `內容:\n${s.text.slice(0, 3000)}` : "(圈到的是圖片)"}${answer ? `\n\n管家的看法:\n${answer.slice(0, 2000)}` : ""}`;
+			const msg = tr("依照這段圈選的內容開工作卡{task}\n出處:{source}\n{content}{answer}", {
+				task: task ? tr("\n要做的事:{task}", { task }) : "",
+				source: s.from ? tr("{label} 第 {from}–{to} 行", { label: s.label, from: s.from, to: s.to }) : s.label,
+				content: s.text ? tr("內容:\n{text}", { text: s.text.slice(0, 3000) }) : tr("(圈到的是圖片)"),
+				answer: answer ? tr("\n\n管家的看法:\n{answer}", { answer: answer.slice(0, 2000) }) : "",
+			});
 			// iPhone app:工作卡草稿在 app 自己的問管家裡擬
 			if (inApp()) {
 				closePop();
@@ -443,13 +453,13 @@
 			return;
 		}
 		if (act === "agent") {
-			const pane = S.pane?.paneId, text = `關於這段:\n${S.snap.text}\n\n管家的建議:\n${S.answer.trim()}`;
-			const r = await post("/api/snap/agent", { pane }).catch(() => ({ error: "連不上管家" }));
-			if (r.error) return toast(`沒辦法切到那個 agent:${r.error}`);
+			const pane = S.pane?.paneId, text = tr("關於這段:\n{text}\n\n管家的建議:\n{answer}", { text: S.snap.text, answer: S.answer.trim() });
+			const r = await post("/api/snap/agent", { pane }).catch(() => ({ error: tr("連不上管家") }));
+			if (r.error) return toast(tr("沒辦法切到那個 agent:{error}", { error: r.error }));
 			closePop();
-			const t = xterm();
-			if (!t) return toast("終端機還沒準備好");
-			setTimeout(() => { t.paste(text); focusTerm(); toast(`已貼到 ${S.pane?.agent ?? "agent"} 的輸入框,看過再按 Enter 送出`); }, 150);
+			const term = xterm();
+			if (!term) return toast(tr("終端機還沒準備好"));
+			setTimeout(() => { term.paste(text); focusTerm(); toast(tr("已貼到 {agent} 的輸入框,看過再按 Enter 送出", { agent: S.pane?.agent ?? "agent" })); }, 150);
 		}
 	}
 	// 調整視窗大小:小框跟著圈選框

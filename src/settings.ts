@@ -1,6 +1,7 @@
 // 使用者設定:~/.agent-steward/settings.json(權限 600,只有自己讀得到)。
 // 所有「每個人不一樣」的東西都放這裡,程式碼裡不寫死任何個人資料。
 // 第一次執行(檔案不存在)時,從這台電腦自動偵測:Tailscale 帳號與網址、pi 的隱私清單、Hermes 推播路由。
+import { tr } from "./i18n.ts";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -314,8 +315,8 @@ export function updateSettings(patch: unknown): Settings {
 	const notebook = (patch as { plugins?: { notebook?: { pythons?: unknown } } } | null)?.plugins?.notebook;
 	if (notebook && Object.hasOwn(notebook, "pythons")) {
 		const pythons = notebook.pythons;
-		if (!Array.isArray(pythons) || !pythons.every((p) => typeof p === "string" && isAbsolute(p))) throw new TypeError("Notebook Python 必須是絕對路徑的字串陣列");
-		if (pythons.length > 20) throw new TypeError("最多只能加入 20 個 Python");
+		if (!Array.isArray(pythons) || !pythons.every((p) => typeof p === "string" && isAbsolute(p))) throw new TypeError(tr("Notebook Python 必須是絕對路徑的字串陣列"));
+		if (pythons.length > 20) throw new TypeError(tr("最多只能加入 20 個 Python"));
 	}
 	const next = merge(settings(), patch);
 	next.plugins.notebook.pythons = [...new Set(next.plugins.notebook.pythons)];
@@ -331,13 +332,28 @@ export function onSettingsChange(fn: (s: Settings) => void): void {
 	listeners.add(fn);
 }
 
+/** 內建接口的顯示名稱;設定檔裡保留原來的名稱。 */
+export function providerLabel(p: ProviderConfig): string {
+	for (const [type, suffix, key] of [
+		["builtin", "(沿用 pi 的登入)", "{name}(沿用 pi 的登入)"],
+		["pi-models", "(沿用 pi 的模型設定)", "{name}(沿用 pi 的模型設定)"],
+		["agent-cli", "(電腦上的 CLI)", "{name}(電腦上的 CLI)"],
+	]) {
+		if (p.type === type && p.name.endsWith(suffix)) return tr(key, { name: tr(p.name.slice(0, -suffix.length)) });
+	}
+	return p.type === "builtin" ? tr(p.name) : p.name;
+}
+
 /** 給網頁看的版本:密碼、token 只露出後四碼 */
 export function publicSettings(s: Settings = settings()): Settings {
 	const out = structuredClone(s);
 	const mask = (v: string) => (v ? `••••${v.slice(-4)}` : "");
 	out.access.passwordHash = out.access.passwordHash ? "set" : "";
 	out.notify.telegram.botToken = mask(out.notify.telegram.botToken);
-	for (const p of out.providers) if (p.apiKey) p.apiKey = mask(p.apiKey);
+	for (const p of out.providers) {
+		p.name = providerLabel(p);
+		if (p.apiKey) p.apiKey = mask(p.apiKey);
+	}
 	return out;
 }
 

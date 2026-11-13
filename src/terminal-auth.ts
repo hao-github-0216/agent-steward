@@ -7,6 +7,7 @@
 //  2. 管理密碼登入後的 cookie(30 天)。密碼錯 5 次鎖 5 分鐘。
 //  3. 還沒設定管理密碼時:只有這台電腦本身(本機直連)能進來,用來設定密碼。
 //  4. 本機的 agent 整合(開工簡報、提問、回報):本機直連免登入,讓 hook / MCP 照常運作。
+import { tr } from "./i18n.ts";
 import { execFile } from "node:child_process";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -87,8 +88,8 @@ function checkPassword(pw: string): boolean {
 	return got.length === want.length && timingSafeEqual(got, want);
 }
 export function setPassword(current: string, next: string): { ok: true } | { ok: false; error: string } {
-	if (next.length < 8) return { ok: false, error: "密碼至少 8 個字" };
-	if (hasPassword() && !checkPassword(current)) return { ok: false, error: "目前的密碼不對" };
+	if (next.length < 8) return { ok: false, error: tr("密碼至少 8 個字") };
+	if (hasPassword() && !checkPassword(current)) return { ok: false, error: tr("目前的密碼不對") };
 	updateSettings({ access: { passwordHash: hashPassword(next) } });
 	sessions.clear(); // 改密碼:所有裝置要重新登入
 	saveSessions();
@@ -116,14 +117,14 @@ const clientKey = (req: IncomingMessage) => (fromLoopback(req) ? (header(req, "x
 
 /** 密碼登入:成功回傳要設的 cookie */
 export function login(req: IncomingMessage, password: string): { ok: true; cookie: string } | { ok: false; status: 401 | 403; error: string } {
-	if (!hasPassword()) return { ok: false, status: 403, error: "還沒設定管理密碼(到設定 → 存取)" };
+	if (!hasPassword()) return { ok: false, status: 403, error: tr("還沒設定管理密碼(到設定 → 存取)") };
 	const key = clientKey(req);
 	const f = fails.get(key);
-	if (f && f.until > Date.now()) return { ok: false, status: 403, error: `密碼錯太多次,${Math.ceil((f.until - Date.now()) / 60000)} 分鐘後再試` };
+	if (f && f.until > Date.now()) return { ok: false, status: 403, error: tr("密碼錯太多次,{minutes} 分鐘後再試", { minutes: Math.ceil((f.until - Date.now()) / 60000) }) };
 	if (!checkPassword(password)) {
 		const n = (f?.n ?? 0) + 1;
 		fails.set(key, { n: n >= FAIL_LIMIT ? 0 : n, until: n >= FAIL_LIMIT ? Date.now() + LOCK_MS : 0 });
-		return { ok: false, status: 401, error: "密碼不對" };
+		return { ok: false, status: 401, error: tr("密碼不對") };
 	}
 	fails.delete(key);
 	const token = randomBytes(32).toString("hex");
@@ -162,9 +163,9 @@ export async function authorize(req: IncomingMessage): Promise<AuthResult> {
 	// 3. 還沒設密碼:只有本機直連可以進來(設定密碼用)
 	if (!hasPassword()) {
 		if (isPureLocal(req)) return { ok: true, user: "local", how: "local" };
-		return { ok: false, status: 403, reason: "還沒設定管理密碼:請在這台電腦上打開專案管家,到「設定 → 存取」設定密碼", login: false };
+		return { ok: false, status: 403, reason: tr("還沒設定管理密碼:請在這台電腦上打開專案管家,到「設定 → 存取」設定密碼"), login: false };
 	}
-	return { ok: false, status: 401, reason: "請先登入", login: true };
+	return { ok: false, status: 401, reason: tr("請先登入"), login: true };
 }
 /** 舊名稱(終端機、程式碼頁沿用) */
 export const authorizeTerminal = authorize;

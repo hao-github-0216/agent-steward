@@ -1,5 +1,6 @@
 // 「程式碼」模式的後端:專案內的檔案瀏覽/讀寫,以及 git 操作。
 // 安全:所有路徑都限制在專案資料夾內(含 symlink 跳脫檢查);呼叫端必須先通過 Tailscale 身分檢查。
+import { tr } from "./i18n.ts";
 import { execFile } from "node:child_process";
 import { trash as osTrash } from "./platform.ts";
 import { createHash } from "node:crypto";
@@ -32,12 +33,12 @@ export class CodeError extends Error {
 export function inProject(p: Project, rel = ""): string {
 	const root = realpathSync(p.root);
 	const abs = resolve(root, rel.replace(/^\/+/, ""));
-	if (abs !== root && !abs.startsWith(root + sep)) throw new CodeError(400, "路徑不在專案資料夾內");
+	if (abs !== root && !abs.startsWith(root + sep)) throw new CodeError(400, tr("路徑不在專案資料夾內"));
 	// 已存在的路徑:檢查 symlink 解析後仍在專案內;不存在的(新檔)檢查上層
 	let probe = abs;
 	while (!existsSync(probe) && probe !== root) probe = dirname(probe);
 	const real = realpathSync(probe);
-	if (real !== root && !real.startsWith(root + sep)) throw new CodeError(400, "路徑不在專案資料夾內");
+	if (real !== root && !real.startsWith(root + sep)) throw new CodeError(400, tr("路徑不在專案資料夾內"));
 	return abs;
 }
 
@@ -83,7 +84,7 @@ onSettingsChange((s) => {
 
 async function gitOk(p: Project, args: string[], timeout?: number): Promise<string> {
 	const r = await git(p, args, { timeout });
-	if (r.code !== 0) throw new CodeError(400, (r.stderr || r.stdout).trim().split("\n").slice(-6).join("\n") || `git ${args[0]} 失敗`);
+	if (r.code !== 0) throw new CodeError(400, (r.stderr || r.stdout).trim().split("\n").slice(-6).join("\n") || tr("git {action} 失敗", { action: args[0] }));
 	return r.stdout;
 }
 
@@ -153,12 +154,12 @@ export async function nestedRepos(p: Project): Promise<{ rel: string; branch: st
 
 export async function repoView(p: Project, repo: string) {
 	if (!repo) return { p, toProj: (x: string) => x, fromProj: (x: string) => x, repo: "" };
-	if (!(await nestedRepos(p)).some((x) => x.rel === repo)) throw new CodeError(400, "找不到這個 repo");
+	if (!(await nestedRepos(p)).some((x) => x.rel === repo)) throw new CodeError(400, tr("找不到這個 repo"));
 	return {
 		p: { ...p, root: join(realpathSync(p.root), ...repo.split("/")) }, repo,
 		toProj: (x: string) => `${repo}/${x}`,
 		fromProj: (x: string) => {
-			if (!x.startsWith(`${repo}/`)) throw new CodeError(400, "路徑不在這個 repo 裡");
+			if (!x.startsWith(`${repo}/`)) throw new CodeError(400, tr("路徑不在這個 repo 裡"));
 			return x.slice(repo.length + 1);
 		},
 	};
@@ -247,7 +248,7 @@ export async function diffSides(p: Project, rel: string, which: "staged" | "unst
 	if (which === "staged") return { original: await show(`HEAD:./${rel}`), modified: await show(`:./${rel}`) };
 	if (which === "unstaged") return { original: await show(`:./${rel}`), modified: work() };
 	if (which === "commit" && commit) {
-		if (!/^[0-9a-f]{4,40}$/i.test(commit)) throw new CodeError(400, "commit 格式不對");
+		if (!/^[0-9a-f]{4,40}$/i.test(commit)) throw new CodeError(400, tr("commit 格式不對"));
 		return { original: await show(`${commit}^:./${rel}`), modified: await show(`${commit}:./${rel}`) };
 	}
 	return { original: "", modified: work() };
@@ -273,7 +274,7 @@ export async function gitActionIn(p: Project, repo: string, action: string, b: R
 }
 
 const safePaths = (p: Project, paths: unknown): string[] => {
-	if (!Array.isArray(paths) || !paths.length) throw new CodeError(400, "沒有指定檔案");
+	if (!Array.isArray(paths) || !paths.length) throw new CodeError(400, tr("沒有指定檔案"));
 	return paths.map((x) => {
 		inProject(p, String(x));
 		return String(x);
@@ -290,7 +291,7 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		case "discard": {
 			// 追蹤中的檔案:還原成上次提交/暫存的內容;新檔案:移到垃圾桶(救得回來)
 			const st = await status(p);
-			if (!st.repo) throw new CodeError(400, "不是 git repo");
+			if (!st.repo) throw new CodeError(400, tr("不是 git repo"));
 			const paths = safePaths(p, b.paths);
 			const untracked = new Set(st.untracked.map((x) => x.path));
 			const tracked = paths.filter((x) => !untracked.has(x));
@@ -300,16 +301,16 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		}
 		case "commit": {
 			const msg = String(b.message ?? "").trim();
-			if (!msg) throw new CodeError(400, "提交訊息不能是空的");
+			if (!msg) throw new CodeError(400, tr("提交訊息不能是空的"));
 			// 暫存區有別的資料夾的檔案:先問(outside = "unstage" 先把它們取消暫存;"include" 一起提交)
 			const outside = await stagedOutside(p);
 			if (outside.length && b.outside === "unstage") {
 				const { top } = await repoPrefix(p);
 				await gitOk({ ...p, root: top }, ["reset", "-q", "--", ...outside]);
 			} else if (outside.length && b.outside !== "include") {
-				throw Object.assign(new CodeError(409, `暫存區裡有 ${outside.length} 個不在這個專案資料夾的檔案(同一個 repo 的其他資料夾),commit 會把它們一起帶進去:${outside.slice(0, 8).join("、")}${outside.length > 8 ? "…" : ""}`), { outside });
+				throw Object.assign(new CodeError(409, tr("暫存區裡有 {n} 個不在這個專案資料夾的檔案(同一個 repo 的其他資料夾),commit 會把它們一起帶進去:{files}{more}", { n: outside.length, files: outside.slice(0, 8).join(tr("、")), more: outside.length > 8 ? "…" : "" })), { outside });
 			}
-			if (!(await git(p, ["diff", "--cached", "--quiet"])).code) throw new CodeError(400, "沒有已暫存的變更可以提交");
+			if (!(await git(p, ["diff", "--cached", "--quiet"])).code) throw new CodeError(400, tr("沒有已暫存的變更可以提交"));
 			return gitOk(p, ["commit", "-m", msg]);
 		}
 		case "branches": {
@@ -321,14 +322,14 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		}
 		case "checkout": {
 			const name = String(b.branch ?? "");
-			if (!/^[\w./-]+$/.test(name) || name.startsWith("-")) throw new CodeError(400, "分支名稱不合法");
+			if (!/^[\w./-]+$/.test(name) || name.startsWith("-")) throw new CodeError(400, tr("分支名稱不合法"));
 			return gitOk(p, b.create ? ["switch", "-c", name] : ["switch", name]);
 		}
 		case "pull":
 			return gitOk(p, ["pull", "--ff-only"], 120_000);
 		case "push": {
 			const st = await status(p);
-			if (!st.repo) throw new CodeError(400, "不是 git repo");
+			if (!st.repo) throw new CodeError(400, tr("不是 git repo"));
 			return gitOk(p, st.upstream ? ["push"] : ["push", "-u", "origin", st.branch], 120_000);
 		}
 		case "autofetch": {
@@ -351,7 +352,7 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 					autoFetchState.set(top, { at });
 					return { fetched: true, at };
 				}
-				const msg = r.stderr.trim().split("\n").map((line) => line.trim()).filter(Boolean).pop()?.slice(0, 300) || "git fetch 失敗";
+				const msg = r.stderr.trim().split("\n").map((line) => line.trim()).filter(Boolean).pop()?.slice(0, 300) || tr("git fetch 失敗");
 				if (AUTH_FAIL.test(r.stderr)) {
 					autoFetchState.set(top, { at, authFailed: msg });
 					return { fetched: false, authFailed: msg };
@@ -379,7 +380,7 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 		}
 		case "show": {
 			const c = String(b.commit ?? "");
-			if (!/^[0-9a-f]{4,40}$/i.test(c)) throw new CodeError(400, "commit 格式不對");
+			if (!/^[0-9a-f]{4,40}$/i.test(c)) throw new CodeError(400, tr("commit 格式不對"));
 			// --relative:只列這個專案資料夾裡的檔案,路徑相對於專案資料夾
 			const out = await gitOk(p, ["show", "--relative", "--name-status", "--format=%H%x1f%an%x1f%ad%x1f%B%x1e", "--date=iso-strict", c]);
 			const [head, files] = out.split("\x1e");
@@ -393,14 +394,14 @@ export async function gitAction(p: Project, action: string, b: Record<string, un
 			return d.slice(0, 40_000);
 		}
 		default:
-			throw new CodeError(400, `不支援的 git 動作:${action}`);
+			throw new CodeError(400, tr("不支援的 git 動作:{action}", { action }));
 	}
 }
 
 // ---------- 檔案 ----------
 
 export function trash(abs: string): Promise<void> {
-	return osTrash(abs).catch((err) => { throw new CodeError(500, `移到垃圾桶失敗:${err.message}`); });
+	return osTrash(abs).catch((err) => { throw new CodeError(500, tr("移到垃圾桶失敗:{error}", { error: err.message })); });
 }
 
 export const UPLOAD_LIMIT = 500 * 1024 * 1024;
@@ -411,11 +412,11 @@ export const UPLOAD_LIMIT = 500 * 1024 * 1024;
 export async function uploadFile(p: Project, rel: string, body: Readable, overwrite: boolean, declared = 0): Promise<{ rel: string; size: number; replaced: boolean }> {
 	const abs = inProject(p, rel);
 	const name = basename(abs);
-	if (!name || name === "." || name === ".." || abs === realpathSync(p.root)) throw new CodeError(400, "檔名不合法");
-	if (declared > UPLOAD_LIMIT) throw new CodeError(413, `檔案太大(上限 ${UPLOAD_LIMIT / 1024 / 1024} MB)`);
+	if (!name || name === "." || name === ".." || abs === realpathSync(p.root)) throw new CodeError(400, tr("檔名不合法"));
+	if (declared > UPLOAD_LIMIT) throw new CodeError(413, tr("檔案太大(上限 {mb} MB)", { mb: UPLOAD_LIMIT / 1024 / 1024 }));
 	const exists = existsSync(abs);
-	if (exists && lstatSync(abs).isDirectory()) throw new CodeError(409, "已經有同名的資料夾");
-	if (exists && !overwrite) throw Object.assign(new CodeError(409, "已經有同名的檔案"), { exists: true });
+	if (exists && lstatSync(abs).isDirectory()) throw new CodeError(409, tr("已經有同名的資料夾"));
+	if (exists && !overwrite) throw Object.assign(new CodeError(409, tr("已經有同名的檔案")), { exists: true });
 	mkdirSync(dirname(abs), { recursive: true });
 	inProject(p, rel); // 建完上層資料夾再確認一次沒跳出專案
 	const tmp = join(dirname(abs), `.${name}.upload-${process.pid}-${Date.now()}`);
@@ -425,10 +426,10 @@ export async function uploadFile(p: Project, rel: string, body: Readable, overwr
 			const out = createWriteStream(tmp);
 			body.on("data", (c: Buffer) => {
 				size += c.length;
-				if (size > UPLOAD_LIMIT) { body.destroy(); out.destroy(); fail(new CodeError(413, `檔案太大(上限 ${UPLOAD_LIMIT / 1024 / 1024} MB)`)); }
+				if (size > UPLOAD_LIMIT) { body.destroy(); out.destroy(); fail(new CodeError(413, tr("檔案太大(上限 {mb} MB)", { mb: UPLOAD_LIMIT / 1024 / 1024 }))); }
 			});
 			body.on("error", fail);
-			body.on("aborted", () => fail(new CodeError(400, "上傳中斷")));
+			body.on("aborted", () => fail(new CodeError(400, tr("上傳中斷"))));
 			out.on("error", fail);
 			out.on("finish", ok);
 			body.pipe(out);
@@ -445,7 +446,7 @@ export async function uploadFile(p: Project, rel: string, body: Readable, overwr
 /** 列出資料夾:檔案/資料夾、大小、是否被 .gitignore 忽略、git 狀態 */
 export async function listDir(p: Project, rel: string, showHidden: boolean) {
 	const abs = inProject(p, rel);
-	if (!statSync(abs).isDirectory()) throw new CodeError(400, "不是資料夾");
+	if (!statSync(abs).isDirectory()) throw new CodeError(400, tr("不是資料夾"));
 	const entries = readdirSync(abs, { withFileTypes: true })
 		.filter((d) => showHidden || !d.name.startsWith("."))
 		.filter((d) => d.name !== ".git")
@@ -499,7 +500,7 @@ function looksBinary(buf: Buffer): boolean {
 export function readFile(p: Project, rel: string, opts: { more?: number } = {}) {
 	const abs = inProject(p, rel);
 	const st = statSync(abs);
-	if (st.isDirectory()) throw new CodeError(400, "這是資料夾");
+	if (st.isDirectory()) throw new CodeError(400, tr("這是資料夾"));
 	const ext = extname(abs).toLowerCase();
 	const base = { path: rel, name: basename(abs), size: st.size, mtime: st.mtimeMs };
 	if (IMAGE.has(ext)) return { ...base, kind: "image" as const };
@@ -516,15 +517,15 @@ export function readFile(p: Project, rel: string, opts: { more?: number } = {}) 
 	const lines = buf.toString("utf8").split("\n");
 	const n = HEADTAIL_LINES + (opts.more ?? 0);
 	if (lines.length <= n * 2) return { ...base, kind: "text" as const, content: lines.join("\n"), readonly: true, hash: hashOf(buf) };
-	const content = [...lines.slice(0, n), "", `…… 中間省略 ${lines.length - n * 2} 行(檔案太大,只顯示開頭和結尾各 ${n} 行)……`, "", ...lines.slice(-n)].join("\n");
+	const content = [...lines.slice(0, n), "", tr("…… 中間省略 {omitted} 行(檔案太大,只顯示開頭和結尾各 {n} 行)……", { omitted: lines.length - n * 2, n }), "", ...lines.slice(-n)].join("\n");
 	return { ...base, kind: "text" as const, content, readonly: true, truncated: { total: lines.length, shown: n } };
 }
 
 export function rawFile(p: Project, rel: string): { buf: Buffer; type: string } {
 	const abs = inProject(p, rel);
 	const ext = extname(abs).toLowerCase();
-	if (!MIME[ext]) throw new CodeError(400, "只支援圖片、PDF、Notebook 與 Office 預覽");
-	if (statSync(abs).size > VIEW_LIMIT) throw new CodeError(413, "檔案太大");
+	if (!MIME[ext]) throw new CodeError(400, tr("只支援圖片、PDF、Notebook 與 Office 預覽"));
+	if (statSync(abs).size > VIEW_LIMIT) throw new CodeError(413, tr("檔案太大"));
 	return { buf: readFileSync(abs), type: MIME[ext] };
 }
 
@@ -533,12 +534,12 @@ export function writeFile(p: Project, rel: string, content: string, baseHash: st
 	const abs = inProject(p, rel);
 	if (existsSync(abs)) {
 		const st = lstatSync(abs);
-		if (st.isDirectory()) throw new CodeError(400, "這是資料夾");
-		if (st.size > EDIT_LIMIT) throw new CodeError(413, "大檔是唯讀的");
+		if (st.isDirectory()) throw new CodeError(400, tr("這是資料夾"));
+		if (st.size > EDIT_LIMIT) throw new CodeError(413, tr("大檔是唯讀的"));
 		const disk = readFileSync(abs);
 		const diskHash = hashOf(disk);
 		if (!force && baseHash && diskHash !== baseHash) {
-			const e = new CodeError(409, "檔案在你開啟之後被改過了") as CodeError & { disk?: unknown };
+			const e = new CodeError(409, tr("檔案在你開啟之後被改過了")) as CodeError & { disk?: unknown };
 			e.disk = { content: disk.toString("utf8"), hash: diskHash };
 			throw e;
 		}
@@ -555,8 +556,8 @@ export async function fsOp(p: Project, op: string, rel: string, to?: string) {
 	switch (op) {
 		case "mkfile":
 		case "mkdir": {
-			if (!nameOk(basename(abs))) throw new CodeError(400, "名稱不合法");
-			if (existsSync(abs)) throw new CodeError(409, "已經有同名的檔案或資料夾");
+			if (!nameOk(basename(abs))) throw new CodeError(400, tr("名稱不合法"));
+			if (existsSync(abs)) throw new CodeError(409, tr("已經有同名的檔案或資料夾"));
 			if (op === "mkdir") mkdirSync(abs, { recursive: true });
 			else {
 				mkdirSync(dirname(abs), { recursive: true });
@@ -565,20 +566,20 @@ export async function fsOp(p: Project, op: string, rel: string, to?: string) {
 			return { rel: relOf(p, abs) };
 		}
 		case "rename": {
-			if (!to) throw new CodeError(400, "缺少新名稱");
+			if (!to) throw new CodeError(400, tr("缺少新名稱"));
 			const dest = inProject(p, to);
-			if (existsSync(dest)) throw new CodeError(409, "已經有同名的檔案或資料夾");
-			if (abs === realpathSync(p.root)) throw new CodeError(400, "不能改專案資料夾本身");
+			if (existsSync(dest)) throw new CodeError(409, tr("已經有同名的檔案或資料夾"));
+			if (abs === realpathSync(p.root)) throw new CodeError(400, tr("不能改專案資料夾本身"));
 			renameSync(abs, dest);
 			return { rel: relOf(p, dest) };
 		}
 		case "trash": {
-			if (abs === realpathSync(p.root)) throw new CodeError(400, "不能刪除專案資料夾本身");
+			if (abs === realpathSync(p.root)) throw new CodeError(400, tr("不能刪除專案資料夾本身"));
 			await trash(abs);
 			return { rel };
 		}
 		default:
-			throw new CodeError(400, `不支援的操作:${op}`);
+			throw new CodeError(400, tr("不支援的操作:{op}", { op }));
 	}
 }
 

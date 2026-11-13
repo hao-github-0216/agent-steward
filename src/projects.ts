@@ -1,4 +1,5 @@
 // 從工作目錄判斷屬於哪個專案:git 根目錄 > 已登記的資料夾 > 雜務。
+import { tr } from "./i18n.ts";
 import { execFileSync } from "node:child_process";
 import { fromGit, pathInside } from "./platform.ts";
 import { basename, dirname, join, relative } from "node:path";
@@ -18,6 +19,11 @@ export function gitRoot(cwd: string): string | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+/** 給網頁顯示的內建專案名稱與路徑標記;不改存檔資料。 */
+export function displayProject(p: Project): Project {
+	return p.root === MISC_ROOT || p.root === OVERVIEW_ROOT ? { ...p, name: tr(p.name), root: tr(p.root) } : p;
 }
 
 export function ensureSpecial(store: Store, root: typeof MISC_ROOT | typeof OVERVIEW_ROOT): Project {
