@@ -1180,7 +1180,7 @@
 	}
 	/** 一個儲存格的畫面(c._el 記住對應的 DOM) */
 	function nbCellEl(t, c) {
-		const cell = el("section", `nb-cell nb-${c.cell_type}`);
+		const cell = el("section", `nb-cell nb-cell-${c.cell_type}`); // 不能用 nb-code:那是程式碼框的樣式
 		cell.dataset.id = c._id;
 		c._el = cell;
 		const tools = el("div", "nb-celltools");
