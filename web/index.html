@@ -17,8 +17,8 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; height: 50px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
-header h1 { font-size: 16px; margin: 0; }
+body > header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; height: 50px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+body > header h1 { font-size: 16px; margin: 0; }
 .titlebtn { display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--ink); padding: 6px 8px; margin-left: -8px; border-radius: 8px; cursor: pointer; font: inherit; }
 .titlebtn:hover { background: var(--chip); }
 .titlebtn .chev { color: var(--muted); font-size: 12px; }
@@ -83,7 +83,7 @@ header h1 { font-size: 16px; margin: 0; }
 	.set-tabs { flex: 0 0 auto; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
 	.set-tabs button { white-space: nowrap; }
 }
-header .status { margin-left: auto; color: var(--muted); font-size: 12px; }
+body > header .status { margin-left: auto; color: var(--muted); font-size: 12px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: middle; }
 .dot.off { background: var(--bad); }
 main { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: calc(100vh - 50px); height: calc(var(--appH, 100dvh) - 50px); min-height: 0; }
@@ -563,10 +563,10 @@ textarea.nb-edit { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; m
 .cv-menu button:hover { background: var(--chip); }
 @media (max-width: 800px) {
 	/* 手機標題列:只留切換按鈕,不換行 */
-	header { gap: 6px; padding: 8px 10px; }
-	header .status { display: none; }
-	header h1 { font-size: 14px; }
-	header button, .seg button { white-space: nowrap; }
+	body > header { gap: 6px; padding: 8px 10px; }
+	body > header .status { display: none; }
+	body > header h1 { font-size: 14px; }
+	body > header button, .seg button { white-space: nowrap; }
 	.seg button { padding: 4px 9px; }
 	/* 手機:一層一層的單欄。側欄 ↔ 編輯器 */
 	.cv-act { flex-direction: row; flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 4px; }
@@ -809,8 +809,8 @@ body.drawer #drawer { transform: none; }
 	#drawer { top: auto; left: 0; width: auto; max-width: none; height: 60vh; border-left: 0; border-top: 1px solid var(--line); border-radius: 12px 12px 0 0; transform: translateY(100%); }
 	body.term .status, body.term #fontSize { display: none; }
 	.seg { flex-shrink: 0; }
-	body.term header h1 { font-size: 13px; }
-	header { gap: 8px; }
+	body.term > header h1 { font-size: 13px; }
+	body > header { gap: 8px; }
 }
 .tool { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 form.tool { flex-direction: row; }
@@ -829,7 +829,7 @@ form.tool { flex-direction: row; }
 /* iPhone 原生 app 裡(?app=1):標題列(專案、看板/程式碼/終端機、支線、管家側欄、設定)、專案欄、看板、
    問管家浮動球和圈選鈕、管家側欄、工作卡視窗都由 app 自己的原生畫面照同樣的排版負責;
    網頁只負責程式碼和終端機本身,免得同一個功能出現兩個入口。按鈕還在頁面裡,app 透過指令碼按 */
-html.inapp header, html.inapp nav, html.inapp main > section.content, html.inapp #ballWrap, html.inapp #drawer, html.inapp #cardPop { display: none !important; }
+html.inapp body > header, html.inapp nav, html.inapp main > section.content, html.inapp #ballWrap, html.inapp #drawer, html.inapp #cardPop { display: none !important; }
 html.inapp #termView, html.inapp #codeView { height: var(--appH, 100dvh); }
 </style>
 <script>
