@@ -8,7 +8,7 @@ import { authorize, authorizeTerminal, hasPassword, isPureLocal, login, logout, 
 import { execFileSync, spawn } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { getCurrent, getSession, putCurrent, putSession } from "./code-session.ts";
-import { listDevices, pushAll, pushConfigured, registerDevice, unregisterDevice } from "./apns.ts";
+import { listDevices, pushAll, pushMode, registerDevice, unregisterDevice } from "./apns.ts";
 import { desktopSignal, expandHome, findTailscale, onSettingsChange, providerLabel, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
 import { APP_DIR, agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
@@ -1326,12 +1326,16 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			}
 			// ---------- iPhone app 推播(見 apns.ts) ----------
 			if (path.startsWith("/api/push/")) {
-				if (req.method === "GET" && path === "/api/push/status") return send(res, 200, { configured: pushConfigured(), devices: listDevices().map((d) => ({ name: d.name, env: d.env, addedAt: d.addedAt, token: `${d.token.slice(0, 8)}…` })) });
+				if (req.method === "GET" && path === "/api/push/status") {
+					const mode = pushMode();
+					return send(res, 200, { mode, configured: mode !== "none", devices: listDevices().map(({ name, platform, env, key, addedAt, token }) => ({ name, platform, env, encrypted: !!key, addedAt, token: `${token.slice(0, 8)}…` })) });
+				}
 				if (req.method === "POST" && path === "/api/push/register") {
 					const b = await body(req);
+					const { platform = "ios", key } = b;
 					try {
-						const d = registerDevice(String(b.token ?? ""), String(b.env ?? ""), b.name ? String(b.name) : undefined);
-						return send(res, 200, { ok: true, env: d.env, configured: pushConfigured() });
+						const d = registerDevice(String(b.token ?? ""), String(b.env ?? ""), b.name ? String(b.name) : undefined, platform, key);
+						return send(res, 200, { ok: true, env: d.env, configured: pushMode() !== "none" });
 					} catch (e) {
 						return send(res, 400, { error: (e as Error).message });
 					}
@@ -1341,7 +1345,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					return send(res, 200, { ok: true });
 				}
 				if (req.method === "POST" && path === "/api/push/test") {
-					if (!pushConfigured()) return send(res, 400, { error: tr("管家還沒設定推播金鑰(APNs)") });
+					if (pushMode() === "none") return send(res, 400, { error: tr("還沒設定推播:沒有推播中繼也沒有 APNs 金鑰") });
 					const token = String((await body(req)).token ?? "");
 					const ok = await pushAll({ title: tr("🔔 專案管家測試推播"), body: tr("設定成功:提案、工作卡卡住、工作完成會推到這支 iPhone。") }, token || undefined);
 					return send(res, ok ? 200 : 502, ok ? { ok: true } : { error: tr("推播沒送出去,看管家的紀錄(steward.log)") });

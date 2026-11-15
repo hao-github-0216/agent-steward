@@ -325,29 +325,64 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 	}
 });
 
-test("push settings show iPhone status and send parameter-free test pushes in both languages", async () => {
-	for (const lang of ["zh-TW", "en"]) for (const desktop of [false, true]) {
+test("push settings show none/relay/direct states, old App warnings, and POST test pushes in both languages", async () => {
+	const html = readFileSync(join(ROOT, "web", "index.html"), "utf8");
+	const postSource = html.match(/^const post = .*;$/m)[0];
+	for (const lang of ["zh-TW", "en"]) for (const desktop of [false, true]) for (const mode of ["none", "relay", "direct"]) for (const encrypted of [[], [true, true], [false, true, true], [false, false]]) {
 		let result = { ok: true };
+		const devices = encrypted.map((encrypted) => ({ encrypted }));
 		const f = uiFixture(desktop, {
-			fetch: async () => ({ ok: true, json: async () => ({ configured: true, devices: [{}, {}] }) }),
-			post: async () => { if (result instanceof Error) throw result; return result; },
+			fetch: async (url) => {
+				if (url === "/api/push/status") return { ok: true, json: async () => ({ mode, configured: mode !== "none", devices }) };
+				assert.equal(url, "/api/push/test");
+				if (result instanceof Error) throw result;
+				return { ok: true, json: async () => result };
+			},
 		});
+		f.run(postSource);
 		f.run("renderSettings()");
 		assert.equal(f.fetchRequests.length, 0);
 		f.run(`setState.s.ui.lang = ${JSON.stringify(lang)}; setState.tab = "notify"; renderSettings()`);
 		await new Promise(setImmediate);
 		assert.deepEqual(f.fetchRequests, [["/api/push/status"]]);
+		const n = devices.length;
+		const old = encrypted.filter((value) => value === false).length;
+		const states = lang === "en" ? {
+			none: "Mobile App push: no push relay is configured.",
+			relay: `Mobile App push: sent through the relay with end-to-end encryption, ${n} devices.`,
+			direct: `Mobile App push: sent directly using this steward's APNs credentials, ${n} devices.`,
+		} : {
+			none: "手機 App 推播：還沒設定推播中繼。",
+			relay: `手機 App 推播：經推播中繼送出，內容端對端加密，${n} 台裝置。`,
+			direct: `手機 App 推播：用這台管家的 APNs 金鑰直接送出，${n} 台裝置。`,
+		};
+		const warning = lang === "en"
+			? `The App on ${old} devices is too old. Update it to receive encrypted notifications.`
+			: `${old} 台裝置的 App 太舊，更新 App 後才收得到加密通知。`;
+		const expected = states[mode] + (old ? " " + warning : "");
 		const markup = f.element("setPhonePush").innerHTML;
-		assert.ok(markup.includes(lang === "en" ? "iPhone/iPad App push: configured, 2 devices." : "iPhone/iPad App 推播：已設定，2 台裝置。"));
-		assert.ok(markup.includes(lang === "en" ? "Send a test push to iPhone/iPad" : "送測試推播到 iPhone/iPad"));
+		assert.equal(markup.split(" <button")[0], expected);
+		assert.equal(markup.includes(lang === "en" ? "is too old" : "App 太舊"), old > 0);
 		const button = f.element("setTestPhonePush");
+		if (mode === "none") {
+			assert.equal(markup, expected);
+			assert.equal(button, null);
+			assert.equal(f.fetchRequests.length, 1);
+			continue;
+		}
+		assert.ok(markup.includes(lang === "en" ? "Send a test push to mobile devices" : "送測試推播到手機"));
+		assert.ok(button);
 		await button.onclick();
-		assert.equal(f.requests[0][0], "/api/push/test");
-		assert.equal(JSON.stringify(f.requests[0][1]), "{}");
+		const [path, options] = f.fetchRequests[1];
+		assert.equal(path, "/api/push/test");
+		assert.equal(options.method, "POST");
+		assert.equal(options.headers["content-type"], "application/json");
+		assert.equal(options.body, "{}");
+		assert.equal(f.fetchRequests.length, 2);
 		assert.equal(f.toasts.at(-1), lang === "en" ? "Test notification sent" : "已送出測試推播");
-		result = { error: "APNs unavailable" };
+		result = { error: "Push unavailable" };
 		await button.onclick();
-		assert.equal(f.toasts.at(-1), "APNs unavailable");
+		assert.equal(f.toasts.at(-1), "Push unavailable");
 		for (const failure of [{}, new Error("offline")]) {
 			result = failure;
 			await button.onclick();
@@ -356,21 +391,21 @@ test("push settings show iPhone status and send parameter-free test pushes in bo
 	}
 });
 
-test("push settings show missing APNs credentials and stay empty if status cannot be fetched", async () => {
-	for (const lang of ["zh-TW", "en"]) {
-		const f = uiFixture(false);
+test("push settings stay empty when status cannot be fetched in both languages", async () => {
+	for (const lang of ["zh-TW", "en"]) for (const desktop of [false, true]) for (const fetch of [
+		async () => { throw new Error("offline"); },
+		async () => ({ ok: false }),
+		async () => ({ ok: true, json: async () => null }),
+		async () => ({ ok: true, json: async () => { throw new Error("invalid JSON"); } }),
+	]) {
+		const f = uiFixture(desktop, { fetch });
 		f.run(`setState.s.ui.lang = ${JSON.stringify(lang)}; setState.tab = "notify"; renderSettings()`);
 		await new Promise(setImmediate);
-		assert.equal(f.element("setPhonePush").textContent, lang === "en" ? "iPhone/iPad App push: APNs credentials are not configured. See ios-native/README.md." : "iPhone/iPad App 推播：管家還沒設定推播金鑰(APNs)，見 ios-native/README.md。");
-		assert.equal(f.element("setTestPhonePush"), null);
-	}
-	for (const fetch of [async () => { throw new Error("offline"); }, async () => ({ ok: false })]) {
-		const f = uiFixture(false, { fetch });
-		f.run('setState.tab = "notify"; renderSettings()');
-		await new Promise(setImmediate);
+		assert.deepEqual(f.fetchRequests, [["/api/push/status"]]);
 		assert.equal(f.element("setPhonePush").innerHTML, "");
 		assert.equal(f.element("setPhonePush").textContent, "");
 		assert.equal(f.element("setTestPhonePush"), null);
+		assert.deepEqual(f.requests, []);
 	}
 });
 

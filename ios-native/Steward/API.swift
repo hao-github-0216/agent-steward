@@ -334,9 +334,9 @@ struct API {
 
     struct PushStatus: Decodable { var configured: Bool? }
 
-    func registerPush(token: String, env: String, name: String) async throws {
+    func registerPush(token: String, env: String, name: String, platform: String, key: String) async throws {
         struct OK: Decodable { var ok: Bool? }
-        let _: OK = try await call(request("api/push/register", method: "POST", body: ["token": token, "env": env, "name": name]))
+        let _: OK = try await call(request("api/push/register", method: "POST", body: ["token": token, "env": env, "name": name, "platform": platform, "key": key]))
     }
 
     func pushStatus() async throws -> PushStatus {

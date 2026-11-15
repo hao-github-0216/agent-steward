@@ -5,5 +5,9 @@
 	<!-- 推播通知;上傳 TestFlight / App Store 時 Xcode 會自動換成 production -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)io.github.haogithub0216.agentsteward.shared</string>
+	</array>
 </dict>
 </plist>

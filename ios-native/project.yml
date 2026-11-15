@@ -2,6 +2,8 @@
 name: Steward
 options:
   bundleIdPrefix: io.github.haogithub0216
+  developmentLanguage: en
+  knownRegions: [en, zh-Hant]
   deploymentTarget:
     iOS: "17.0"
 packages:
@@ -24,6 +26,8 @@ targets:
       - Steward
     dependencies:
       - package: SwiftMath
+      - target: StewardNotify
+        embed: true
     settings:
       base:
         # 跟 Tauri 版(io.github.haogithub0216.agentsteward)分開,兩個可以同時裝在手機上比較
@@ -34,11 +38,13 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Steward/Steward.entitlements
     scheme:
       testTargets:
+        - StewardTests
         - StewardUITests
     info:
       path: Steward/Info.plist
       properties:
         CFBundleDisplayName: 專案管家 β
+        StewardKeychainGroup: $(AppIdentifierPrefix)io.github.haogithub0216.agentsteward.shared
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # iPad:四個方向都可以(分割畫面、多工需要)
@@ -58,6 +64,39 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: io.github.haogithub0216.agentsteward.native
             CFBundleURLSchemes: [agentsteward]
+  StewardNotify:
+    type: app-extension
+    platform: iOS
+    sources:
+      - StewardNotify
+      - Steward/PushCrypto.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native.notify
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: StewardNotify/StewardNotify.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: StewardNotify/Info.plist
+      properties:
+        CFBundleDisplayName: StewardNotify
+        StewardKeychainGroup: $(AppIdentifierPrefix)io.github.haogithub0216.agentsteward.shared
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+  StewardTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - StewardTests
+      - Steward/PushCrypto.swift
+      - path: ../relay/test/vectors.json
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native.tests
+        GENERATE_INFOPLIST_FILE: YES
   # 模擬器手勢測試(見 StewardUITests/GestureTests.swift)
   StewardUITests:
     type: bundle.ui-testing

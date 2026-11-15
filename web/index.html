@@ -2307,11 +2307,15 @@ function renderSettings() {
 	const phonePush = $("setPhonePush");
 	if (phonePush) fetch("/api/push/status").then((r) => r.ok ? r.json() : null).then((r) => {
 		if (!r || $("setPhonePush") !== phonePush) return;
-		if (!r.configured) {
-			phonePush.textContent = tr("iPhone/iPad App 推播：管家還沒設定推播金鑰(APNs)，見 ios-native/README.md。");
-			return;
-		}
-		phonePush.innerHTML = `${esc(tr("iPhone/iPad App 推播：已設定，{n} 台裝置。", { n: r.devices.length }))} <button class="small" id="setTestPhonePush">${tr("送測試推播到 iPhone/iPad")}</button>`;
+		const n = r.devices.length;
+		const status = r.mode === "direct"
+			? tr("手機 App 推播：用這台管家的 APNs 金鑰直接送出，{n} 台裝置。", { n })
+			: r.mode === "relay"
+				? tr("手機 App 推播：經推播中繼送出，內容端對端加密，{n} 台裝置。", { n })
+				: tr("手機 App 推播：還沒設定推播中繼。");
+		const old = r.devices.filter((d) => d.encrypted === false).length;
+		const warning = old ? " " + tr("{n} 台裝置的 App 太舊，更新 App 後才收得到加密通知。", { n: old }) : "";
+		phonePush.innerHTML = esc(status + warning) + (r.mode === "none" ? "" : ` <button class="small" id="setTestPhonePush">${tr("送測試推播到手機")}</button>`);
 		$("setTestPhonePush")?.addEventListener("click", async () => {
 			const result = await post("/api/push/test", {}).catch(() => ({ error: tr("推播失敗") }));
 			toast(result.ok ? tr("已送出測試推播") : result.error || tr("推播失敗"));

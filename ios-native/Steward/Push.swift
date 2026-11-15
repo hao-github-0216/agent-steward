@@ -1,4 +1,4 @@
-// 推播通知:跟 iOS 要權限、拿到 device token 交給管家(管家用它直接送 APNs)、點通知跳到那個專案
+// 跟 iOS 要推播權限、把裝置憑證和加密金鑰交給管家、點通知跳到專案
 import SwiftUI
 import UIKit
 import UserNotifications
@@ -9,7 +9,7 @@ final class PushState {
     static let shared = PushState()
     var authorized: Bool? = nil // nil = 還沒問過
     var token: String?
-    var registeredWith: String? // 已經交給哪個管家(網址)
+    var registeredWith: String? // 已登記的管家網址、裝置憑證和金鑰
     var lastError: String?
     /// 使用者點了通知:AppModel 看到就打開這個連結
     var pendingLink: URL?
@@ -45,14 +45,15 @@ final class PushState {
         if authorized == true { UIApplication.shared.registerForRemoteNotifications() }
     }
 
-    /// 把 token 交給管家;換了管家網址或 token 變了才重送
+    /// 把裝置憑證和金鑰交給管家；網址、憑證或金鑰變了才重送
     func sendToken(api: API?) async {
         guard let api, let token else { return }
-        let key = "\(api.base.absoluteString)|\(token)"
-        guard registeredWith != key else { return }
         do {
-            try await api.registerPush(token: token, env: environment, name: UIDevice.current.name)
-            registeredWith = key
+            let key = try PushCrypto.loadOrCreateKey().base64EncodedString()
+            let registration = "\(api.base.absoluteString)|\(token)|\(key)"
+            guard registeredWith != registration else { return }
+            try await api.registerPush(token: token, env: environment, name: UIDevice.current.name, platform: "ios", key: key)
+            registeredWith = registration
             lastError = nil
         } catch {
             lastError = error.localizedDescription

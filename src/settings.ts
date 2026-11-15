@@ -10,6 +10,8 @@ import { isAbsolute, join } from "node:path";
 const HOME = homedir();
 export const DATA_DIR = process.env.STEWARD_DATA_DIR ?? join(HOME, ".agent-steward");
 export const SETTINGS_PATH = join(DATA_DIR, "settings.json");
+// 推播中繼部署後填入正式網址
+export const RELAY_DEFAULT = "";
 
 /** 傳給桌面 App 的單行 JSON 訊息;服務模式不輸出。 */
 export function desktopSignal(obj: { cmd: string; [key: string]: unknown }): void {
@@ -98,6 +100,7 @@ export interface Settings {
 	plugins: Record<PluginId, { enabled: boolean }> & { notebook: { enabled: boolean; pythons: string[] } };
 	providers: ProviderConfig[];
 	routing: Record<RouteRole, Route> & { privacy: string; embedding: string };
+	push: { relay: string };
 	notify: {
 		kind: NotifyKind;
 		hermes: { url: string; route: string };
@@ -129,6 +132,7 @@ export const DEFAULTS: Settings = {
 		privacy: "",
 		embedding: "",
 	},
+	push: { relay: RELAY_DEFAULT },
 	notify: {
 		kind: "none",
 		hermes: { url: "", route: "steward" },
@@ -310,6 +314,18 @@ export function settings(): Settings {
 
 /** 部分更新(深層合併)並存檔;回傳新設定 */
 export function updateSettings(patch: unknown): Settings {
+	const push = (patch as { push?: { relay?: unknown } } | null)?.push;
+	if (push && Object.hasOwn(push, "relay")) {
+		const relay = push.relay;
+		let valid = relay === "";
+		if (typeof relay === "string" && relay.startsWith("https://")) {
+			try {
+				const url = new URL(relay);
+				valid = url.protocol === "https:" && !!url.hostname && !url.username && !url.password && !relay.includes("?") && !relay.includes("#");
+			} catch { /* 網址格式不正確 */ }
+		}
+		if (!valid) throw new TypeError(tr("推播中繼必須是空字串或不含帳密、查詢與片段的 HTTPS 網址"));
+	}
 	const desktop = (patch as { desktop?: { autoUpdate?: unknown; notify?: unknown } } | null)?.desktop;
 	if (desktop && Object.hasOwn(desktop, "autoUpdate") && typeof desktop.autoUpdate !== "boolean") throw new TypeError("desktop.autoUpdate must be a boolean");
 	if (desktop && Object.hasOwn(desktop, "notify") && typeof desktop.notify !== "boolean") throw new TypeError("desktop.notify must be a boolean");
