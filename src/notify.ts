@@ -5,7 +5,7 @@ import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { HOME } from "./config.ts";
-import { settings } from "./settings.ts";
+import { desktopSignal, settings } from "./settings.ts";
 import { messageFromText, pushAll } from "./apns.ts";
 
 export function hermesSecret(route: string): string | undefined {
@@ -30,12 +30,16 @@ async function post(url: string, body: string, headers: Record<string, string> =
 export interface NotifyOptions {
 	/** 跟哪個專案有關:iPhone 上點通知直接打開那個專案 */
 	projectId?: string;
-	/** 只推到 iPhone app(例如「工作完成」,不想讓 Telegram 等管道變吵) */
+	/** 不送設定頁選的管道,只通知 iPhone 和桌面 App(例如「工作完成」) */
 	iphoneOnly?: boolean;
 }
 
 /** 送一則推播:設定頁選的管道 + 登記過的 iPhone app;都沒送出回 false(不丟錯) */
 export async function notify(text: string, opts: NotifyOptions = {}): Promise<boolean> {
+	if (settings().desktop?.notify !== false) {
+		const { title, body } = messageFromText(text, opts.projectId);
+		desktopSignal({ cmd: "notify", title, body, ...(opts.projectId ? { project: opts.projectId } : {}) });
+	}
 	const phone = pushAll(messageFromText(text, opts.projectId)).catch(() => false);
 	if (opts.iphoneOnly) return phone;
 	const [a, b] = await Promise.all([sendConfigured(text), phone]);

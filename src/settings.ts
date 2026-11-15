@@ -55,7 +55,7 @@ export interface Settings {
 	/** 管家怎麼稱呼使用者(空白 = 「使用者」) */
 	user: { name: string };
 	ui: { lang: "" | "zh-TW" | "en" };
-	desktop: { herdrCli: boolean; herdrConfig: boolean; autostart: boolean; autoUpdate: boolean };
+	desktop: { herdrCli: boolean; herdrConfig: boolean; autostart: boolean; autoUpdate: boolean; notify: boolean };
 	cards: { defaultAgent: string };
 	code: {
 		/** 自動抓取遠端更新:ask = 先詢問,on = 開啟,off = 關閉 */
@@ -110,7 +110,7 @@ export const DEFAULTS: Settings = {
 	version: 1,
 	user: { name: "" },
 	ui: { lang: "" },
-	desktop: { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true },
+	desktop: { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true, notify: true },
 	cards: { defaultAgent: "" },
 	code: { autoFetch: "ask", autoFetchMinutes: 3 },
 	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], tailnetBindReviewed: false, publicUrl: "" },
@@ -310,8 +310,9 @@ export function settings(): Settings {
 
 /** 部分更新(深層合併)並存檔;回傳新設定 */
 export function updateSettings(patch: unknown): Settings {
-	const desktop = (patch as { desktop?: { autoUpdate?: unknown } } | null)?.desktop;
+	const desktop = (patch as { desktop?: { autoUpdate?: unknown; notify?: unknown } } | null)?.desktop;
 	if (desktop && Object.hasOwn(desktop, "autoUpdate") && typeof desktop.autoUpdate !== "boolean") throw new TypeError("desktop.autoUpdate must be a boolean");
+	if (desktop && Object.hasOwn(desktop, "notify") && typeof desktop.notify !== "boolean") throw new TypeError("desktop.notify must be a boolean");
 	const notebook = (patch as { plugins?: { notebook?: { pythons?: unknown } } } | null)?.plugins?.notebook;
 	if (notebook && Object.hasOwn(notebook, "pythons")) {
 		const pythons = notebook.pythons;

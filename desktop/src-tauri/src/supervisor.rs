@@ -27,6 +27,7 @@ use std::{
 };
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 const LOG_LIMIT: u64 = 5 * 1024 * 1024;
 const BACKOFF: [u64; 5] = [1, 2, 5, 10, 30];
@@ -77,6 +78,12 @@ impl Logger {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "cmd", rename_all = "lowercase")]
 pub enum DesktopSignal {
+    Notify {
+        title: String,
+        body: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     Update,
     Autostart {
         on: Option<bool>,
@@ -510,10 +517,56 @@ fn run_setup(desktop: &Desktop) -> bool {
 }
 
 fn handle_signal(app: &AppHandle, desktop: &Arc<Desktop>, signal: DesktopSignal) {
-    desktop
-        .log
-        .write("desktop.log", &format!("desktop message: {signal:?}"));
+    if matches!(&signal, DesktopSignal::Notify { .. }) {
+        desktop.log.write("desktop.log", "desktop message: notify");
+    } else {
+        desktop
+            .log
+            .write("desktop.log", &format!("desktop message: {signal:?}"));
+    }
     match signal {
+        DesktopSignal::Notify {
+            title,
+            body,
+            project,
+        } => {
+            if desktop.notification_denied.load(Ordering::SeqCst) {
+                return;
+            }
+            let permission = app.notification().permission_state().and_then(|state| {
+                if matches!(
+                    state,
+                    PermissionState::Prompt | PermissionState::PromptWithRationale
+                ) {
+                    app.notification().request_permission()
+                } else {
+                    Ok(state)
+                }
+            });
+            if !matches!(permission, Ok(PermissionState::Granted)) {
+                desktop.notification_denied.store(true, Ordering::SeqCst);
+                desktop
+                    .log
+                    .write("desktop.log", "notification permission denied");
+                return;
+            }
+            if app
+                .notification()
+                .builder()
+                .title(&title)
+                .body(&body)
+                .show()
+                .is_err()
+            {
+                desktop.log.write("desktop.log", "notification show failed");
+            }
+            if let Some(project) = project {
+                desktop.view.lock().unwrap().last_project = Some(project);
+                if let Err(error) = refresh_menu(app, desktop) {
+                    desktop.log.write("desktop.log", &format!("menu: {error}"));
+                }
+            }
+        }
         DesktopSignal::Update => {
             updater::request_check(app, desktop, updater::CheckMode::Manual);
         }
@@ -940,12 +993,30 @@ mod tests {
                 notes: vec!["ready".into()]
             })
         );
+        assert_eq!(
+            parse_signal(r#"@@desktop {"cmd":"notify","title":"t","body":"b","project":"p1"}"#),
+            Some(DesktopSignal::Notify {
+                title: "t".into(),
+                body: "b".into(),
+                project: Some("p1".into()),
+            })
+        );
+        assert_eq!(
+            parse_signal(r#"@@desktop {"cmd":"notify","title":"t","body":"b"}"#),
+            Some(DesktopSignal::Notify {
+                title: "t".into(),
+                body: "b".into(),
+                project: None,
+            })
+        );
         for line in [
             "normal log",
             "@@desktop not-json",
             r#"{"cmd":"lang","lang":"en"}"#,
             r#"@@desktop {"cmd":"unknown"}"#,
             r#"@@desktop {"cmd":"setup"}"#,
+            r#"@@desktop {"cmd":"notify","body":"b"}"#,
+            r#"@@desktop {"cmd":"notify","title":"t"}"#,
             r#"@@desktop {"cmd":"autostart","on":"yes"}"#,
         ] {
             assert!(parse_signal(line).is_none(), "{line}");

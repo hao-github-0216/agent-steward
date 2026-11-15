@@ -39,6 +39,7 @@ pub struct View {
     pub setup_failed: bool,
     pub autostart: bool,
     pub lang: Lang,
+    pub last_project: Option<String>,
 }
 
 pub struct Desktop {
@@ -50,6 +51,7 @@ pub struct Desktop {
     pub stopping: AtomicBool,
     pub stop_terminals: AtomicBool,
     pub update_active: AtomicBool,
+    pub notification_denied: AtomicBool,
     pub desktop_state_lock: Mutex<()>,
     pub done: (Mutex<bool>, Condvar),
 }
@@ -71,6 +73,13 @@ pub fn refresh_menu(app: &AppHandle, desktop: &Desktop) -> tauri::Result<()> {
     );
     let status = MenuItem::with_id(app, "status", title, false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", lang.text("open"), true, None::<&str>)?;
+    let open_last_project = MenuItem::with_id(
+        app,
+        "open_last_project",
+        lang.text("open_last_project"),
+        view.last_project.is_some(),
+        None::<&str>,
+    )?;
     let terminal = MenuItem::with_id(app, "terminal", lang.text("terminal"), true, None::<&str>)?;
     let settings = read_settings(&desktop.paths.data);
     let mut access = Vec::new();
@@ -111,6 +120,7 @@ pub fn refresh_menu(app: &AppHandle, desktop: &Desktop) -> tauri::Result<()> {
         &[
             &status,
             &open,
+            &open_last_project,
             &terminal,
             &remote,
             &separator,
@@ -165,6 +175,21 @@ pub fn open_browser(app: &AppHandle, desktop: &Desktop, fragment: &str) {
     {
         show_error(app, desktop, &format!("open browser: {error}"));
     }
+}
+
+fn encode_url_component(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    encoded
 }
 
 pub fn apply_autostart(app: &AppHandle, desktop: &Desktop, on: bool) -> bool {
@@ -225,6 +250,13 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     let desktop = app.state::<Arc<Desktop>>().inner().clone();
     match event.id().as_ref() {
         "open" => open_browser(app, &desktop, ""),
+        "open_last_project" => {
+            let project = desktop.view.lock().unwrap().last_project.clone();
+            if let Some(project) = project {
+                let encoded = encode_url_component(&project);
+                open_browser(app, &desktop, &format!("?project={encoded}"));
+            }
+        }
         "terminal" => open_browser(app, &desktop, "#terminal"),
         "restart" => {
             let _ = desktop.control.send(Control::Restart);
@@ -280,6 +312,7 @@ fn main() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -304,11 +337,13 @@ fn main() {
                     setup_failed: false,
                     autostart: settings["desktop"]["autostart"].as_bool().unwrap_or(true),
                     lang,
+                    last_project: None,
                 }),
                 control: tx,
                 stopping: AtomicBool::new(false),
                 stop_terminals: AtomicBool::new(false),
                 update_active: AtomicBool::new(false),
+                notification_denied: AtomicBool::new(false),
                 desktop_state_lock: Mutex::new(()),
                 done: (Mutex::new(false), Condvar::new()),
             });
@@ -382,4 +417,22 @@ fn main() {
         }
         _ => (),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_url_component;
+
+    #[test]
+    fn encode_url_component_percent_encodes_utf8_and_preserves_unreserved_bytes() {
+        assert_eq!(encode_url_component("a b/中"), "a%20b%2F%E4%B8%AD");
+        assert_eq!(
+            encode_url_component(
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+            ),
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+        );
+        assert_eq!(encode_url_component("?&=#%+"), "%3F%26%3D%23%25%2B");
+        assert_eq!(encode_url_component(""), "");
+    }
 }

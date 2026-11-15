@@ -1900,6 +1900,7 @@ function desktopPane(s) {
 		["herdrConfig", tr("herdr 快捷鍵與外掛"), tr("（會在 herdr 的 config.toml 加上資料夾導覽快捷鍵 prefix+e，並先備份）")],
 		["autostart", tr("登入時自動啟動專案管家"), ""],
 		["autoUpdate", tr("自動檢查 App 更新"), ""],
+		["notify", tr("顯示系統通知"), tr("（提案、卡住、工作完成等事件會跳出系統通知）")],
 	].map(([k, label, hint]) => `<div><label><input type="checkbox" data-k="desktop.${k}" ${s.desktop[k] ? "checked" : ""}> ${label}</label>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`).join("");
 }
 async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: tr("連不上管家") })); }
@@ -2167,7 +2168,8 @@ function renderSettings() {
 				<label class="field">${tr("Webhook 網址")}<input type="text" data-k="notify.hermes.url" value="${esc(s.notify.hermes.url)}" placeholder="${esc(tr("例如 http://127.0.0.1:8644/p/<profile>/webhooks/steward"))}"></label>
 				<label class="field">${tr("路由名稱")}<input type="text" data-k="notify.hermes.route" value="${esc(s.notify.hermes.route)}"></label>
 			</div>
-			<div><button class="small" id="setTestNotify">${tr("儲存並發一則測試推播")}</button></div>`,
+			<div><button class="small" id="setTestNotify">${tr("儲存並發一則測試推播")}</button></div>
+			<div id="setPhonePush" class="hint"></div>`,
 		desktop: setState.desktop ? desktopPane(s) : "",
 		ai: aiPane(s),
 		agents: agentsPane(),
@@ -2302,6 +2304,19 @@ function renderSettings() {
 	if (tab === "ai" && !setModels) loadSetModels().then(() => setState && setState.tab === "ai" && renderSettings());
 	const t = $("setTestNotify");
 	if (t) t.onclick = async () => { if (await saveSettings(false)) { const r = await post("/api/settings/test-notify", {}).catch(() => ({ error: tr("連不上管家") })); toast(r.ok ? tr("已送出測試推播") : r.error); } };
+	const phonePush = $("setPhonePush");
+	if (phonePush) fetch("/api/push/status").then((r) => r.ok ? r.json() : null).then((r) => {
+		if (!r || $("setPhonePush") !== phonePush) return;
+		if (!r.configured) {
+			phonePush.textContent = tr("iPhone/iPad App 推播：管家還沒設定推播金鑰(APNs)，見 ios-native/README.md。");
+			return;
+		}
+		phonePush.innerHTML = `${esc(tr("iPhone/iPad App 推播：已設定，{n} 台裝置。", { n: r.devices.length }))} <button class="small" id="setTestPhonePush">${tr("送測試推播到 iPhone/iPad")}</button>`;
+		$("setTestPhonePush")?.addEventListener("click", async () => {
+			const result = await post("/api/push/test", {}).catch(() => ({ error: tr("推播失敗") }));
+			toast(result.ok ? tr("已送出測試推播") : result.error || tr("推播失敗"));
+		});
+	}).catch(() => {});
 }
 /** 把畫面上的值收回 setState.s(切換分頁時不會丟掉) */
 function collectSettings() {

@@ -15,7 +15,7 @@ Object.assign(process.env, { HOME, USERPROFILE: HOME, XDG_CONFIG_HOME: HOME, APP
 delete process.env.STEWARD_DESKTOP;
 writeFileSync(join(HOME, "settings.json"), JSON.stringify({ version: 1, access: { tailscale: { enabled: false } }, plugins: {}, setupDone: true, aiDetected: true }));
 after(() => rmSync(HOME, { recursive: true, force: true }));
-const { DEFAULTS, settings } = await import("../src/settings.ts");
+const { DEFAULTS, settings, updateSettings } = await import("../src/settings.ts");
 const { applyUpdate, checkUpdate, REPO } = await import("../src/update.ts");
 
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -112,7 +112,7 @@ test("desktop main reports its mode, applies settings signals/setup, and exits w
 	assert.equal(body.desktop, true);
 	assert.equal(typeof body.platform, "string");
 	assert.ok(body.detected);
-	assert.deepEqual(body.settings.desktop, { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true });
+	assert.deepEqual(body.settings.desktop, { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true, notify: true });
 	await put(f.base, { ui: { lang: "en" }, desktop: { autostart: false, herdrCli: false, herdrConfig: false } });
 	const log = join(f.data, "logs", "desktop-setup.log");
 	await waitFor(() => existsSync(log) && readFileSync(log, "utf8").includes('"cmd":"setup","ok":true'));
@@ -230,10 +230,36 @@ test("desktopSignal emits newline-terminated single-line JSON only in desktop mo
 		assert.equal(result.status, 0, result.stderr);
 		assert.equal(result.stdout, mode === "1" ? '@@desktop {"cmd":"autostart","on":true}\n@@desktop {"cmd":"lang","lang":"en"}\n' : "");
 	}
-	assert.deepEqual(settings().desktop, { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true });
+	assert.deepEqual(settings().desktop, { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true, notify: true });
 });
 
-function uiFixture(desktop) {
+test("desktop notifications default to enabled, persist changes, and reject non-boolean values", (t) => {
+	assert.equal(DEFAULTS.desktop.notify, true);
+	t.after(() => updateSettings({ desktop: { notify: true } }));
+	for (const value of ["false", 0, null, undefined, [], {}]) {
+		assert.throws(() => updateSettings({ desktop: { notify: value } }), { name: "TypeError", message: "desktop.notify must be a boolean" });
+	}
+	assert.equal(updateSettings({ desktop: { notify: false } }).desktop.notify, false);
+	assert.equal(JSON.parse(readFileSync(join(HOME, "settings.json"), "utf8")).desktop.notify, false);
+	assert.equal(updateSettings({ desktop: { notify: true } }).desktop.notify, true);
+});
+
+test("notify emits desktop messages for iPhone-only events without counting them as successful pushes", () => {
+	const module = new URL("../src/notify.ts", import.meta.url).href;
+	for (const mode of [undefined, "0", "1"]) for (const enabled of [undefined, false, true]) for (const opts of [{ projectId: "p1", iphoneOnly: true }, { projectId: "p1" }, { iphoneOnly: true }]) {
+		const f = fixture(false);
+		writeFileSync(join(f.data, "settings.json"), JSON.stringify({ desktop: enabled === undefined ? {} : { notify: enabled } }));
+		if (mode !== undefined) f.env.STEWARD_DESKTOP = mode;
+		const source = `const { notify } = await import(${JSON.stringify(module)}); const sent = await notify("標題\\n內容\\n到看板核准:http://x/y", ${JSON.stringify(opts)}); if (sent !== false) throw new Error("Desktop notifications must not count as a successful push");`;
+		const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--input-type=module", "--eval", source], { env: f.env, encoding: "utf8", timeout: 5000 });
+		assert.equal(result.status, 0, result.stderr);
+		const expected = { cmd: "notify", title: "標題", body: "內容", ...(opts.projectId ? { project: opts.projectId } : {}) };
+		assert.equal(result.stdout, mode === "1" && enabled !== false ? `@@desktop ${JSON.stringify(expected)}\n` : "");
+		assert.equal(existsSync(join(f.data, "apns")), false);
+	}
+});
+
+function uiFixture(desktop, { fetch: fetchMock, post: postMock } = {}) {
 	const html = readFileSync(join(ROOT, "web", "index.html"), "utf8");
 	const nodes = new Map();
 	const modal = {
@@ -248,13 +274,14 @@ function uiFixture(desktop) {
 	};
 	const element = (id) => {
 		if (id === "setModal") return modal;
-		if (!modal.innerHTML.includes(`id="${id}"`)) return null;
-		if (!nodes.has(id)) nodes.set(id, { addEventListener(event, handler) { this[`on${event}`] = handler; } });
+		if (!modal.innerHTML.includes(`id="${id}"`) && ![...nodes.values()].some((node) => node.innerHTML.includes(`id="${id}"`))) return null;
+		if (!nodes.has(id)) nodes.set(id, { innerHTML: "", textContent: "", addEventListener(event, handler) { this[`on${event}`] = handler; } });
 		return nodes.get(id);
 	};
-	const requests = [], toasts = [];
+	const requests = [], fetchRequests = [], toasts = [];
 	const context = vm.createContext({
-		post: async (...args) => { requests.push(args); return {}; }, toast: (message) => toasts.push(message),
+		fetch: async (...args) => { fetchRequests.push(args); return fetchMock ? fetchMock(...args) : { ok: true, json: async () => ({ configured: false, devices: [] }) }; },
+		post: async (...args) => { requests.push(args); return postMock ? postMock(...args) : {}; }, toast: (message) => toasts.push(message),
 		$: element, fixtureSettings: structuredClone(DEFAULTS), window: {}, pref: () => "", clearInterval,
 		aiPane: () => "", agentsPane: () => "", routingPane: () => "", saveSettings: async () => true,
 		setModels: {},
@@ -270,7 +297,7 @@ function uiFixture(desktop) {
 	const collect = html.slice(html.indexOf("function collectSettings()"), html.indexOf("async function saveSettings("));
 	run(html.match(/^const esc = .*;$/m)[0] + "\n" + settingsSource + "\n" + render + "\n" + collect);
 	run(`setState = { s: fixtureSettings, detected: {}, platform: "darwin", desktop: ${desktop}, tab: "general" }; setAgents = []; setPlugins = []; setUpdate = { current: "v1.0.0", latest: "v1.1.0", hasUpdate: true, desktop: ${desktop}, downloadUrl: "https://github.com/example/repo/releases/latest", components: [] };`);
-	return { run, modal, element, requests, toasts };
+	return { run, modal, element, requests, fetchRequests, toasts };
 }
 
 test("desktop UI adds App controls and a wizard-only step; service UI stays unchanged", async () => {
@@ -278,7 +305,7 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 		const f = uiFixture(desktop);
 		f.run("renderSettings()");
 		assert.equal(f.modal.innerHTML.includes("<h4>App</h4>"), desktop);
-		assert.equal(f.modal.fields.filter((field) => field.dataset.k.startsWith("desktop.")).length, desktop ? 4 : 0);
+		assert.equal(f.modal.fields.filter((field) => field.dataset.k.startsWith("desktop.")).length, desktop ? 5 : 0);
 		f.run("setState.wizard = 0; renderSettings()");
 		assert.ok(f.modal.innerHTML.includes(`1/${desktop ? 6 : 5} 歡迎`));
 		assert.equal(f.modal.innerHTML.includes('data-k="desktop.'), false);
@@ -286,8 +313,9 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 		assert.equal(f.run("setState.tab"), desktop ? "desktop" : "ai");
 		if (desktop) {
 			assert.match(f.modal.innerHTML, /2\/6 元件與背景執行/);
-			assert.equal(f.modal.fields.length, 4);
+			assert.equal(f.modal.fields.length, 5);
 			assert.match(f.modal.innerHTML, /自動檢查 App 更新/);
+			assert.match(f.modal.innerHTML, /顯示系統通知/);
 			assert.ok(f.modal.fields.every((field) => field.checked));
 			f.modal.fields[0].checked = false;
 			f.run("collectSettings()");
@@ -295,6 +323,68 @@ test("desktop UI adds App controls and a wizard-only step; service UI stays unch
 			assert.match(f.modal.innerHTML, /你自己裝的 herdr 不會被覆蓋/);
 		}
 	}
+});
+
+test("push settings show iPhone status and send parameter-free test pushes in both languages", async () => {
+	for (const lang of ["zh-TW", "en"]) for (const desktop of [false, true]) {
+		let result = { ok: true };
+		const f = uiFixture(desktop, {
+			fetch: async () => ({ ok: true, json: async () => ({ configured: true, devices: [{}, {}] }) }),
+			post: async () => { if (result instanceof Error) throw result; return result; },
+		});
+		f.run("renderSettings()");
+		assert.equal(f.fetchRequests.length, 0);
+		f.run(`setState.s.ui.lang = ${JSON.stringify(lang)}; setState.tab = "notify"; renderSettings()`);
+		await new Promise(setImmediate);
+		assert.deepEqual(f.fetchRequests, [["/api/push/status"]]);
+		const markup = f.element("setPhonePush").innerHTML;
+		assert.ok(markup.includes(lang === "en" ? "iPhone/iPad App push: configured, 2 devices." : "iPhone/iPad App 推播：已設定，2 台裝置。"));
+		assert.ok(markup.includes(lang === "en" ? "Send a test push to iPhone/iPad" : "送測試推播到 iPhone/iPad"));
+		const button = f.element("setTestPhonePush");
+		await button.onclick();
+		assert.equal(f.requests[0][0], "/api/push/test");
+		assert.equal(JSON.stringify(f.requests[0][1]), "{}");
+		assert.equal(f.toasts.at(-1), lang === "en" ? "Test notification sent" : "已送出測試推播");
+		result = { error: "APNs unavailable" };
+		await button.onclick();
+		assert.equal(f.toasts.at(-1), "APNs unavailable");
+		for (const failure of [{}, new Error("offline")]) {
+			result = failure;
+			await button.onclick();
+			assert.equal(f.toasts.at(-1), lang === "en" ? "Push notification failed" : "推播失敗");
+		}
+	}
+});
+
+test("push settings show missing APNs credentials and stay empty if status cannot be fetched", async () => {
+	for (const lang of ["zh-TW", "en"]) {
+		const f = uiFixture(false);
+		f.run(`setState.s.ui.lang = ${JSON.stringify(lang)}; setState.tab = "notify"; renderSettings()`);
+		await new Promise(setImmediate);
+		assert.equal(f.element("setPhonePush").textContent, lang === "en" ? "iPhone/iPad App push: APNs credentials are not configured. See ios-native/README.md." : "iPhone/iPad App 推播：管家還沒設定推播金鑰(APNs)，見 ios-native/README.md。");
+		assert.equal(f.element("setTestPhonePush"), null);
+	}
+	for (const fetch of [async () => { throw new Error("offline"); }, async () => ({ ok: false })]) {
+		const f = uiFixture(false, { fetch });
+		f.run('setState.tab = "notify"; renderSettings()');
+		await new Promise(setImmediate);
+		assert.equal(f.element("setPhonePush").innerHTML, "");
+		assert.equal(f.element("setPhonePush").textContent, "");
+		assert.equal(f.element("setTestPhonePush"), null);
+	}
+});
+
+test("a late iPhone push status does not update another settings pane", async () => {
+	let resolve;
+	const response = new Promise((done) => { resolve = done; });
+	const f = uiFixture(true, { fetch: () => response });
+	f.run('setState.tab = "notify"; renderSettings()');
+	const previous = f.element("setPhonePush");
+	f.run('setState.tab = "general"; renderSettings()');
+	resolve({ ok: true, json: async () => ({ configured: true, devices: [] }) });
+	await new Promise(setImmediate);
+	assert.equal(previous.innerHTML, "");
+	assert.equal(f.element("setTestPhonePush"), null);
 });
 
 test("desktop About uses an App update button and hides installer update/removal controls", () => {

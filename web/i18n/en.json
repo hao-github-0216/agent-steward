@@ -1384,5 +1384,11 @@
 	"提案檢查失敗 {project}: {error}": "Proposal review failed for {project}: {error}",
 	"工作排程器裡的「{name}」": "'{name}' in Task Scheduler",
 	"畫面": "Screen",
-	"更新到 {tag}": "Updating to {tag}"
+	"更新到 {tag}": "Updating to {tag}",
+	"顯示系統通知": "Show system notifications",
+	"（提案、卡住、工作完成等事件會跳出系統通知）": "(Show system notifications for proposals, blocked tasks, completed work, and similar events)",
+	"iPhone/iPad App 推播：管家還沒設定推播金鑰(APNs)，見 ios-native/README.md。": "iPhone/iPad App push: APNs credentials are not configured. See ios-native/README.md.",
+	"iPhone/iPad App 推播：已設定，{n} 台裝置。": "iPhone/iPad App push: configured, {n} devices.",
+	"送測試推播到 iPhone/iPad": "Send a test push to iPhone/iPad",
+	"推播失敗": "Push notification failed"
 }
