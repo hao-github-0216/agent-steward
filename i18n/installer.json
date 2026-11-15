@@ -117,7 +117,7 @@
   "summary_manual": { "zh-TW": "  手動啟動：cd \"{0}\" && \"{1}\" --experimental-strip-types --no-warnings src/main.ts", "en": "  Start manually: cd \"{0}\" && \"{1}\" --experimental-strip-types --no-warnings src/main.ts" },
   "summary_receipt": { "zh-TW": "  這次的改動記在 {0}/install.json", "en": "  Changes are recorded in {0}/install.json" },
   "summary_remove": { "zh-TW": "  移除：sh {0}/uninstall.sh", "en": "  Uninstall: sh {0}/uninstall.sh" },
-  "summary_privacy": { "zh-TW": "  專案管家不會傳送任何使用資料。", "en": "  agent-steward does not send usage data." },
+  "summary_privacy": { "zh-TW": "  專案管家不會傳送任何使用資料。手機 App 的推播（你在手機上允許才會有）會加密後經過推播中繼，中繼看不到內容。", "en": "  agent-steward does not send usage data. Phone notifications (only if you allow them in the mobile app) are encrypted and pass through a push relay that cannot read them." },
   "first_use": { "zh-TW": "第一次使用：在瀏覽器裡設定管理密碼、AI 接口和要接上的 agent。", "en": "On first use, configure an admin password, AI providers, and agent integrations in your browser." },
   "uninstall_agents": { "zh-TW": "拿掉各 agent 的專案管家整合", "en": "Removing agent-steward integrations" },
   "uninstall_stopped": { "zh-TW": "已停止服務", "en": "Services stopped" },

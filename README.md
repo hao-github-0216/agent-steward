@@ -141,7 +141,7 @@ irm https://github.com/hao-github-0216/agent-steward/releases/latest/download/in
   ```
 
 - 要固定裝某一版，把網址裡的 `latest/download` 換成 `download/vX.Y.Z`。
-- 專案管家和安裝程式都不會傳送任何使用資料。
+- 專案管家和安裝程式都不會傳送任何使用資料。手機 App 的推播（你在手機上允許才會有）會加密後經過開發者執行的推播中繼，中繼看不到內容，詳見[隱私說明](docs/privacy.md)。
 
 ## 語言
 

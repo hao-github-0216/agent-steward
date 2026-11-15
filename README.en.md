@@ -141,7 +141,7 @@ What gets installed:
   ```
 
 - To install a specific version, replace `latest/download` in the URL with `download/vX.Y.Z`.
-- agent-steward and its installer send no usage data.
+- agent-steward and its installer send no usage data. Phone notifications (only if you allow them in the mobile app) are encrypted and pass through a push relay run by the developer, which cannot read them. See the [privacy policy](docs/privacy.en.md).
 
 ## Language
 
