@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "aad": "agent-steward-push-v1",
+  "vectors": [
+    {
+      "name": "vector-1",
+      "key": "VjyHrSACw10ttymS6RSN+XIMpYgj2GANNSj1oQarIWY=",
+      "nonce": "ge1x2eXcNHmRQKe9",
+      "plaintext": "{\"title\":\"🗂 專案管家提案（測試專案）\",\"body\":\"有一個新提案，請查看內容。🔔\",\"link\":\"agentsteward://project/test-project\",\"thread\":\"test-project\"}",
+      "payload": "ge1x2eXcNHmRQKe9tee/kRqABOBYPMA6tIqQpUg0WyfLNJLxCQIt1Vayy7vP++cIkjYrTJbwaS5eF4xj3QT3glL5y2vBrnbakOck9weSIMfGZ8fRjyLVcXwGZNIIKeGBAE79WSbnTfFVdVXbrzcI7/xu8urLWACCJ+mhgtPdO8lk0Gh5b3A2fBVcoUWquldcqI72WcDj/xOTOa3IejZ5MPe3F20v71/429gSxtcP8V5JcA8qirmlm+VBr+GxNb69+fcSQ8pzR7qg8mo="
+    },
+    {
+      "name": "vector-2",
+      "key": "TGdmVyq0d0l9+o7LxMhkKCeV+FWOd3pj07Sh+r7ugMk=",
+      "nonce": "xn/4tX0zSv1B9XJf",
+      "plaintext": "{\"title\":\"測試通知 ✨\",\"body\":\"這則通知沒有連結或討論串。\"}",
+      "payload": "xn/4tX0zSv1B9XJfEL/rYlb2jzh9SQYVQH98xwAWG22/nxgA2YwyQKnxvyE8aFWYiblFiDg+haZDWurxJXH+/fx2i0d3n9AMERv/2fBtHe7NFmj0cxlv8Afg6vx8yO0OWJQBIMLeF5+H"
+    },
+    {
+      "name": "vector-3",
+      "key": "fuOmoHij5J0lp6y/aQ8dsfw94R4uhfzfVPUW+8y4+n8=",
+      "nonce": "ND4LzfojMw9uz6tV",
+      "plaintext": "{\"title\":\"建置完成 ✅\",\"body\":\"繁體中文、emoji 🚀，以及換行\\n第二行。\",\"link\":\"agentsteward://project/build\",\"thread\":\"build\"}",
+      "payload": "ND4LzfojMw9uz6tViYAG9/S4qmdi5vE9HVDmSTseufyoZjdkmprNLvv0Y9Bj+fiVfUd9B8uOvxSBmS3bhX/wbX5Lz00cQ6lhVkxu3NtQ7QTxkf9093HflN+gVJ1M1VCWAqqtbabJxAzksOVzIFWBMtLOJ5C3vDdJVie0m8sCWuSSs0Kj+arHhrYeZdkDVlaKcDGehr2hiACflDTR8XfXu3FphgVgqasZMrKdWlw7mw=="
+    }
+  ],
+  "wrongKey": {
+    "name": "wrongKey",
+    "key": "QISS7Bch3QPrREMcEaITKhtGtKRGvBZRryVcF721ono=",
+    "nonce": "ge1x2eXcNHmRQKe9",
+    "plaintext": "{\"title\":\"🗂 專案管家提案（測試專案）\",\"body\":\"有一個新提案，請查看內容。🔔\",\"link\":\"agentsteward://project/test-project\",\"thread\":\"test-project\"}",
+    "payload": "ge1x2eXcNHmRQKe9tee/kRqABOBYPMA6tIqQpUg0WyfLNJLxCQIt1Vayy7vP++cIkjYrTJbwaS5eF4xj3QT3glL5y2vBrnbakOck9weSIMfGZ8fRjyLVcXwGZNIIKeGBAE79WSbnTfFVdVXbrzcI7/xu8urLWACCJ+mhgtPdO8lk0Gh5b3A2fBVcoUWquldcqI72WcDj/xOTOa3IejZ5MPe3F20v71/429gSxtcP8V5JcA8qirmlm+VBr+GxNb69+fcSQ8pzR7qg8mo="
+  }
+}

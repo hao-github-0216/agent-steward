@@ -1,0 +1,28 @@
+{
+  "name": "agent-steward-push-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "make-vectors": "node scripts/make-vectors.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@cloudflare/workers-types": "5.20261115.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "wrangler": "4.162.0"
+  },
+  "overrides": {
+    "@cloudflare/vitest-pool-workers": {
+      "zod": "4.6.7"
+    },
+    "miniflare@5.20260815.0-alpha": {
+      "workerd": "1.20261113.1",
+      "sharp": "0.35.5",
+      "undici": "7.30.1"
+    }
+  }
+}
