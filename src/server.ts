@@ -468,7 +468,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	};
 
 	const handler = async (req: IncomingMessage, res: ServerResponse) => {
-		const url = new URL(req.url ?? "/", "http://x");
+		// 解析不了的網址(例如掃描工具送的 //host%2f..)直接回 400,不讓整個服務當掉
+		let url: URL;
+		try {
+			url = new URL(req.url ?? "/", "http://x");
+		} catch {
+			return send(res, 400, { error: "bad request" });
+		}
 		const path = url.pathname;
 		try {
 			// ---------- 用 Office 編輯(WebDAV):Office 拿不到瀏覽器登入,只靠專用連結 ----------
@@ -1473,7 +1479,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	const hosts = lan && !process.env.STEWARD_HOSTS ? ["0.0.0.0"] : HOSTS;
 	const listening = new Map<string, Server>();
 	for (const host of hosts) {
-		const server = createServer((req, res) => (req.url === "/terminal" || req.url?.startsWith("/terminal/") ? proxyHttp(req, res) : handler(req, res)));
+		const server = createServer((req, res) => (req.url === "/terminal" || req.url?.startsWith("/terminal/") ? proxyHttp(req, res) : handler(req, res).catch((e) => {
+			// handler 外漏的錯誤只記錄並回 500,服務繼續跑
+			console.error("[server]", e);
+			if (!res.headersSent) send(res, 500, { error: "internal error" });
+			else res.destroy();
+		})));
 		listening.set(host, server);
 		server.on("upgrade", proxyUpgrade);
 		server.on("error", (e) => console.error(`[server] 綁定 ${host}:${PORT} 失敗:${e.message}`));

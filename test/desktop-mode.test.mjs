@@ -500,3 +500,19 @@ test("desktop update button posts no parameters and shows the App dialog message
 		assert.ok(f.modal.innerHTML.includes(lang === "en" ? "Automatically check for App updates" : "自動檢查 App 更新"));
 	}
 });
+
+test("解析不了的網址回 400,服務不會當掉", async (t) => {
+	const f = await main(t, false);
+	const { connect } = await import("node:net");
+	const raw = (path) => new Promise((resolve, reject) => {
+		const socket = connect(Number(f.env.STEWARD_PORT), "127.0.0.1", () => socket.end(`GET ${path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`));
+		let data = "";
+		socket.on("data", (c) => (data += c));
+		socket.on("end", () => resolve(data));
+		socket.on("error", reject);
+	});
+	assert.match(await raw("//interactsh.com%2f.."), /^HTTP\/1\.1 400 /);
+	const health = await fetch(f.base + "/api/health", { headers: { connection: "close" } });
+	assert.equal(health.status, 200);
+	assert.equal(f.child.exitCode, null);
+});
