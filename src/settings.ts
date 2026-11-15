@@ -10,8 +10,8 @@ import { isAbsolute, join } from "node:path";
 const HOME = homedir();
 export const DATA_DIR = process.env.STEWARD_DATA_DIR ?? join(HOME, ".agent-steward");
 export const SETTINGS_PATH = join(DATA_DIR, "settings.json");
-// 推播中繼部署後填入正式網址
-export const RELAY_DEFAULT = "";
+// 預設的推播中繼(relay/,Cloudflare Worker);設定 → 推播可以改成自己的或清空關閉
+export const RELAY_DEFAULT = "https://agent-steward-push.agent-steward-push-relay.workers.dev";
 
 /** 傳給桌面 App 的單行 JSON 訊息;服務模式不輸出。 */
 export function desktopSignal(obj: { cmd: string; [key: string]: unknown }): void {

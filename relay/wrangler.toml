@@ -4,7 +4,7 @@ compatibility_date = "2026-10-01"
 
 [vars]
 APNS_TOPIC = "io.github.haogithub0216.agentsteward.native"
-APNS_TEAM_ID = ""
+APNS_TEAM_ID = "N8XLCRL5GL"
 
 [[ratelimits]]
 name = "RL_TOKEN"

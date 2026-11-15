@@ -232,11 +232,11 @@ test("status/register/test 路由使用新格式，保留舊 configured 並隱�
 	`);
 });
 
-test("push.relay 預設空字串，只接受無帳密、query、fragment 的 HTTPS 網址", (t) => {
+test("push.relay 預設是正式推播中繼，只接受無帳密、query、fragment 的 HTTPS 網址", (t) => {
 	isolated(t, `
-		assert.equal(DEFAULTS.push.relay, "");
-		assert.equal(settings().push.relay, "");
-		assert.equal(pushMode(), "none");
+		assert.ok(DEFAULTS.push.relay.startsWith("https://") && DEFAULTS.push.relay.endsWith(".workers.dev"));
+		assert.equal(settings().push.relay, DEFAULTS.push.relay);
+		assert.equal(pushMode(), "relay");
 		for (const relay of ["https://relay.example", "https://relay.example/v1-root/", ""]) {
 			assert.equal(updateSettings({ push: { relay } }).push.relay, relay);
 			for (const invalid of [undefined, null, 5, {}, [], "http://relay.example", "file:///tmp/relay", "relay.example", "https://", "https://user:pass@relay.example", "https://user@relay.example", "https://relay.example?x=1", "https://relay.example#fragment", "https://relay.example?", "https://relay.example#"]) {
