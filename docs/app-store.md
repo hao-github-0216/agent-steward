@@ -6,12 +6,15 @@
 
 | 欄位 | 內容 |
 |---|---|
-| App 名稱 | 專案管家 Agent Steward |
+| App 名稱 | 英文：Agent Steward；繁體中文：專案管家 Agent Steward |
 | Bundle ID | io.github.haogithub0216.agentsteward.native |
 | 主要類別 | 開發者工具（Developer Tools） |
 | 次要類別 | 生產力工具（Productivity） |
 | 年齡分級 | 4+（問卷全部選「無」） |
 | 價格 | 免費，沒有 App 內購買 |
+| 上架地區 | 174 個國家或地區，排除中國大陸（上架中國大陸需要 ICP 備案） |
+| 版權 | 2026 Agent Steward contributors |
+| 發佈方式 | 審查通過後手動發佈 |
 | 隱私權政策網址 | https://github.com/hao-github-0216/agent-steward/blob/main/docs/privacy.md（英文：privacy.en.md） |
 | 支援網址 | https://github.com/hao-github-0216/agent-steward/blob/main/docs/support.md（英文：support.en.md） |
 | 原始碼 | https://github.com/hao-github-0216/agent-steward |
@@ -53,7 +56,7 @@
 
 ## English
 
-**Subtitle** (30 characters max): Your AI agents' board, on the go
+**Subtitle** (30 characters max): AI agent board, on the go
 
 **Promotional text** (170 characters max):
 See what every AI agent on your computer is doing, approve their proposals, and get notified the moment work is blocked or done. Notifications are end-to-end encrypted.
@@ -112,6 +115,6 @@ No sign-in is required in demo mode. A real connection requires the user's own s
 
 ## 截圖
 
-用示範模式的 UI 測試自動產生（ios-native/StewardUITests/DemoTests.swift，截圖名稱 01-board、02-card…）。需要的尺寸：
-- iPhone 6.9 吋（iPhone 16/17/18 Pro Max 模擬器）
-- iPad 13 吋（iPad Pro 13 吋模擬器）
+用示範模式的 UI 測試自動產生：中文用 ios-native/StewardUITests/DemoTests.swift，英文用 EnglishTests.swift（截圖名稱 01-board、02-card…，en- 開頭是英文）。目前上傳的是英文 6 張（看板、卡片、問管家、程式碼、Git、設定），Apple 會套用到所有語言與尺寸：
+- iPhone：App Store Connect 預設區塊是 6.3 吋（1206 × 2622），用 iPhone Pro 模擬器拍，或把 Pro Max 的 1320 × 2868 等比例縮成 1206 × 2622。
+- iPad 13 吋：iPad Pro 13 吋模擬器，2064 × 2752。
