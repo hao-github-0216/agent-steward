@@ -15,7 +15,7 @@ const SRC_FILES = [
 	"src/i18n.ts", "src/server.ts", "src/models.ts", "src/plugins.ts", "src/notebook.ts",
 	"src/update.ts", "src/terminal-auth.ts", "src/agents.ts", "src/agent-cli.ts", "src/dispatch.ts",
 	"src/spaces.ts", "src/recall.ts", "src/followup.ts", "src/desktop-setup.ts", "src/tailscale.ts",
-	"src/apns.ts", "src/office-dav.ts", "src/settings.ts", "src/branch.ts", "src/code.ts",
+	"src/apns.ts", "src/office-dav.ts", "src/settings.ts", "src/branch.ts", "src/code.ts", "src/doc-text.ts",
 	"src/worktrees.ts", "src/steward.ts", "src/projects.ts", "src/brief.ts", "src/create.ts",
 	"src/code-session.ts", "src/latex.ts", "src/term-paste.ts", "src/worktree.ts", "src/oauth-login.ts",
 	"src/main.ts", "src/watcher.ts", "src/snap.ts",

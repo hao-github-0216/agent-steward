@@ -949,12 +949,15 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				let snippet = snap ? snapPrompt(snap, images.length > 0) : quote ? `\n\n檔案 ${quote.path ?? ""}${quote.from ? ` 第 ${quote.from}${quote.to && quote.to !== quote.from ? `–${quote.to}` : ""} 行` : ""}:\n\`\`\`\n${quote.text}\n\`\`\`` : "";
 				let budget = 300_000;
 				for (const f of fileReqs) {
-					let item: { path: string; text?: string; note?: string };
-					try { item = fileForChat(p, f.path, typeof f.content === "string" ? f.content : undefined); }
-					catch (e) { item = { path: f.path, note: (e as Error).message || "讀不到" }; }
-					if (item.text && item.text.length > budget) item = { path: item.path, note: "這次帶的檔案太多,這個檔案沒有附上內容" };
-					if (item.text) budget -= item.text.length;
-					snippet += item.text ? `\n\n使用者附上的檔案 ${item.path}:\n\`\`\`\n${item.text}\n\`\`\`` : `\n\n(使用者附上的檔案 ${item.path}:${item.note})`;
+					let item: { path: string; text?: string; note?: string; converted?: boolean };
+					try { item = await fileForChat(p, f.path, typeof f.content === "string" ? f.content : undefined); }
+					catch (e) { item = { path: f.path, note: (e as Error).message || tr("讀不到") }; }
+					if (item.text && item.text.length > budget) item = { path: item.path, note: tr("這次帶的檔案太多,這個檔案沒有附上內容") };
+					if (item.text !== undefined) {
+						budget -= item.text.length;
+						const title = item.converted ? tr("使用者附上的檔案 {path}（已轉成文字，排版、圖片和公式可能遺失）", { path: item.path }) : tr("使用者附上的檔案 {path}", { path: item.path });
+						snippet += `\n\n${title}:\n\`\`\`\n${item.text}\n\`\`\``;
+					} else snippet += tr("\n\n（使用者附上的檔案 {path} 沒有附上內容，原因：{note}。回答時請直接把這個原因和建議做法告訴使用者，不要說自己沒有讀檔工具。）", { path: item.path, note: item.note || tr("讀不到") });
 				}
 				if (images.length) {
 					// 有圖片:用看得懂圖片的模型回答這一題(隱私專案只能用隱私模型)

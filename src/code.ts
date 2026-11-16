@@ -1,6 +1,7 @@
 // 「程式碼」模式的後端:專案內的檔案瀏覽/讀寫,以及 git 操作。
 // 安全:所有路徑都限制在專案資料夾內(含 symlink 跳脫檢查);呼叫端必須先通過 Tailscale 身分檢查。
 import { tr } from "./i18n.ts";
+import { documentText } from "./doc-text.ts";
 import { execFile } from "node:child_process";
 import { trash as osTrash } from "./platform.ts";
 import { createHash } from "node:crypto";
@@ -638,19 +639,26 @@ export function findFiles(p: Project, q: string, limit = 30): string[] {
 
 export const CHAT_FILE_LIMIT = 100_000; // 單一檔案最多帶 100KB(超過只帶頭尾)
 /** 把檔案內容整理成問管家用的文字;content 有給就用它(編輯器裡還沒存的版本) */
-export function fileForChat(p: Project, rel: string, content?: string): { path: string; text?: string; note?: string } {
+export async function fileForChat(p: Project, rel: string, content?: string): Promise<{ path: string; text?: string; note?: string; converted?: boolean }> {
+	const abs = inProject(p, rel);
 	let text = content;
+	let converted = false;
 	if (typeof text !== "string") {
 		const f = readFile(p, rel);
-		if (f.kind !== "text") return { path: rel, note: f.kind === "image" || f.kind === "pdf" ? "不是文字檔(圖片請用「＋ 圖片」)" : f.kind === "toolarge" ? "檔案太大" : "不是文字檔" };
-		text = f.content;
+		if (f.kind === "pdf" || f.kind === "office") {
+			const doc = await documentText(abs, extname(abs));
+			if (doc.text === undefined) return { path: rel, note: doc.note };
+			text = doc.text;
+			converted = true;
+		} else if (f.kind === "text") text = f.content;
+		else return { path: rel, note: f.kind === "image" ? tr("這是圖片，請用「＋ 圖片」附上") : f.kind === "toolarge" ? tr("檔案太大") : tr("不是文字檔") };
 	}
 	if (/\.ipynb$/i.test(rel)) text = notebookAsText(text);
 	if (text.length > CHAT_FILE_LIMIT) {
 		const half = CHAT_FILE_LIMIT / 2;
-		text = `${text.slice(0, half)}\n\n…(中間省略 ${text.length - CHAT_FILE_LIMIT} 字,檔案太長只帶開頭和結尾)…\n\n${text.slice(-half)}`;
+		text = `${text.slice(0, half)}\n\n${tr("…(中間省略 {n} 字,檔案太長只帶開頭和結尾)…", { n: text.length - CHAT_FILE_LIMIT })}\n\n${text.slice(-half)}`;
 	}
-	return { path: rel, text };
+	return { path: rel, text, ...(converted ? { converted: true } : {}) };
 }
 
 /** Notebook 轉成好讀的文字:依序列出儲存格,文字輸出保留(太長截掉),圖片只標註 */
