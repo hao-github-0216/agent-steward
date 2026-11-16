@@ -1,0 +1,117 @@
+# App Store / Google Play 上架資料
+
+上架時填進 App Store Connect 和 Google Play Console 的文字。改這裡，再複製過去。
+
+## 基本資料
+
+| 欄位 | 內容 |
+|---|---|
+| App 名稱 | 專案管家 Agent Steward |
+| Bundle ID | io.github.haogithub0216.agentsteward.native |
+| 主要類別 | 開發者工具（Developer Tools） |
+| 次要類別 | 生產力工具（Productivity） |
+| 年齡分級 | 4+（問卷全部選「無」） |
+| 價格 | 免費，沒有 App 內購買 |
+| 隱私權政策網址 | https://github.com/hao-github-0216/agent-steward/blob/main/docs/privacy.md（英文：privacy.en.md） |
+| 支援網址 | https://github.com/hao-github-0216/agent-steward/blob/main/docs/support.md（英文：support.en.md） |
+| 原始碼 | https://github.com/hao-github-0216/agent-steward |
+
+## 繁體中文
+
+**副標題**（30 字內）：AI agent 的工作看板，隨身帶著
+
+**宣傳文字**（170 字內，可以隨時改）：
+在手機上看電腦裡每個 AI agent 做到哪、核准它們的提案，工作卡住或完成時馬上收到通知。通知內容端對端加密。
+
+**描述**：
+專案管家把你電腦上各個 AI coding agent 的工作整理成一個看板。這個 App 讓你離開電腦時也能跟上進度。
+
+看板
+• 提案、已核准、進行中、卡住、完成五欄，每張工作卡是一件交給 agent 的事
+• 核准提案就會派工；卡住的卡可以看原因、重新派工或追問 agent
+
+問管家
+• 用自然語言問「這個專案做到哪了」「為什麼卡住」，管家依照專案的紀錄回答
+• 可以附照片、引用程式碼片段，或直接把回答整理成新的工作卡
+
+程式碼
+• 瀏覽專案檔案、搜尋、看和編輯程式碼，預覽 Markdown、PDF、圖片和 Notebook
+• 看 Git 狀態、差異和歷史，寫 commit
+
+通知
+• 有新提案、工作卡卡住、工作完成或 agent 在等你回應時通知你，點通知直接打開那個專案
+• 通知內容在你的電腦上加密，只有你的手機解得開
+
+需要什麼
+• 這個 App 要連到你自己電腦上的專案管家（開源、免費），請先照 github.com/hao-github-0216/agent-steward 的說明安裝
+• 建議用 Tailscale 讓手機連到電腦
+• 沒有電腦也可以按「先看示範」，用範例資料看看各個畫面
+
+不收集任何個人資料，沒有廣告和追蹤。
+
+**關鍵字**（100 字元內，逗號分隔）：AI,agent,看板,工作卡,程式碼,Git,開發者,Claude,Codex,Tailscale,通知,專案管理
+
+## English
+
+**Subtitle** (30 characters max): Your AI agents' board, on the go
+
+**Promotional text** (170 characters max):
+See what every AI agent on your computer is doing, approve their proposals, and get notified the moment work is blocked or done. Notifications are end-to-end encrypted.
+
+**Description**:
+Agent Steward turns the work of the AI coding agents on your computer into one board. This app keeps you up to date when you're away from your desk.
+
+Board
+• Five columns (Proposed, Approved, In progress, Blocked, Done), where each card is a task handed to an agent
+• Approving a proposal dispatches it; for a blocked card you can read why, redispatch it, or ask the agent a follow-up
+
+Ask the steward
+• Ask in plain language ("How far along is this project?" "Why is this stuck?") and the steward answers from the project's records
+• Attach photos, quote code, or turn an answer into a new card
+
+Code
+• Browse, search, read, and edit project files; preview Markdown, PDF, images, and notebooks
+• See Git status, diffs, and history, and write commits
+
+Notifications
+• Get notified about new proposals, blocked cards, finished work, or an agent waiting for you; tap to open that project
+• Notifications are encrypted on your computer and only your phone can decrypt them
+
+Requirements
+• The app connects to Agent Steward running on your own computer (open source and free). Install it first by following github.com/hao-github-0216/agent-steward
+• Tailscale is recommended for connecting your phone to your computer
+• No computer yet? Tap "Try the demo" to see every screen with sample data
+
+No personal data is collected. No ads, no tracking.
+
+**Keywords** (100 characters max): AI,agent,kanban,board,coding,Git,developer,Claude,Codex,Tailscale,notifications,tasks
+
+## 給 App 審查員的說明（App Review Information → Notes）
+
+This app is the mobile client for Agent Steward, an open-source tool that users run on their own computer (https://github.com/hao-github-0216/agent-steward). The app has no server of its own: users connect it to their own steward, usually over Tailscale.
+
+To review the app without installing anything, tap "先看示範" (Try the demo) on the first screen. Demo mode runs entirely offline with built-in sample data and covers the board, card details, the steward chat, the code browser, and Git. Screens that exist only in the desktop web version (the terminal) show an explanation in demo mode.
+
+Push notifications: the user's own computer encrypts each notification with a key generated on the device, then sends it through our push relay (a Cloudflare Worker, source in relay/ of the repository) to APNs. The notification service extension decrypts it on the device. The relay cannot read notification content.
+
+Encryption: the app uses AES-GCM only to protect the user's own notification content (exempt under category 5D992 / mass-market; ITSAppUsesNonExemptEncryption = NO).
+
+No sign-in is required in demo mode. A real connection requires the user's own steward address.
+
+## App 隱私問卷（App Store Connect → App Privacy）
+
+- **Do you or your third-party partners collect data from this app?** → No（不收集）
+  - 理由：資料只在使用者自己的手機和電腦之間傳送，開發者收不到。推播中繼只轉送加密內容與推播代碼，不儲存、不連結到使用者身分，屬於「僅為傳送通知而短暫處理」，不算收集。
+- **Tracking** → No
+
+## Google Play 資料安全表單（Data safety）
+
+- 是否收集或分享使用者資料：否
+- 傳輸中的資料是否加密：是（連到管家用 HTTPS；通知內容另外端對端加密）
+- 使用者能否要求刪除資料：不適用（沒有收集）
+
+## 截圖
+
+用示範模式的 UI 測試自動產生（ios-native/StewardUITests/DemoTests.swift，截圖名稱 01-board、02-card…）。需要的尺寸：
+- iPhone 6.9 吋（iPhone 16/17/18 Pro Max 模擬器）
+- iPad 13 吋（iPad Pro 13 吋模擬器）
