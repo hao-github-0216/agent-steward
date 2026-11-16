@@ -1,12 +1,13 @@
-// 設定(標題列的 ⚙):跟網頁的設定同樣幾頁(打開就是網頁那一頁),加上這支 iPhone 自己的設定(管家網址、iPhone 推播)
+// 管家設定使用原生表單，這支 iPhone 的網址與推播設定留在首頁。
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var confirmForget = false
+    @State private var settings = SettingsStore()
 
-    /// 網頁的 SET_TABS
+    /// 跟網頁相同的八個設定分頁。
     private static let webTabs: [(String, String, String)] = [
         ("general", "一般", "gearshape"), ("ai", "AI 接口", "cpu"), ("routing", "路由", "arrow.triangle.branch"),
         ("agents", "Agent", "person.2"), ("access", "存取", "lock.shield"), ("notify", "推播", "bell"),
@@ -19,11 +20,13 @@ struct SettingsView: View {
                 Section("管家設定") {
                     ForEach(Self.webTabs, id: \.0) { t in
                         NavigationLink {
-                            WebPage(sheet: .settings(t.0, t.1))
+                            settingsPage(t.0)
                         } label: {
                             Label(t.1, systemImage: t.2)
                         }
+                        .accessibilityIdentifier("settings-\(t.0)")
                     }
+                    if settings.loading { ProgressView("讀取中…") }
                 }
                 Section {
                     LabeledContent("管家網址", value: model.server?.absoluteString ?? "—")
@@ -41,12 +44,12 @@ struct SettingsView: View {
                     PushSettingsSection()
                 }
                 Section {
+                    LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                }
+                Section {
                     NavigationLink { WebPage(sheet: .full) } label: { Label("完整網頁版", systemImage: "safari") }
                 } footer: {
                     Text("跟電腦上打開的網頁一模一樣(看板拖拉、建立專案、整理 spaces 都在)。")
-                }
-                Section {
-                    LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
                 }
             }
             .navigationTitle("設定")
@@ -57,6 +60,27 @@ struct SettingsView: View {
             .confirmationDialog("要更換管家網址嗎?", isPresented: $confirmForget, titleVisibility: .visible) {
                 Button("更換", role: .destructive) { dismiss(); model.forgetServer() }
             }
+        }
+        .environment(settings)
+        .task { await settings.load(api: model.api) }
+        .alert("設定失敗", isPresented: Binding(get: { settings.error != nil }, set: { if !$0 { settings.error = nil } })) {
+            Button("好") { settings.error = nil }
+        } message: {
+            Text(settings.error ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private func settingsPage(_ tab: String) -> some View {
+        switch tab {
+        case "general": GeneralSettingsView()
+        case "ai": AISettingsView()
+        case "routing": RoutingSettingsView()
+        case "agents": AgentSettingsView()
+        case "access": AccessSettingsView()
+        case "notify": NotifySettingsView()
+        case "plugins": PluginSettingsView()
+        default: AboutSettingsView()
         }
     }
 }
