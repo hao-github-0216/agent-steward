@@ -111,14 +111,14 @@ test("isThrowawayPath:系統暫存、環境變數、快取、套件與家目錄 
 	for (const rel of [".pi", ".config", ".config/tool", ".claude/jobs/abc/tmp", ".claude/jobs/abc/other", ".something/deep"]) {
 		assert.equal(isThrowawayPath("/home/tester/" + rel, opts), true, rel);
 	}
-	for (const p of ["/", "/home/tester", "/home/tester/code/x", "/home/tester/asr-shadow", "/work/project/.claude/worktrees/x", "/work/node_modules-extra/pkg", "/work/myvenv/pkg", "/work/go/pkg/module", "/home/tester/Library/Caches-other"]) {
+	for (const p of ["/", "/home/tester", "/home/tester/code/x", "/home/tester/sample-project", "/work/project/.claude/worktrees/x", "/work/node_modules-extra/pkg", "/work/myvenv/pkg", "/work/go/pkg/module", "/home/tester/Library/Caches-other"]) {
 		assert.equal(isThrowawayPath(p, opts), false, p);
 	}
 	assert.equal(isThrowawayPath("/home/tester/Library/Caches/../Projects", opts), false);
 	assert.equal(isThrowawayPath("/work/project", { ...opts, tempDir: "/", env: { TMPDIR: "/home/tester" } }), false);
 	assert.equal(isThrowawayPath(HOME), false);
 	assert.equal(isThrowawayPath(dir("code/x")), false);
-	assert.equal(isThrowawayPath(dir("asr-shadow")), false);
+	assert.equal(isThrowawayPath(dir("sample-project")), false);
 	assert.equal(isThrowawayPath(tmpdir()), true);
 `));
 
@@ -161,7 +161,7 @@ test("isThrowawayPath:Windows 路徑統一分隔符、不分大小寫,不排除�
 		assert.equal(isThrowawayPath(p, opts), true, p);
 		assert.equal(isThrowawayPath(p.replaceAll("/", String.fromCharCode(92)), opts), true, p);
 	}
-	for (const p of ["C:/", "c:/users/TESTER", "C:/Users/Tester/code/x", "C:/Users/Tester/asr-shadow", "C:/Users/Tester/AppData/Local", "C:/Users/Tester/AppData/Local/Programs/my-project", "C:/Users/Tester/AppData/Local/custom-project", "C:/Windows/Temp-other", "C:/Users/Tester/AppData/Local/Packages-other"]) {
+	for (const p of ["C:/", "c:/users/TESTER", "C:/Users/Tester/code/x", "C:/Users/Tester/sample-project", "C:/Users/Tester/AppData/Local", "C:/Users/Tester/AppData/Local/Programs/my-project", "C:/Users/Tester/AppData/Local/custom-project", "C:/Windows/Temp-other", "C:/Users/Tester/AppData/Local/Packages-other"]) {
 		assert.equal(isThrowawayPath(p, opts), false, p);
 	}
 `));
