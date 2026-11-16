@@ -48,7 +48,17 @@ final class WatchFixture {
                 WatchProject(id: "watch-private", name: "", counts: WatchCounts(proposed: 2, blocked: 1), isPrivate: true)
             ]
         )
-        chat = [WatchChatLine(role: "assistant", text: english ? "The daily forecast is ready. **Rain reminders** are next." : "每日預報已完成，接著加入**降雨提醒**。")]
+        chat = english ? [
+            WatchChatLine(role: "user", text: "How far along is this project?"),
+            WatchChatLine(role: "assistant", text: "The daily forecast is ready. **Rain reminders** are next."),
+            WatchChatLine(role: "user", text: "What is blocked?"),
+            WatchChatLine(role: "assistant", text: "The weather icon style is still undecided, so the icon card is paused."),
+        ] : [
+            WatchChatLine(role: "user", text: "這個專案做到哪了？"),
+            WatchChatLine(role: "assistant", text: "每日預報已完成，接著加入**降雨提醒**。"),
+            WatchChatLine(role: "user", text: "現在卡在哪？"),
+            WatchChatLine(role: "assistant", text: "天氣圖示的樣式還沒決定，圖示工作卡先暫停。"),
+        ]
     }
 
     func reply(to action: WatchRequest.Action) throws -> WatchResponse {

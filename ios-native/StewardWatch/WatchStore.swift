@@ -159,7 +159,7 @@ final class WatchStore: NSObject, ObservableObject {
         guard let projectID, canAccessContents(projectID) else { return }
         if let values = response.suggestions { suggestions[projectID] = values }
         if let lines = response.chat {
-            chats[projectID] = Array(lines.suffix(5))
+            chats[projectID] = Array(lines.suffix(20))
         } else if let answer = response.answer, !answer.isEmpty {
             chats[projectID, default: []].append(WatchChatLine(role: "assistant", text: answer))
             trimChat(projectID)
@@ -182,7 +182,7 @@ final class WatchStore: NSObject, ObservableObject {
     }
 
     private func trimChat(_ projectID: String) {
-        chats[projectID] = Array((chats[projectID] ?? []).suffix(5))
+        chats[projectID] = Array((chats[projectID] ?? []).suffix(20))
     }
 
     private func accept(_ value: WatchSnapshot) {

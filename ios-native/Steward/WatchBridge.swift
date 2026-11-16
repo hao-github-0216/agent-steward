@@ -120,7 +120,8 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             case .chat(let project):
                 try Self.requirePublicProject(project, board: board)
                 let page = try await api.chat(project: project)
-                let chat = page.items.suffix(5).map { WatchChatLine(role: $0.role, text: $0.text, at: $0.at) }
+                // 手錶顯示最近 20 則;每則最多 1500 字,避免訊息超過 WatchConnectivity 的大小上限
+                let chat = page.items.suffix(20).map { WatchChatLine(role: $0.role, text: $0.text.count > 1500 ? String($0.text.prefix(1500)) + "…" : $0.text, at: $0.at) }
                 delivery.finish(WatchResponse(ok: true, chat: chat, project: project))
             case .move(let cardID, let column):
                 guard let card = board.cards?.first(where: { $0.id == cardID }) else { throw WatchProtocolError.notFound }
