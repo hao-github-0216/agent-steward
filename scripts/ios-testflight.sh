@@ -22,7 +22,7 @@ trap 'rm -rf "$WORK/dd"' EXIT
 
 cd "$ROOT/ios-native"
 xcodegen generate --quiet
-echo "archive(build $BUILD,commit $(git -C "$ROOT" rev-parse --short HEAD))…"
+echo "archive(build ${BUILD},commit $(git -C "$ROOT" rev-parse --short HEAD))…"
 xcodebuild archive -project Steward.xcodeproj -scheme Steward -configuration Release \
 	-destination 'generic/platform=iOS' -archivePath "$WORK/Steward.xcarchive" \
 	-derivedDataPath "$WORK/dd" -allowProvisioningUpdates \
@@ -41,7 +41,7 @@ PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" xcodebuild -exportArchive -archivePat
 	-allowProvisioningUpdates -quiet
 
 if [ "$UPLOAD" = 1 ]; then
-	echo "已上傳 build $BUILD。App Store Connect 處理完(通常 10–30 分鐘)會出現在 TestFlight。"
+	echo "已上傳 build ${BUILD}。App Store Connect 處理完(通常 10–30 分鐘)會出現在 TestFlight。"
 else
 	echo "ipa 在 $WORK/export"
 fi
