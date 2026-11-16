@@ -101,6 +101,11 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 
 ## TestFlight
 
+**目前用的方式：從這台 Mac 上傳。** 在 repo 根目錄執行 `sh scripts/ios-testflight.sh`，它會 archive 並直接上傳到 App Store Connect，簽章和上傳都用 Xcode → Settings → Accounts 裡登入的開發者帳號，不需要 API 金鑰。加 `--no-upload` 只匯出 ipa。build 號用上傳當下的 UTC 時間（年月日時分），每次都會比上一次大。
+
+下面的 GitHub Actions 流程要用 **Admin 角色**的 App Store Connect API 金鑰（Apple 代管發佈憑證需要 Admin），目前的金鑰是開發者角色，所以先不用。
+
+
 在 GitHub 開啟 **Actions → iOS App → Run workflow**，填入要建置的 `ref`（分支、tag 或 commit，預設 `main`）。`upload` 預設為 `true`，會在單元測試、archive 和 IPA 匯出成功後上傳到 TestFlight；取消勾選則只建置、封存和匯出，不上傳。這個 workflow 只接受手動觸發，push 不會執行。
 
 需要下列三個 GitHub Actions repository secrets，桌面 App 已經使用同一組，不需要另外新增憑證：
