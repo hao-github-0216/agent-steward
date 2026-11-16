@@ -1,6 +1,8 @@
 import { createCipheriv, randomBytes } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
+const fixtureURL = new URL("../test/vectors.json", import.meta.url);
+const fixtures = JSON.parse(await readFile(fixtureURL, "utf8"));
 const aad = Buffer.from("agent-steward-push-v1", "ascii");
 const messages = [
   {
@@ -16,9 +18,20 @@ const messages = [
     link: "agentsteward://project/build",
     thread: "build",
   },
+  {
+    title: "🗂 專案管家提案（按鈕測試）",
+    body: "請核准派工，或選擇不要。",
+    link: "agentsteward://project/action-project",
+    thread: "action-project",
+    category: "proposal",
+    card: "card-action-1",
+  },
 ];
 
 const vectors = messages.map((message, index) => {
+  // 已發布的固定向量不重產金鑰或密文，新增向量也能重複執行腳本。
+  const existing = fixtures.vectors.find((vector) => vector.name === `vector-${index + 1}`);
+  if (existing) return existing;
   const key = randomBytes(32);
   const nonce = randomBytes(12);
   const plaintext = JSON.stringify(message);
@@ -34,12 +47,7 @@ const vectors = messages.map((message, index) => {
   };
 });
 
-const wrongKey = {
-  ...vectors[0],
-  name: "wrongKey",
-  key: randomBytes(32).toString("base64"),
-};
 await writeFile(
-  new URL("../test/vectors.json", import.meta.url),
-  JSON.stringify({ v: 1, aad: aad.toString("ascii"), vectors, wrongKey }, null, 2) + "\n",
+  fixtureURL,
+  JSON.stringify({ v: 1, aad: aad.toString("ascii"), vectors, wrongKey: fixtures.wrongKey }, null, 2) + "\n",
 );

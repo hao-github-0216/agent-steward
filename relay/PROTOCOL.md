@@ -19,10 +19,13 @@ Apple 和 Google 只替 App 的開發者送推播，要用開發者帳號的金�
 - **明文**：UTF-8 的 JSON 物件：
 
   ```json
-  {"title": "🗂 專案管家提案(某專案)", "body": "…", "link": "agentsteward://project/<id>", "thread": "<id>"}
+  {"title": "🗂 專案管家提案(某專案)", "body": "…", "link": "agentsteward://project/<id>", "thread": "<id>", "category": "proposal", "card": "<工作卡 id>"}
   ```
 
-  `title`、`body` 一定有；`link`、`thread` 可以沒有。
+  `title`、`body` 一定有；`link`、`thread`、`category`、`card` 可以沒有。
+
+  - `category`：通知上要顯示哪一組按鈕。`proposal`（核准派工／不要）或 `blocked`（重新派工／標成完成）。App 解密後才設定通知的類別，所以中繼和 Apple、Google 都不知道這是哪一種通知。
+  - `card`：按鈕要操作的工作卡 id。
 - **演算法**：AES-256-GCM，nonce 12 位元組（每則隨機產生），tag 16 位元組，AAD 是 ASCII 字串 `agent-steward-push-v1`。
 - **密文格式**：`base64(nonce ‖ ciphertext ‖ tag)`，標準 base64（有 `=` 補位）。
 - **長度上限**：密文字串最多 3000 個字元。管家加密前先把 `body` 截短，讓結果不超過上限。

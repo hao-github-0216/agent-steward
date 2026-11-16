@@ -18,6 +18,13 @@ final class NotificationService: UNNotificationServiceExtension {
             content.title = plain.title
             content.body = plain.body
             content.userInfo["link"] = plain.link
+            content.categoryIdentifier = ""
+            content.userInfo.removeValue(forKey: "card")
+            if let category = plain.category, ["proposal", "blocked"].contains(category),
+               let card = plain.card, !card.isEmpty {
+                content.categoryIdentifier = category
+                content.userInfo["card"] = card
+            }
             bestAttempt = content
         } catch {
             bestAttempt = request.content

@@ -63,7 +63,16 @@ final class PushState {
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        UNUserNotificationCenter.current().delegate = self
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let approve = UNNotificationAction(identifier: PushAction.approve.rawValue, title: PushAction.approve.title, options: [.authenticationRequired])
+        let reject = UNNotificationAction(identifier: PushAction.reject.rawValue, title: PushAction.reject.title, options: [.authenticationRequired, .destructive])
+        let redispatch = UNNotificationAction(identifier: PushAction.redispatch.rawValue, title: PushAction.redispatch.title, options: [.authenticationRequired])
+        let done = UNNotificationAction(identifier: PushAction.done.rawValue, title: PushAction.done.title, options: [.authenticationRequired])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "proposal", actions: [approve, reject], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "blocked", actions: [redispatch, done], intentIdentifiers: [], options: [])
+        ])
         return true
     }
 
@@ -84,11 +93,91 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         [.banner, .list, .sound]
     }
 
-    // 點通知 → 打開那個專案
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        if let s = response.notification.request.content.userInfo["link"] as? String, let url = URL(string: s) {
-            await MainActor.run { PushState.shared.pendingLink = url }
+    // 點通知開專案；按鈕只在背景移動工作卡，不打開畫面。
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        guard !UserDefaults.standard.bool(forKey: "isDemo") else {
+            completionHandler()
+            return
         }
+        let userInfo = response.notification.request.content.userInfo
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            Task { @MainActor in
+                if let s = userInfo["link"] as? String, let url = URL(string: s) {
+                    PushState.shared.pendingLink = url
+                }
+                completionHandler()
+            }
+            return
+        }
+        guard let action = PushAction(rawValue: response.actionIdentifier),
+              let column = PushAction.column(for: response.actionIdentifier),
+              let card = userInfo["card"] as? String, !card.isEmpty else {
+            completionHandler()
+            return
+        }
+        let link = userInfo["link"] as? String
+        Task { @MainActor in
+            PushActionRequest(action: action, link: link, completion: completionHandler).start(card: card, column: column)
+        }
+    }
+}
+
+/// 到期與網路回覆都回到主執行緒，只能結束一次。
+@MainActor
+private final class PushActionRequest {
+    private let action: PushAction
+    private let link: String?
+    private var completion: (() -> Void)?
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var task: Task<Void, Never>?
+
+    init(action: PushAction, link: String?, completion: @escaping () -> Void) {
+        self.action = action
+        self.link = link
+        self.completion = completion
+    }
+
+    func start(card: String, column: String) {
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "PushAction") {
+            Task { @MainActor in
+                self.task?.cancel()
+                self.finish(reason: "背景執行時間已到，請打開專案確認工作卡狀態")
+            }
+        }
+        guard backgroundTask != .invalid else {
+            finish(reason: "無法取得背景執行時間，請打開專案再試一次")
+            return
+        }
+        task = Task { @MainActor in
+            do {
+                guard let base = UserDefaults.standard.string(forKey: "serverURL").flatMap(API.normalize) else {
+                    throw APIError.badURL
+                }
+                _ = try await API(base: base).moveCard(card, to: column)
+                finish()
+            } catch {
+                finish(reason: error.localizedDescription)
+            }
+        }
+    }
+
+    private func finish(reason: String? = nil) {
+        guard let completion else { return }
+        self.completion = nil
+        task = nil
+        if let reason {
+            let content = UNMutableNotificationContent()
+            content.title = "沒辦法\(action.title):\(reason)"
+            content.sound = .default
+            if let link { content.userInfo["link"] = link }
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+        }
+        if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
+        completion()
     }
 }
 

@@ -33,12 +33,16 @@ final class PushCryptoTests: XCTestCase {
         XCTAssertEqual(actual.body, expected.body, "\(label):body 不符", file: file, line: line)
         XCTAssertEqual(actual.link, expected.link, "\(label):link 不符", file: file, line: line)
         XCTAssertEqual(actual.thread, expected.thread, "\(label):thread 不符", file: file, line: line)
+        // 選填欄位:舊向量沒有 category/card,必須保持 nil
+        XCTAssertEqual(actual.category, expected.category, "\(label):category 不符", file: file, line: line)
+        XCTAssertEqual(actual.card, expected.card, "\(label):card 不符", file: file, line: line)
     }
 
     /// 每組固定向量都要能解密,並與 plaintext 欄位解出的 PushPlain 完全一致
     func testVectorsDecrypt() throws {
         let fixtures = try loadFixtures()
-        XCTAssertFalse(fixtures.vectors.isEmpty, "vectors 不應為空")
+        // 固定向量共四組(含帶 category/card 的 vector-4)
+        XCTAssertEqual(fixtures.vectors.count, 4, "應有四組固定向量")
         for vector in fixtures.vectors {
             guard let keyData = Data(base64Encoded: vector.key) else {
                 XCTFail("\(vector.name):金鑰不是有效的 base64")
@@ -62,6 +66,56 @@ final class PushCryptoTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try PushCrypto.decrypt(keyData: keyData, payload: fixtures.wrongKey.payload))
+    }
+
+    /// vector-4 應解出 category=proposal、card=card-action-1;前三組舊向量無新欄位,必須為 nil
+    func testVectorFourCategoryAndCard() throws {
+        let fixtures = try loadFixtures()
+        for vector in fixtures.vectors {
+            guard let keyData = Data(base64Encoded: vector.key) else {
+                XCTFail("\(vector.name):金鑰不是有效的 base64")
+                continue
+            }
+            let decrypted = try PushCrypto.decrypt(keyData: keyData, payload: vector.payload)
+            if vector.name == "vector-4" {
+                XCTAssertEqual(decrypted.category, "proposal", "vector-4:category 應為 proposal")
+                XCTAssertEqual(decrypted.card, "card-action-1", "vector-4:card 應為 card-action-1")
+            } else {
+                // 舊三組 fixture 不含新欄位,選填欄位應解成 nil
+                XCTAssertNil(decrypted.category, "\(vector.name):category 應為 nil")
+                XCTAssertNil(decrypted.card, "\(vector.name):card 應為 nil")
+            }
+        }
+        // 確認 vector-4 確實存在(否則上面迴圈不會驗證到新欄位)
+        XCTAssertTrue(fixtures.vectors.contains { $0.name == "vector-4" }, "fixture 應包含 vector-4")
+    }
+
+    /// 純函式:approve 對應 approved 欄
+    func testPushActionColumnApprove() {
+        XCTAssertEqual(PushAction.column(for: "approve"), "approved")
+    }
+
+    /// 純函式:reject 對應 rejected 欄
+    func testPushActionColumnReject() {
+        XCTAssertEqual(PushAction.column(for: "reject"), "rejected")
+    }
+
+    /// 純函式:redispatch 與 approve 同樣落到 approved 欄
+    func testPushActionColumnRedispatch() {
+        XCTAssertEqual(PushAction.column(for: "redispatch"), "approved")
+    }
+
+    /// 純函式:done 對應 done 欄
+    func testPushActionColumnDone() {
+        XCTAssertEqual(PushAction.column(for: "done"), "done")
+    }
+
+    /// 純函式:未知的 action 識別字串一律回傳 nil
+    func testPushActionColumnUnknown() {
+        XCTAssertNil(PushAction.column(for: "destroy-everything"))
+        // 空字串與系統保留的 action 字串也不是合法的 action 識別碼
+        XCTAssertNil(PushAction.column(for: ""))
+        XCTAssertNil(PushAction.column(for: "com.apple.developer.category"))
     }
 
     /// 密文不是有效 base64 時必須拋錯
