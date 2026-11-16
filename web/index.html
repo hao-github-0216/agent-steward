@@ -1103,7 +1103,6 @@ function renderNav() {
 	const item = (p) => `<div class="projrow ${p.id === sel ? "sel" : ""}"><button class="proj" data-id="${p.id}">${open(p) ? `<span class="badge">${open(p)}</span>` : ""}${window.codeMode?.hasUnsaved?.(p.id) ? `<span class="unsaved" title="${esc(tr("程式碼頁面有還沒存的修改"))}">●</span>` : ""}${p.private ? "🔒 " : ""}${esc(p.name)}${wtCounts[p.id] ? `<span class="wtb" title="${esc(tr("有 {n} 個另外開的分支 worktree(程式碼 → git 面板看)", { n: wtCounts[p.id] }))}">⑂${wtCounts[p.id]}</span>` : ""}<small>${p.lastActivityAt ? ago(p.lastActivityAt) : tr("尚無紀錄")}</small></button>${p.kind === "project" ? `<button class="pmore" data-pmenu="${p.id}" title="${esc(tr("更多動作"))}" aria-label="${esc(tr("{name} 的更多動作", { name: p.name }))}">⋯</button>` : ""}</div>`;
 	const active = state.projects.filter((p) => p.kind === "project" && p.status === "active").sort(byActivity);
 	const special = state.projects.filter((p) => p.kind !== "project");
-	const pending = state.projects.filter((p) => p.status === "pending");
 	// 停止追蹤的專案(資料都還在):只列出有內容的,沒紀錄的「略過」資料夾不列
 	const stopped = state.projects.filter((p) => p.status === "ignored" && p.kind === "project" && (p.state?.updatedAt || state.cards.some((c) => c.projectId === p.id)));
 	// herdr 的 space 被關掉而收起來的專案:在資料夾裡開 agent 或按「打開」就回來
@@ -1111,7 +1110,6 @@ function renderNav() {
 	$("nav").innerHTML = `<div class="navacts"><button class="small primary" id="newProject">${tr("＋ 建立專案")}</button><button class="small" id="tidySpaces">${tr("整理 spaces")}</button></div>
 		<h2>${tr("專案")}</h2>${active.map(item).join("") || `<div class="empty">${tr("還沒有專案")}</div>`}
 		<h2>${tr("其他")}</h2>${special.map(item).join("")}
-		${pending.length ? `<h2>${tr("要登記成專案嗎?")}</h2>${pending.map((p) => `<div class="pending"><b>${esc(p.root)}</b><div class="row"><button class="small primary" data-reg="${p.id}">${tr("登記")}</button><button class="small" data-ign="${p.id}">${tr("略過")}</button></div></div>`).join("")}` : ""}
 		${closed.length ? `<details class="stopped"><summary><h2 style="display:inline">${tr("已收起({n})", { n: closed.length })}</h2></summary><p class="hint">${tr("herdr 的 space 被關掉的專案。在它的資料夾裡開 agent 就會自動回來。")}</p>${closed.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.closedAt ? tr(" · {time}收起", { time: ago(p.closedAt) }) : ""}</span><div class="row"><button class="small primary" data-reopen="${p.id}" title="${esc(tr("恢復追蹤並在終端機開一個新的 space"))}">${tr("打開")}</button><button class="small" data-ign="${p.id}" title="${esc(tr("不再追蹤:之後在這個資料夾開 agent 也不會自動回來"))}">${tr("停止追蹤")}</button></div></div>`).join("")}</details>` : ""}
 		${stopped.length ? `<details class="stopped"><summary><h2 style="display:inline">${tr("已停止追蹤({n})", { n: stopped.length })}</h2></summary>${stopped.map((p) => `<div class="pending"><b>${esc(p.name)}</b><span class="hint">${esc(p.root)}${p.state?.updatedAt ? tr(" · 紀錄保留到 {time}", { time: ago(p.state.updatedAt) }) : ""}</span><div class="row"><button class="small primary" data-reg="${p.id}" title="${esc(tr("恢復追蹤:之前的進度、工作卡、管家記憶都會回來"))}">${tr("恢復追蹤")}</button></div></div>`).join("")}</details>` : ""}`;
 }
@@ -1120,6 +1118,8 @@ function renderBrief() {
 	const p = state.projects.find((x) => x.id === sel);
 	if (!p) { $("brief").innerHTML = `<div class="empty">${tr("選一個專案")}</div>`; return; }
 	const s = p.state || {};
+	const pending = p.kind === "misc" ? state.projects.filter((x) => x.status === "pending")
+		.sort((a, b) => (b.seenAt || b.createdAt || "").localeCompare(a.seenAt || a.createdAt || "")).slice(0, 20) : [];
 	const list = (t, a) => a?.length ? `<h4>${t}</h4><ul>${a.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
 	const si = state.spaceInfo?.[p.id];
 	const spaceLine = p.kind !== "project" ? "" : si?.label
@@ -1133,7 +1133,8 @@ function renderBrief() {
 		<div class="grid"><div>${list(tr("下一步"), s.nextSteps)}</div><div>${list(tr("卡住的地方"), s.blockers)}</div></div>
 		${s.decisions?.length ? `<details><summary><b style="font-size:12px;color:var(--muted)">${tr("重要決定({n})", { n: s.decisions.length })}</b></summary>${list("", s.decisions)}</details>` : ""}
 		${s.recent?.length ? `<h4>${tr("最近的工作")}</h4><ul>${s.recent.slice(0, 6).map((r) => `<li>${ago(r.at)} · ${esc(r.agent)}:${esc(r.summary)}</li>`).join("")}</ul>` : ""}
-		${p.kind === "project" ? `<div class="toggles"><label><input type="checkbox" id="priv" ${p.private ? "checked" : ""}> ${tr("隱私專案(只用「隱私專案」指定的模型)")}</label><button class="small" id="split">${tr("拆出子資料夾")}</button><span class="hint">${tr("改名、在終端機開啟、停止追蹤:左側專案旁的「⋯」")}</span></div><div id="tool"></div>` : ""}`;
+		${p.kind === "project" ? `<div class="toggles"><label><input type="checkbox" id="priv" ${p.private ? "checked" : ""}> ${tr("隱私專案(只用「隱私專案」指定的模型)")}</label><button class="small" id="split">${tr("拆出子資料夾")}</button><span class="hint">${tr("改名、在終端機開啟、停止追蹤:左側專案旁的「⋯」")}</span></div><div id="tool"></div>` : ""}
+		${pending.length ? `<section class="recent-folders"><h4>${tr("最近在這些資料夾工作過")}</h4>${pending.map((x) => `<div class="pending"><b>${esc(x.root)}</b><span class="hint">${esc(ago(x.seenAt || x.createdAt))}</span><div class="row"><button class="small primary" data-reg="${x.id}">${tr("登記成專案")}</button><button class="small" data-ign="${x.id}">${tr("略過")}</button></div></div>`).join("")}</section>` : ""}`;
 	const priv = $("priv"); if (priv) priv.onchange = () => post(`/api/projects/${p.id}`, { private: priv.checked }).then(load);
 	const bs = $("bootstrap");
 	if (bs) bs.onclick = async () => {

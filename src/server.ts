@@ -43,7 +43,7 @@ import { boundSpace, ensureSpace, movePane, projectOfSpace, runTidy, strayPanes,
 import { worktreeTree } from "./worktree-tree.ts";
 import { chatPlan, findWorktree, ignoreWorktrees, listWorktrees, mergePreview, mergeWorktree, removeWorktreeItem, untrackGitlinks, worktreeCounts, worktreeView, WorktreesError } from "./worktrees.ts";
 import { createProject } from "./create.ts";
-import { displayProject, ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
+import { cleanupPendingProjects, displayProject, ensureSpecial, MISC_ROOT, OVERVIEW_ROOT, ownerOf, resolveProject } from "./projects.ts";
 import type { Steward } from "./steward.ts";
 import type { Card, CardColumn, Project, Store } from "./store.ts";
 import type { Watcher } from "./watcher.ts";
@@ -171,12 +171,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	setTimeout(() => {
 		for (const c of store.cards()) if (c.refreshing && c.column === "approved") void startDispatch(c.id);
 	}, 15_000);
-	const projectFrom = (q: URLSearchParams | Record<string, string | undefined>): Project | undefined => {
+	const projectFrom = (q: URLSearchParams | Record<string, string | undefined>, opts: { remember?: boolean } = {}): Project | undefined => {
 		const get = (k: string) => (q instanceof URLSearchParams ? (q.get(k) ?? undefined) : q[k]);
 		const id = get("project");
 		if (id) return store.project(id) ?? store.projects().find((p) => p.name === id);
 		const cwd = get("cwd");
-		if (cwd) return resolveProject(store, cwd);
+		if (cwd) return resolveProject(store, cwd, opts);
 		return undefined;
 	};
 
@@ -814,11 +814,11 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const want = url.searchParams.get("project");
 				if (want) {
 					const { p: target, hints } = projectByName(want);
-					const from = url.searchParams.get("cwd") ? resolveProject(store, url.searchParams.get("cwd")!) : undefined;
+					const from = url.searchParams.get("cwd") ? resolveProject(store, url.searchParams.get("cwd")!, { remember: false }) : undefined;
 					const text = !target ? tr("找不到「{name}」這個專案。現有的專案:{projects}", { name: want, projects: hints.join(tr("、")) }) : target.private && target.id !== from?.id ? PRIVATE_NOTE(target) : brief(store, target);
 					return url.searchParams.get("format") === "json" ? send(res, 200, { project: publicProjectView(target, from), text }) : send(res, 200, text, "text/plain; charset=utf-8");
 				}
-				const p = projectFrom(url.searchParams) ?? ensureSpecial(store, MISC_ROOT);
+				const p = projectFrom(url.searchParams, { remember: false }) ?? ensureSpecial(store, MISC_ROOT);
 				const text = brief(store, p);
 				if (url.searchParams.get("format") !== "json") return send(res, 200, text, "text/plain; charset=utf-8");
 				// 這個專案的 herdr space(給 agent 開新分頁用;HERDR_* 環境變數在窗格搬過 space 後會過期)
@@ -830,7 +830,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				// 跨專案提問:在 A 的資料夾裡問 B(project 參數)→ 用 B 的資料單次回答,紀錄留在 A
 				if (b.project) {
 					const { p: target, hints } = projectByName(String(b.project));
-					const from = b.cwd ? resolveProject(store, String(b.cwd)) : undefined;
+					const from = b.cwd ? resolveProject(store, String(b.cwd), { remember: false }) : undefined;
 					if (!target) return send(res, 200, { project: null, answer: tr("找不到「{name}」這個專案。現有的專案:{projects}", { name: b.project, projects: hints.join(tr("、")) }) });
 					if (!from || from.id !== target.id) {
 						if (target.private) return send(res, 200, { project: target.name, answer: PRIVATE_NOTE(target) });
@@ -846,7 +846,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 						return send(res, 200, { project: target.name, answer });
 					}
 				}
-				const p = projectFrom(b) ?? ensureSpecial(store, OVERVIEW_ROOT);
+				const p = projectFrom(b, { remember: false }) ?? ensureSpecial(store, OVERVIEW_ROOT);
 				const who = b.agent ? `(提問者:${b.agent})` : "";
 				const answer = await steward.send(p, `【提問】${who}${b.question}`);
 				return send(res, 200, { project: displayProject(p).name, answer });
@@ -860,6 +860,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 
 			// ---------- 看板 ----------
 			if (req.method === "GET" && path === "/api/board") {
+				cleanupPendingProjects(store, { throwaway: false });
 				// 每個專案附上 space 綁定資訊(名稱、是否不同名、有幾個窗格跑到別的 space)
 				const spaces = listWorkspaces();
 				const panes = listPanes() ?? [];

@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { herdrSocket, pathInside } from "./platform.ts";
 import { homedir, tmpdir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { DATA_DIR, expandHome, settings } from "./settings.ts";
 
 export { DATA_DIR };
@@ -22,20 +22,57 @@ export function publicUrl(): string {
 // 不算「專案」的資料夾:在這些地方工作歸入雜務
 export const MISC_ROOTS = [HOME, "/", "/tmp", join(HOME, "Desktop"), join(HOME, "Downloads")];
 
-// agent 的暫存資料夾不是使用者的專案
-export function isAgentTempPath(p: string): boolean {
-	const bases = ["/tmp", "/private/tmp", tmpdir()];
+/** 暫存、快取、套件與家目錄的工具設定資料夾不列為候選專案。 */
+export function isThrowawayPath(p: string, opts: { platform?: NodeJS.Platform; home?: string; env?: NodeJS.ProcessEnv; tempDir?: string } = {}): boolean {
+	if (!p) return false;
+	const windows = (opts.platform ?? process.platform) === "win32";
+	const env = opts.env ?? process.env;
+	const normalize = (path: string, real = true): string => {
+		if (real) {
+			try { path = realpathSync(path); } catch { /* 不存在或無法解析時用原路徑 */ }
+		}
+		path = (windows ? win32 : posix).normalize(path.replace(/\\/g, "/")).replace(/\\/g, "/");
+		if (windows) path = path.toLowerCase();
+		return path.replace(/\/+$/, "") || "/";
+	};
+	const home = normalize(opts.home ?? HOME);
+	const homes = [normalize(opts.home ?? HOME, false), home];
+	const path = normalize(p);
+	const isRoot = (x: string) => x === "/" || /^[a-z]:$/i.test(x);
+	if (homes.includes(path) || isRoot(path)) return false;
+	const inside = (base: string, child = path) => child === base || child.startsWith(`${base}/`);
+	const pathHome = homes.find((base) => inside(base));
+	const bases = [
+		"/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp", opts.tempDir ?? tmpdir(),
+		env.TMPDIR, env.TEMP, env.TMP, "/var/folders", "/private/var/folders", "/run", env.XDG_RUNTIME_DIR,
+		`${home}/Library/Caches`, `${home}/.cache`, env.XDG_CACHE_HOME,
+	];
+	if (windows) {
+		// LocalAppData 也可能放 Programs 或使用者的專案,只排除 Temp 與 Packages,不排除整棵目錄。
+		const local = env.LOCALAPPDATA || `${home}/AppData/Local`;
+		bases.push(`${local}/Temp`, `${local}/Packages`, "C:/Windows/Temp");
+	}
+	if (bases.some((base) => {
+		if (!base) return false;
+		const normalized = [normalize(base, false), normalize(base)];
+		// CI、容器與測試的 HOME 可能位在暫存或快取區;該 base 不排除 HOME 內的路徑,其餘規則照常判斷。
+		if (pathHome && normalized.some((b) => homes.some((h) => inside(b, h)))) return false;
+		return normalized.some((b) => !isRoot(b) && inside(b));
+	})) return true;
+
+	const parts = path.split("/");
+	const packages = new Set(["node_modules", "site-packages", ".venv", "venv", ".npm", ".pnpm-store", ".cargo", ".rustup"]);
+	if (parts.some((part, i) => packages.has(part) || (part === "go" && parts[i + 1] === "pkg" && parts[i + 2] === "mod"))) return true;
+	// 家目錄下所有 dot 資料夾都排除,包含 .config 與 .claude/jobs/*/tmp。
+	if (pathHome && path.slice(pathHome.length + 1).split("/")[0].startsWith(".")) return true;
 	try {
-		bases.push(realpathSync(tmpdir()));
+		return readFileSync(join(p, "CACHEDIR.TAG"), "utf8").startsWith("Signature: 8a477f597d28d172789f06886806bc55");
 	} catch {
-		/* 無法解析就略過 */
+		return false;
 	}
-	for (const base of new Set(bases.map((b) => b.replace(/[\\/]+$/, "")))) {
-		if (pathInside(p, base) && /^claude-\d+$/.test(relative(base, p).split(sep)[0])) return true;
-	}
-	const jobs = join(HOME, ".claude", "jobs");
-	return pathInside(p, jobs) && relative(jobs, p).split(sep)[1] === "tmp";
 }
+
+export const isAgentTempPath = isThrowawayPath;
 
 /** 隱私路徑:設定頁填的 + (勾選時)pi privacy-guard 的同一份清單 */
 export function privacyPaths(): string[] {

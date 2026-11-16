@@ -1,25 +1,28 @@
 // 專案的「分支」總覽:三種來源、session 對應、兄弟專案只算自己資料夾、.gitignore 防呆、合併與移除的安全檢查
 // 先隔離使用者的 git 設定,要在載入 src 之前
 import "./helpers/git-isolation.mjs";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const DATA = process.platform === "win32" ? realpathSync.native(mkdtempSync(join(tmpdir(), "steward-data-"))) : mkdtempSync(join(tmpdir(), "steward-data-"));
-process.env.STEWARD_DATA_DIR = DATA;
+const HOME = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-worktree-home-")));
+const DATA = join(HOME, "data");
+mkdirSync(DATA);
+Object.assign(process.env, { HOME, USERPROFILE: HOME, STEWARD_DATA_DIR: DATA });
+after(() => rmSync(HOME, { recursive: true, force: true }));
+assert.equal((await import("../src/config.ts")).HOME, HOME);
 const W = await import("../src/worktrees.ts");
 const { Store } = await import("../src/store.ts");
 const { resolveProject, ownerOf } = await import("../src/projects.ts");
 
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
-const tmp = (p) => realpathSync.native(mkdtempSync(join(tmpdir(), p)));
+const tmp = (p) => realpathSync.native(mkdtempSync(join(HOME, p)));
 
 /** repo 根目錄底下兩個兄弟專案資料夾 A、B(像 course/hw1、course/hw2) */
-function repo() {
-	const root = tmp("wt-repo-");
+function repo(root = tmp("wt-repo-")) {
 	git(root, "init", "-q", "-b", "main");
 	git(root, "config", "user.email", "t@t");
 	git(root, "config", "user.name", "t");

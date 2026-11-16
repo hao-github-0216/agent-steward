@@ -48,6 +48,7 @@ struct BoardView: View {
                 }
                 if let p = model.current {
                     BriefSections(project: p)
+                    if p.kind == "misc" { RecentFoldersSection() }
                 } else {
                     Section { Text("選一個專案").foregroundStyle(.secondary) }
                 }
@@ -122,6 +123,42 @@ struct BoardView: View {
             moveError = error.localizedDescription
             UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
+    }
+}
+
+private struct RecentFoldersSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var error: String?
+
+    private var folders: [Project] {
+        Array(model.pendingFolders.sorted {
+            ($0.seenAt ?? $0.createdAt ?? "") > ($1.seenAt ?? $1.createdAt ?? "")
+        }.prefix(20))
+    }
+
+    var body: some View {
+        if !folders.isEmpty {
+            Section("最近在這些資料夾工作過") {
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                ForEach(folders) { p in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(p.root ?? p.name).font(.subheadline.weight(.semibold))
+                        Text(Fmt.ago(Fmt.date(p.seenAt) ?? Fmt.date(p.createdAt)))
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Button("登記成專案") { Task { await set(p, status: "active") } }.buttonStyle(.borderedProminent)
+                            Button("略過") { Task { await set(p, status: "ignored") } }.buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func set(_ p: Project, status: String) async {
+        do { try await model.updateProject(p.id, ["status": status]); error = nil }
+        catch { self.error = error.localizedDescription }
     }
 }
 

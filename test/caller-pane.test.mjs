@@ -1,12 +1,14 @@
 // 在 agent 窗格裡跑 steward 指令時,認出真的是從哪個窗格來的(窗格搬過 space 後 HERDR_PANE_ID 會過期)
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "caller-"));
-process.env.STEWARD_DATA_DIR = join(dir, "data");
+const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-caller-home-")));
+after(() => rmSync(dir, { recursive: true, force: true }));
+Object.assign(process.env, { HOME: dir, USERPROFILE: dir, STEWARD_DATA_DIR: join(dir, "data") });
+assert.equal((await import("../src/config.ts")).HOME, dir);
 const { Store } = await import("../src/store.ts");
 const { callerPane } = await import("../src/branch.ts");
 

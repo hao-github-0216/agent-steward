@@ -7,12 +7,12 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const DATA = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-nested-data-")));
-process.env.STEWARD_DATA_DIR = DATA;
-const roots = [DATA];
-after(() => {
-	for (const root of roots) rmSync(root, { recursive: true, force: true });
-});
+const HOME = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-nested-home-")));
+const DATA = join(HOME, "data");
+mkdirSync(DATA);
+Object.assign(process.env, { HOME, USERPROFILE: HOME, STEWARD_DATA_DIR: DATA });
+after(() => rmSync(HOME, { recursive: true, force: true }));
+assert.equal((await import("../src/config.ts")).HOME, HOME);
 const { CodeError, nestedRepos, status, statusIn, diffIn, gitAction, gitActionIn } = await import("../src/code.ts");
 const { resolveProject } = await import("../src/projects.ts");
 const { Store } = await import("../src/store.ts");
@@ -20,8 +20,7 @@ const { Store } = await import("../src/store.ts");
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 const proj = (root) => ({ id: "x", root, name: "x", kind: "project", status: "active", private: false });
 function tmp() {
-	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-nested-repo-")));
-	roots.push(root);
+	const root = realpathSync.native(mkdtempSync(join(HOME, "steward-nested-repo-")));
 	return root;
 }
 function repo(root = tmp()) {

@@ -1,9 +1,10 @@
 // 從工作目錄判斷屬於哪個專案:git 根目錄 > 已登記的資料夾 > 雜務。
 import { tr } from "./i18n.ts";
 import { execFileSync } from "node:child_process";
+import { statSync } from "node:fs";
 import { fromGit, pathInside } from "./platform.ts";
 import { basename, dirname, join, relative } from "node:path";
-import { isAgentTempPath, isPrivatePath, MISC_ROOTS } from "./config.ts";
+import { isThrowawayPath, isPrivatePath, MISC_ROOTS } from "./config.ts";
 import type { Project, Store } from "./store.ts";
 
 export const MISC_ROOT = "(雜務)";
@@ -40,10 +41,6 @@ export function ensureSpecial(store: Store, root: typeof MISC_ROOT | typeof OVER
 }
 
 /**
- * 找出 cwd 所屬的專案。非 git、也沒登記過的資料夾會建立一筆 pending,
- * 在看板上問使用者要不要登記;決定前先歸到雜務。
- */
-/**
  * 支線的 worktree 放在 ~/.agent-steward/worktrees/ 底下(不在專案資料夾裡),要對回開它的專案。
  * 必須在其他判斷之前:不然 worktree 會被當成一個新的 git 專案自動登記。
  */
@@ -73,13 +70,14 @@ export function linkedWorktreeMain(cwd: string): string | undefined {
 	return main;
 }
 
-export function resolveProject(store: Store, cwd: string): Project {
+/** 找出 cwd 所屬專案;有實際工作時才記下非 git、未登記的候選資料夾。 */
+export function resolveProject(store: Store, cwd: string, opts: { remember?: boolean } = {}): Project {
+	if (isThrowawayPath(cwd)) return ensureSpecial(store, MISC_ROOT);
 	const wt = worktreeOwner(store, cwd);
 	if (wt) return active(store, wt);
 	const linked = cwd ? linkedWorktreeMain(cwd) : undefined;
-	if (linked) return resolveProject(store, linked);
-	if (!cwd || MISC_ROOTS.includes(cwd.replace(/\/$/, ""))) return ensureSpecial(store, MISC_ROOT);
-	if (isAgentTempPath(cwd)) return ensureSpecial(store, MISC_ROOT);
+	if (linked) return resolveProject(store, linked, opts);
+	if (!cwd || MISC_ROOTS.includes(cwd.replace(/\/$/, "") || "/")) return ensureSpecial(store, MISC_ROOT);
 
 	// 已登記的資料夾(含它的子資料夾),取最長的那個
 	const registered = store
@@ -88,20 +86,38 @@ export function resolveProject(store: Store, cwd: string): Project {
 		.sort((a, b) => b.root.length - a.root.length)[0];
 
 	const root = gitRoot(cwd);
+	if (root && isThrowawayPath(root)) return ensureSpecial(store, MISC_ROOT);
 	if (root && !MISC_ROOTS.includes(root)) {
 		if (registered && registered.root.length >= root.length) return active(store, registered);
 		const own = store.projectByRoot(root);
+		if (opts.remember !== false && own?.status === "pending") store.updateProject(own.id, { seenAt: new Date().toISOString() });
 		// 巢狀 repo 被停止追蹤:裡面的工作算到包住它的已登記專案,不丟到雜務
 		if (own?.status === "ignored" && registered) return active(store, registered);
 		return active(store, own ?? store.addProject({ root, name: basename(root), kind: "project", status: "active", private: isPrivatePath(root) }));
 	}
 	if (registered) return active(store, registered);
 
-	// 非 git、沒登記:記一筆 pending(同一個資料夾只問一次),目前先歸雜務
-	if (!store.projectByRoot(cwd)) {
-		store.addProject({ root: cwd, name: basename(cwd), kind: "project", status: "pending", private: isPrivatePath(cwd) });
+	// 候選資料夾先歸雜務,只讀查詢不新增或更新候選紀錄。
+	if (opts.remember !== false) {
+		const own = store.projectByRoot(cwd);
+		const seenAt = new Date().toISOString();
+		if (!own) store.addProject({ root: cwd, name: basename(cwd), kind: "project", status: "pending", private: isPrivatePath(cwd), seenAt });
+		else if (own.status === "pending") store.updateProject(own.id, { seenAt });
 	}
 	return ensureSpecial(store, MISC_ROOT);
+}
+
+/** 自動略過暫存或已消失的候選資料夾,保留原有紀錄。 */
+export function cleanupPendingProjects(store: Store, opts: { throwaway?: boolean } = {}): void {
+	const autoIgnoredAt = new Date().toISOString();
+	for (const p of store.projects()) {
+		if (p.status !== "pending") continue;
+		let exists = false;
+		try { exists = statSync(p.root).isDirectory(); } catch { /* 資料夾已消失或無法存取 */ }
+		if (!exists || (opts.throwaway !== false && isThrowawayPath(p.root))) {
+			store.updateProject(p.id, { status: "ignored", autoIgnoredAt });
+		}
+	}
 }
 
 /**

@@ -4,7 +4,7 @@ import { STORE_PATH } from "./config.ts";
 import { justAnswered } from "./followup.ts";
 import { notify } from "./notify.ts";
 import { pushText } from "./privacy.ts";
-import { ensureSpecial, MISC_ROOT, OVERVIEW_ROOT } from "./projects.ts";
+import { cleanupPendingProjects, ensureSpecial, MISC_ROOT, OVERVIEW_ROOT } from "./projects.ts";
 import { startServer } from "./server.ts";
 import { Steward } from "./steward.ts";
 import { Store } from "./store.ts";
@@ -29,6 +29,7 @@ globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters
 }) as typeof fetch;
 
 const store = new Store(STORE_PATH);
+cleanupPendingProjects(store);
 ensureSpecial(store, MISC_ROOT);
 ensureSpecial(store, OVERVIEW_ROOT);
 

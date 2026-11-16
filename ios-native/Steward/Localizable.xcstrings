@@ -1,6 +1,40 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "最近在這些資料夾工作過": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recently worked in these folders"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近在這些資料夾工作過"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "登記成專案": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Register as a project"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登記成專案"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
     "": {
       "localizations": {
         "en": {

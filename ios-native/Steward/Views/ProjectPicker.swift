@@ -37,21 +37,6 @@ struct ProjectPicker: View {
                         ForEach(special) { p in projectButton(p) }
                     }
                 }
-                let pending = model.pendingFolders.filter(match)
-                if !pending.isEmpty {
-                    Section("要登記成專案嗎?") {
-                        ForEach(pending) { p in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(p.root ?? p.name).font(.subheadline.weight(.semibold))
-                                HStack {
-                                    Button("登記") { Task { await set(p, ["status": "active"]) } }.buttonStyle(.borderedProminent)
-                                    Button("略過") { Task { await set(p, ["status": "ignored"]) } }.buttonStyle(.bordered)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                }
                 let closed = model.closedProjects.filter(match)
                 if !closed.isEmpty {
                     Section {

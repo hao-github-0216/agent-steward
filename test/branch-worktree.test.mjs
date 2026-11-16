@@ -1,16 +1,20 @@
 // 支線的 git worktree:帶上主線未提交的改動、共用 node_modules、diff 只算支線自己的改動、移除時改動存進分支
 // 先隔離使用者的 git 設定,要在載入 src 之前
 import "./helpers/git-isolation.mjs";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // 資料夾要在載入管家模組之前設好(worktree 放在 DATA_DIR/worktrees 底下)
-const DATA = mkdtempSync(join(tmpdir(), "steward-data-"));
-process.env.STEWARD_DATA_DIR = DATA;
+const HOME = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-branch-home-")));
+const DATA = join(HOME, "data");
+mkdirSync(DATA);
+Object.assign(process.env, { HOME, USERPROFILE: HOME, STEWARD_DATA_DIR: DATA });
+after(() => rmSync(HOME, { recursive: true, force: true }));
+assert.equal((await import("../src/config.ts")).HOME, HOME);
 const { createWorktree, removeWorktree, worktreeBlocker, worktreeChanges } = await import("../src/worktree.ts");
 const { Store } = await import("../src/store.ts");
 const { ownerOf, resolveProject } = await import("../src/projects.ts");
@@ -18,7 +22,7 @@ const { ownerOf, resolveProject } = await import("../src/projects.ts");
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 
 function repo(ignore = "node_modules/\n") {
-	const root = mkdtempSync(join(tmpdir(), "steward-repo-"));
+	const root = mkdtempSync(join(HOME, "steward-repo-"));
 	git(root, "init", "-q", "-b", "main");
 	git(root, "config", "user.email", "t@t");
 	git(root, "config", "user.name", "t");
@@ -35,7 +39,7 @@ function repo(ignore = "node_modules/\n") {
 }
 
 test("非 git 資料夾不能開 worktree", () => {
-	assert.equal(worktreeBlocker(mkdtempSync(join(tmpdir(), "plain-"))), "不是 git 專案");
+	assert.equal(worktreeBlocker(mkdtempSync(join(HOME, "plain-"))), "不是 git 專案");
 });
 
 test("worktree 帶上主線未提交的改動,node_modules 連回主線,主線不受影響", () => {

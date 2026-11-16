@@ -31,6 +31,10 @@ export interface Project {
 	conversationId?: string;
 	state: ProjectState;
 	lastActivityAt?: string;
+	/** 最後一次在候選資料夾做事的時間 */
+	seenAt?: string;
+	/** 候選資料夾被自動略過的時間 */
+	autoIgnoredAt?: string;
 	lastProposalCheckAt?: string;
 	// 一對一綁定的 herdr space(ID 可能在 herdr 重啟後改變,所以也記名稱,用來找回)
 	spaceId?: string;

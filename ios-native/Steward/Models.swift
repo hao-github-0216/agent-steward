@@ -26,6 +26,8 @@ struct Project: Codable, Hashable, Identifiable {
     var `private`: Bool?
     var state: ProjectState?
     var lastActivityAt: String?
+    var seenAt: String?
+    var createdAt: String?
     var closedAt: String?
 
     /// 看板上要顯示的:真正的專案、而且在進行中(雜務、總覽、收起來的不算)
