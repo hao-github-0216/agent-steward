@@ -117,6 +117,20 @@ export interface PushMessage {
 	link?: string;
 	/** 同一個專案的通知收在一起 */
 	thread?: string;
+	/** 解密後才掛上的通知按鈕類別 */
+	category?: "proposal" | "blocked";
+	/** 通知按鈕要操作的工作卡 */
+	card?: string;
+}
+
+/** 執行期也檢查動作欄位，避免無效類別或非字串卡片 id 進入密文。 */
+function validatedMessage(msg: PushMessage): PushMessage {
+	const { category, card, ...plain } = msg;
+	return {
+		...plain,
+		...(category === "proposal" || category === "blocked" ? { category } : {}),
+		...(typeof card === "string" ? { card } : {}),
+	};
 }
 
 /** 送給一台裝置;回傳 APNs 的結果(gone = 這個 token 已經失效,該刪掉) */
@@ -131,7 +145,7 @@ export function sendOne(cfg: ApnsConfig, d: PushDevice, msg: PushMessage): Promi
 				sound: "default",
 				...(msg.thread ? { "thread-id": collapseFor(d.key, msg.thread) } : {}),
 			},
-			e: encryptPush(d.key, msg),
+			e: encryptPush(d.key, validatedMessage(msg)),
 		})
 		: JSON.stringify({
 			aps: { alert: { title: msg.title, body: msg.body }, sound: "default", ...(msg.thread ? { "thread-id": msg.thread } : {}) },
@@ -172,7 +186,7 @@ async function sendRelay(relay: string, d: PushDevice, msg: PushMessage): Promis
 			v: 1,
 			platform: d.platform,
 			token: d.token,
-			payload: encryptPush(d.key!, msg),
+			payload: encryptPush(d.key!, validatedMessage(msg)),
 		};
 		// env 只有 iOS 用;collapse 只有在有 thread 時才帶
 		if (d.platform === "ios") body.env = d.env;
@@ -213,11 +227,11 @@ export async function pushAll(msg: PushMessage, only?: string): Promise<boolean>
 }
 
 /** 管家原本的通知文字(第一行是標題)→ 推播:去掉附在最後的看板網址 */
-export function messageFromText(text: string, projectId?: string): PushMessage {
+export function messageFromText(text: string, projectId?: string, category?: PushMessage["category"], cardId?: string): PushMessage {
 	const lines = text.split("\n").filter((l) => !/^(到看板核准:|Approve on board: )?https?:\/\/\S+$/.test(l.trim()));
 	const title = (lines.shift() ?? tr("專案管家")).trim();
 	const body = lines.join("\n").replace(/\n{2,}/g, "\n").trim();
-	return { title, body: body || title, ...(projectId ? { link: `agentsteward://project/${projectId}`, thread: projectId } : {}) };
+	return validatedMessage({ title, body: body || title, ...(projectId ? { link: `agentsteward://project/${projectId}`, thread: projectId } : {}), category, card: cardId });
 }
 
 export function apnsDir(): string {

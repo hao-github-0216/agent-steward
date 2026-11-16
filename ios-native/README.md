@@ -101,6 +101,10 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 
 ## 推播通知
 
+- 提案通知可直接按「核准派工」或「不要」；卡住的工作可按「重新派工」或「標成完成」。只有通知附有有效類別與工作卡資訊時才顯示按鈕。
+- 所有按鈕都要先解鎖才能執行，會在背景送給目前設定的管家，不會打開 App；成功不另通知，失敗會顯示原因，點失敗通知可開啟原本的專案。示範模式不執行通知操作。
+- Apple Watch 會跟著 iPhone 的通知設定顯示通知和按鈕，也需要先解鎖；實際顯示位置由系統依裝置狀態決定。
+
 管家直接送 APNs:developer.apple.com → Keys → 「+」勾 Apple Push Notifications service,下載 `AuthKey_<KEY ID>.p8`,
 放進管家電腦的 `~/.agent-steward/apns/`,同資料夾加 `config.json`:`{"teamId": "<Team ID>", "bundleId": "io.github.haogithub0216.agentsteward.native"}`。
 

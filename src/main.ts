@@ -39,7 +39,7 @@ const steward = new Steward({
 	store,
 	onCardProposed: (card, project) => {
 		// 隱私專案本來就不能提案;這裡再擋一次,萬一哪天開放了也不會把內容推出去
-		void notify(pushText(project, tr("🗂 專案管家提案({project})\n{title}\n→ 交給 {agent}\n完成標準:{criteria}\n\n到看板核准:{url}", { project: project.name, title: card.title, agent: card.agent, criteria: card.doneCriteria, url: boardUrl() }), tr("🔒 有一個隱私專案的提案等你核准\n\n{url}", { url: boardUrl() })), { projectId: project.id });
+		void notify(pushText(project, tr("🗂 專案管家提案({project})\n{title}\n→ 交給 {agent}\n完成標準:{criteria}\n\n到看板核准:{url}", { project: project.name, title: card.title, agent: card.agent, criteria: card.doneCriteria, url: boardUrl() }), tr("🔒 有一個隱私專案的提案等你核准\n\n{url}", { url: boardUrl() })), { projectId: project.id, category: "proposal", cardId: card.id });
 	},
 });
 await steward.open();
@@ -56,7 +56,7 @@ store.onChange((what) => {
 		if (lastBlocked.has(id)) continue;
 		const c = store.card(id)!;
 		const p = store.project(c.projectId);
-		void notify(pushText(p, tr("⚠️ 工作卡卡住({project})\n{title}\n{note}\n\n{url}", { project: p?.name ?? "?", title: c.title, note: c.note ?? "", url: boardUrl() }), tr("🔒 有一個隱私專案的工作卡卡住,請到看板查看\n\n{url}", { url: boardUrl() })), { projectId: c.projectId });
+		void notify(pushText(p, tr("⚠️ 工作卡卡住({project})\n{title}\n{note}\n\n{url}", { project: p?.name ?? "?", title: c.title, note: c.note ?? "", url: boardUrl() }), tr("🔒 有一個隱私專案的工作卡卡住,請到看板查看\n\n{url}", { url: boardUrl() })), { projectId: c.projectId, category: "blocked", cardId: c.id });
 	}
 	lastBlocked = now;
 	const done = idsIn("done");

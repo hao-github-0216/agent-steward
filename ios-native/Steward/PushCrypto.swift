@@ -7,6 +7,30 @@ struct PushPlain: Decodable {
     let body: String
     let link: String?
     let thread: String?
+    let category: String?
+    let card: String?
+}
+
+enum PushAction: String {
+    case approve, reject, redispatch, done
+
+    var title: String {
+        switch self {
+        case .approve: "核准派工"
+        case .reject: "不要"
+        case .redispatch: "重新派工"
+        case .done: "標成完成"
+        }
+    }
+
+    static func column(for identifier: String) -> String? {
+        switch PushAction(rawValue: identifier) {
+        case .approve, .redispatch: "approved"
+        case .reject: "rejected"
+        case .done: "done"
+        case nil: nil
+        }
+    }
 }
 
 enum PushCrypto {

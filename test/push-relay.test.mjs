@@ -24,6 +24,7 @@ function isolated(t, source, { relay = true } = {}) {
 		import { homedir } from "node:os";
 		import { join } from "node:path";
 		import { createServer } from "node:http";
+		import { pathToFileURL } from "node:url";
 		const home = process.env.HOME;
 		const dataDir = process.env.STEWARD_DATA_DIR;
 		assert.equal(homedir(), home);
@@ -107,6 +108,96 @@ test("notify 與 pushAll 逐台加密，iOS/Android 送出符合協定的 JSON",
 		for (const { body } of requests) {
 			assert.equal(Object.hasOwn(body, "collapse"), false);
 			assert.deepEqual(decryptPush(body.platform === "ios" ? iosKey : androidKey, body.payload), plain);
+		}
+	`);
+});
+
+for (const privateProject of [false, true]) test(`main.ts 提案與卡住保留加密動作，完成與每日提醒不帶動作（隱私=${privateProject}）`, (t) => {
+	isolated(t, `
+		const { notify } = await import(${JSON.stringify(url("notify.ts"))});
+		const { pushText } = await import(${JSON.stringify(url("privacy.ts"))});
+		const { tr } = await import(${JSON.stringify(url("i18n.ts"))});
+		registerDevice(iosToken, "production", "iPhone", "ios", iosKey);
+		registerDevice(androidToken, "production", "Android", "android", androidKey);
+		const project = { id: "project-action-id", name: "不該外洩的專案名稱", private: ${privateProject} };
+		const card = { id: "card-action-id", projectId: project.id, title: "不該外洩的工作標題", agent: "pi", doneCriteria: "完成標準", note: "不該外洩的回覆", column: "proposed", createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" };
+		let onChange;
+		const store = {
+			cards: () => [card], card: (id) => id === card.id ? card : undefined,
+			project: (id) => id === project.id ? project : undefined, projects: () => [],
+			onChange: (handler) => { onChange = handler; },
+		};
+		const pending = [];
+		const calls = [];
+		const send = (text, opts) => { calls.push({ text, opts }); const p = notify(text, opts); pending.push(p); return p; };
+		// 只執行原始碼的通知掛鉤，不啟動常駐程式、監看器或真正伺服器。
+		const mainSource = readFileSync(new URL(${JSON.stringify(url("main.ts"))}), "utf8");
+		const start = mainSource.indexOf("const steward = new Steward({");
+		const end = mainSource.indexOf("setInterval(digest,");
+		assert.ok(start >= 0 && end > start);
+		const hooksFile = join(home, "main-notification-hooks.ts");
+		writeFileSync(hooksFile, "export async function loadHooks(store, Steward, notify, pushText, tr, boardUrl, justAnswered) {\\n" + mainSource.slice(start, end) + "\\nreturn { steward, digest };\\n}");
+		const { loadHooks } = await import(pathToFileURL(hooksFile).href);
+		class FakeSteward { constructor(opts) { Object.assign(this, opts); } async open() {} }
+		const { steward, digest } = await loadHooks(store, FakeSteward, send, pushText, tr, () => "https://board.example/", (c) => !!c.reply);
+		process.env.STEWARD_DESKTOP = "1";
+		const output = [];
+		const write = process.stdout.write;
+		process.stdout.write = (line) => { output.push(String(line)); return true; };
+		try {
+			for (const event of ["proposal", "blocked", "done", "reply", "digest"]) {
+				requests.length = 0;
+				output.length = 0;
+				if (event === "proposal") steward.onCardProposed(card, project);
+				else if (event === "digest") { card.column = "blocked"; digest(); }
+				else {
+					if (event === "reply") {
+						card.column = "running";
+						onChange("cards");
+						card.reply = true;
+						card.thread = [{ text: "不該外洩的追問回答" }];
+					}
+					card.column = event === "blocked" ? "blocked" : "done";
+					card.paneId = "fixture-pane";
+					onChange("cards");
+				}
+				assert.deepEqual(await Promise.all(pending.splice(0)), [true]);
+				assert.equal(requests.length, 2);
+				const { text, opts } = calls.at(-1);
+				for (const request of requests) {
+					const plain = decryptPush(request.body.platform === "ios" ? iosKey : androidKey, request.body.payload);
+					const actions = event === "proposal" || event === "blocked" ? { category: event, card: card.id } : {};
+					assert.deepEqual(plain, { ...messageFromText(text, opts?.projectId), ...actions });
+					if (${privateProject}) {
+						assert.match(JSON.stringify(plain), /隱私專案/);
+						for (const value of [project.name, card.title, card.note, "不該外洩的追問回答"]) assert.ok(!JSON.stringify(plain).includes(value));
+					}
+					assert.deepEqual(Object.keys(request.body).sort(), (request.body.platform === "ios" ? ["v", "platform", "token", "env", "payload", ...(opts?.projectId ? ["collapse"] : [])] : ["v", "platform", "token", "payload", ...(opts?.projectId ? ["collapse"] : [])]).sort());
+					assert.ok(!request.text.includes(card.id));
+					assert.ok(!request.text.includes(project.id));
+				}
+				const { title, body } = messageFromText(text);
+				assert.deepEqual(output, ["@@desktop " + JSON.stringify({ cmd: "notify", title, body, ...(opts?.projectId ? { project: opts.projectId } : {}) }) + "\\n"]);
+			}
+		} finally { process.stdout.write = write; }
+	`);
+});
+
+test("messageFromText 與 notify 只接受 proposal/blocked 類別與字串卡片 id", (t) => {
+	isolated(t, `
+		const { notify } = await import(${JSON.stringify(url("notify.ts"))});
+		registerDevice(iosToken, "production", "iPhone", "ios", iosKey);
+		const text = "動作驗證\\n通知內文";
+		const base = messageFromText(text, "project-id");
+		for (const category of [undefined, null, "", "PROPOSAL", "other", 123, {}, [], "proposal", "blocked"]) {
+			for (const cardId of [undefined, null, 123, {}, [], "", "card-id"]) {
+				const expected = { ...base, ...(["proposal", "blocked"].includes(category) ? { category } : {}), ...(typeof cardId === "string" ? { card: cardId } : {}) };
+				assert.deepEqual(messageFromText(text, "project-id", category, cardId), expected);
+				requests.length = 0;
+				assert.equal(await notify(text, { projectId: "project-id", category, cardId, iphoneOnly: true }), true);
+				assert.equal(requests.length, 1);
+				assert.deepEqual(decryptPush(iosKey, requests[0].body.payload), expected);
+			}
 		}
 	`);
 });
@@ -279,23 +370,41 @@ test("直接 APNs 優先且使用相同加密格式，舊 iOS 仍送明文，And
 			return client;
 		};
 		syncBuiltinESMExports();
-		const msg = { title: "direct encrypted", body: "only this device", link: "agentsteward://project/private-project", thread: "private-project" };
+		const base = { title: "direct encrypted", body: "only this device", link: "agentsteward://project/private-project", thread: "private-project" };
 		try {
-			assert.equal(await pushAll(msg), true);
-			assert.equal(directRequests.length, 2);
-			const encrypted = directRequests.find((r) => r.headers[":path"].endsWith(iosToken));
-			assert.equal(encrypted.host, "https://api.push.apple.com");
-			assert.equal(encrypted.headers["apns-push-type"], "alert");
-			assert.equal(encrypted.headers["apns-priority"], "10");
-			assert.deepEqual(Object.keys(encrypted.body).sort(), ["aps", "e"]);
-			assert.deepEqual(encrypted.body.aps, { alert: { "title-loc-key": "PUSH_FALLBACK_TITLE", "loc-key": "PUSH_FALLBACK_BODY" }, "mutable-content": 1, sound: "default", "thread-id": collapseFor(iosKey, msg.thread) });
-			assert.deepEqual(decryptPush(iosKey, encrypted.body.e), msg);
-			const legacy = directRequests.find((r) => r.headers[":path"].endsWith(legacyToken));
-			assert.equal(legacy.host, "https://api.sandbox.push.apple.com");
-			assert.deepEqual(legacy.body, { aps: { alert: { title: msg.title, body: msg.body }, sound: "default", "thread-id": msg.thread }, link: msg.link });
-			assert.equal(requests.length, 1);
-			assert.equal(requests[0].body.platform, "android");
-			assert.deepEqual(decryptPush(androidKey, requests[0].body.payload), msg);
+			for (const [actions, expectedActions] of [
+				[{ category: "proposal", card: "proposal-card-id" }, { category: "proposal", card: "proposal-card-id" }],
+				[{ category: "blocked", card: "blocked-card-id" }, { category: "blocked", card: "blocked-card-id" }],
+				[{}, {}],
+				[{ category: "other", card: 123 }, {}],
+				[{ category: "proposal", card: {} }, { category: "proposal" }],
+				[{ category: false, card: "string-card-id" }, { card: "string-card-id" }],
+			]) {
+				const msg = { ...base, ...actions };
+				const expected = { ...base, ...expectedActions };
+				directRequests.length = 0;
+				requests.length = 0;
+				assert.equal(await pushAll(msg), true);
+				assert.equal(directRequests.length, 2);
+				const encrypted = directRequests.find((r) => r.headers[":path"].endsWith(iosToken));
+				assert.equal(encrypted.host, "https://api.push.apple.com");
+				assert.equal(encrypted.headers["apns-push-type"], "alert");
+				assert.equal(encrypted.headers["apns-priority"], "10");
+				assert.deepEqual(Object.keys(encrypted.body).sort(), ["aps", "e"]);
+				assert.deepEqual(encrypted.body.aps, { alert: { "title-loc-key": "PUSH_FALLBACK_TITLE", "loc-key": "PUSH_FALLBACK_BODY" }, "mutable-content": 1, sound: "default", "thread-id": collapseFor(iosKey, msg.thread) });
+				assert.deepEqual(decryptPush(iosKey, encrypted.body.e), expected);
+				const legacy = directRequests.find((r) => r.headers[":path"].endsWith(legacyToken));
+				assert.equal(legacy.host, "https://api.sandbox.push.apple.com");
+				assert.deepEqual(legacy.body, { aps: { alert: { title: msg.title, body: msg.body }, sound: "default", "thread-id": msg.thread }, link: msg.link });
+				assert.equal(requests.length, 1);
+				assert.equal(requests[0].body.platform, "android");
+				assert.deepEqual(decryptPush(androidKey, requests[0].body.payload), expected);
+				assert.deepEqual(Object.keys(requests[0].body).sort(), ["v", "platform", "token", "payload", "collapse"].sort());
+				for (const request of [encrypted, requests[0]]) {
+					const wire = JSON.stringify(request.body);
+					if (typeof actions.card === "string") assert.ok(!wire.includes(actions.card));
+				}
+			}
 		} finally { http2.connect = connect; syncBuiltinESMExports(); }
 	`);
 });

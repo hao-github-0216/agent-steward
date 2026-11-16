@@ -70,7 +70,7 @@ describe("fixture shape (scripts/make-vectors.mjs output)", () => {
     expect(f.v).toBe(1);
     expect(f.aad).toBe(EXPECTED_AAD);
     expect(f.aad).toBe("agent-steward-push-v1");
-    expect(f.vectors).toHaveLength(3);
+    expect(f.vectors).toHaveLength(4);
   });
 
   it("every vector has well-formed key/nonce/payload material", () => {
@@ -110,6 +110,19 @@ describe("fixture shape (scripts/make-vectors.mjs output)", () => {
     const withoutLinkThread = parsed.filter((m) => !m.link && !m.thread);
     expect(withLinkThread.length).toBeGreaterThanOrEqual(1);
     expect(withoutLinkThread.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("vector-4 includes the encrypted notification category and card", async () => {
+    const vector = f.vectors[3];
+    expect(vector.name).toBe("vector-4");
+    const decrypted = JSON.parse(await decryptPayload(vector.key, vector.payload, EXPECTED_AAD));
+    expect(decrypted.category).toBe("proposal");
+    expect(decrypted.card).toBe("card-action-1");
+    for (const oldVector of f.vectors.slice(0, 3)) {
+      const message = JSON.parse(oldVector.plaintext);
+      expect(message.category).toBeUndefined();
+      expect(message.card).toBeUndefined();
+    }
   });
 
   it("wrongKey fixture reuses vector-1 ciphertext with a different key", () => {

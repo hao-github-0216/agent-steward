@@ -22,6 +22,13 @@
       "nonce": "ND4LzfojMw9uz6tV",
       "plaintext": "{\"title\":\"建置完成 ✅\",\"body\":\"繁體中文、emoji 🚀，以及換行\\n第二行。\",\"link\":\"agentsteward://project/build\",\"thread\":\"build\"}",
       "payload": "ND4LzfojMw9uz6tViYAG9/S4qmdi5vE9HVDmSTseufyoZjdkmprNLvv0Y9Bj+fiVfUd9B8uOvxSBmS3bhX/wbX5Lz00cQ6lhVkxu3NtQ7QTxkf9093HflN+gVJ1M1VCWAqqtbabJxAzksOVzIFWBMtLOJ5C3vDdJVie0m8sCWuSSs0Kj+arHhrYeZdkDVlaKcDGehr2hiACflDTR8XfXu3FphgVgqasZMrKdWlw7mw=="
+    },
+    {
+      "name": "vector-4",
+      "key": "0UP9U59+c2+Gv/jGCYsEeaZ8v3OLUVbf2fozyZylc0o=",
+      "nonce": "QH6yqZL6oU2CYl8c",
+      "plaintext": "{\"title\":\"🗂 專案管家提案（按鈕測試）\",\"body\":\"請核准派工，或選擇不要。\",\"link\":\"agentsteward://project/action-project\",\"thread\":\"action-project\",\"category\":\"proposal\",\"card\":\"card-action-1\"}",
+      "payload": "QH6yqZL6oU2CYl8cIuf4WbLc8zAGZb2QzPgMoutwPOeSCyb79iXGGzEIc6r0NqAa9BSygB6vxCPPLXS5DbL/A5KFlApp/8UtfVZqXGSRwTbteR+XcHsVGiROLJ99VEvgAUmjIU4F9t68PZYWtr+XrEl7HJeFRm5JA0zWcj3zZ2zEX7YD1P2pHkz4ezcvWgMPpLtF3ti2Dw0yPcWhucugL6JyniN7rWDkKWZMI0dCoUG0qgXPOIv4JknEnUsZTFvS/TW5nj4yjBIrvDYXZ2BzwjjtdOAGpLH1Mo6t8A5oRJwrEHfZ+AGTsYNqF3TvodSicW2iezU="
     }
   ],
   "wrongKey": {
