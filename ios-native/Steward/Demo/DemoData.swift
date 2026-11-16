@@ -6,6 +6,7 @@ enum DemoData {
     static let answer = "這是示範模式，沒有連到真的管家。裝好電腦版的專案管家後，在這裡問的問題會由你設定的 AI 回答。"
     static let projectID = "demo-weather"
     private static let now = Date()
+    private static let settings = SettingsSample(demo: true)
 
     private static func at(_ secondsAgo: TimeInterval) -> String {
         ISO8601DateFormatter().string(from: now.addingTimeInterval(-secondsAgo))
@@ -185,9 +186,14 @@ enum DemoData {
         func q(_ name: String) -> String { query.first { $0.name == name }?.value ?? "" }
         let success: [String: Any] = ["ok": true]
 
+        if url.path == "/api/settings" || url.path.hasPrefix("/api/settings/") || url.path.hasPrefix("/api/auth/") ||
+            ["/api/push/status", "/api/push/test", "/api/desktop/update"].contains(url.path) {
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let (status, object) = settings.response(for: request, body: body)
+            return json(object, status: status, write: status < 400 && method != "GET")
+        }
+
         switch (method, path.joined(separator: "/")) {
-        case ("GET", "api/auth/status"): return json(["authed": true, "how": "demo", "hasPassword": false])
-        case ("POST", "api/auth/login"): return json(success, write: true)
         case ("GET", "api/board"): return json(["projects": projects, "cards": cards, "spaceInfo": [String: Any](), "setup": ["missing": [String]()]])
         case ("GET", "api/projects"): return json(["projects": projects])
         case ("POST", "api/projects"): return json(["ok": true, "id": projectID], write: true)
@@ -195,8 +201,7 @@ enum DemoData {
         case ("GET", "api/current"): return json(["project": projectID, "source": "demo"])
         case ("PUT", "api/current"): return json(success, write: true)
         case ("GET", "api/worktree-counts"): return json(["counts": [projectID: 1, "demo-notes": 0, "demo-errands": 0]])
-        case ("GET", "api/push/status"): return json(["configured": false, "mode": "none", "devices": 0])
-        case ("POST", "api/push/register"), ("POST", "api/push/test"), ("POST", "api/terminal/focus"), ("POST", "api/snap/agent"):
+        case ("POST", "api/push/register"), ("POST", "api/terminal/focus"), ("POST", "api/snap/agent"):
             return json(success, write: true)
         case ("GET", "api/events"):
             return Response(contentType: "text/event-stream", data: Data(": ping\n\n".utf8), eventStream: true)
