@@ -235,7 +235,10 @@ final class WatchBridge: NSObject, WCSessionDelegate {
 extension WatchSnapshot {
     static func make(board: Board, demo: Bool) -> WatchSnapshot {
         let cards = Dictionary(grouping: board.cards ?? [], by: \.projectId)
-        let projects = board.projects.map { project in
+        // 跟 iPhone 側邊欄一樣只放進行中的專案(不含雜務、總覽、已結束、停止追蹤、待登記),最近有動靜的排前面
+        let active = board.projects.filter(\.isActiveProject)
+            .sorted { ($0.lastActive ?? .distantPast) > ($1.lastActive ?? .distantPast) }
+        let projects = active.map { project in
             let projectCards = cards[project.id] ?? []
             let counts = WatchCounts(
                 proposed: projectCards.filter { $0.column == "proposed" }.count,

@@ -22,6 +22,17 @@ final class WatchProtocolTests: XCTestCase {
         XCTAssertNotNil(ISO8601DateFormatter().date(from: decoded.at))
     }
 
+    func testSnapshotOnlyHasActiveProjectsNewestFirst() {
+        var older = project("older"); older.lastActivityAt = "2026-11-01T00:00:00Z"
+        var newer = project("newer"); newer.lastActivityAt = "2026-11-15T00:00:00Z"
+        var closed = project("closed"); closed.status = "closed"
+        var ignored = project("ignored"); ignored.status = "ignored"
+        var pending = project("pending"); pending.status = "pending"
+        var misc = project("misc"); misc.kind = "builtin"
+        let board = Board(projects: [older, closed, ignored, pending, misc, newer])
+        XCTAssertEqual(WatchSnapshot.make(board: board, demo: false).projects.map(\.id), ["newer", "older"])
+    }
+
     func testRejectOtherVersions() throws {
         var snapshot = WatchSnapshot.make(board: Board(projects: [project()]), demo: false)
         snapshot.v = 2
@@ -99,8 +110,9 @@ final class WatchProtocolTests: XCTestCase {
         let board = try JSONDecoder().decode(Board.self, from: data)
         let snapshot = WatchSnapshot.make(board: board, demo: true)
         XCTAssertTrue(snapshot.demo)
-        XCTAssertEqual(snapshot.projects.count, DemoData.projects.count)
-        XCTAssertEqual(snapshot.projects.count, 3)
+        // 示範資料的「雜務」不是專案,手錶只放兩個進行中的專案
+        XCTAssertEqual(snapshot.projects.count, 2)
+        XCTAssertFalse(snapshot.projects.contains { $0.id == "demo-errands" })
         let weather = try XCTUnwrap(snapshot.projects.first { $0.id == DemoData.projectID })
         XCTAssertEqual(weather.counts, WatchCounts(proposed: 2, approved: 1, inProgress: 2, blocked: 1, done: 2))
         XCTAssertEqual(weather.cards.count, 5)
