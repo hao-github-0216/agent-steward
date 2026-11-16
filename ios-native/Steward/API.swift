@@ -29,6 +29,9 @@ struct API {
         c.timeoutIntervalForRequest = 30
         c.httpCookieStorage = .shared
         c.httpShouldSetCookies = true
+        #if DEBUG
+        SettingsFixture.configure(c)
+        #endif
         return URLSession(configuration: c)
     }()
 
@@ -37,6 +40,9 @@ struct API {
         c.timeoutIntervalForRequest = 210
         c.timeoutIntervalForResource = 240
         c.httpCookieStorage = .shared
+        #if DEBUG
+        SettingsFixture.configure(c)
+        #endif
         return URLSession(configuration: c)
     }()
 
@@ -329,6 +335,9 @@ struct API {
         c.timeoutIntervalForRequest = 120 // 管家每 25 秒送一次 ping
         c.timeoutIntervalForResource = 24 * 3600
         c.httpCookieStorage = .shared
+        #if DEBUG
+        SettingsFixture.configure(c)
+        #endif
         return URLSession(configuration: c)
     }()
 

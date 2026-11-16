@@ -7,6 +7,17 @@ struct StewardApp: App {
     @State private var push = PushState.shared
     @Environment(\.scenePhase) private var scenePhase
 
+    #if DEBUG
+    init() {
+        if SettingsFixture.enabled {
+            SettingsFixture.install()
+            let fixtureModel = AppModel()
+            fixtureModel.setServer(SettingsFixture.base)
+            _model = State(initialValue: fixtureModel)
+        }
+    }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             RootView()
