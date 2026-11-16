@@ -207,10 +207,13 @@ final class WatchStore: NSObject, ObservableObject {
         catch { report(error) }
     }
 
-    private func receiveContext(_ context: [String: Any]) -> Bool {
+    private func receiveContext(_ context: [String: Any], onlyIfNewer: Bool = false) -> Bool {
         guard let data = context[WatchWire.snapshotKey] as? Data else { return false }
         do {
-            accept(try WatchWire.decode(WatchSnapshot.self, from: data))
+            let value = try WatchWire.decode(WatchSnapshot.self, from: data)
+            // 啟動時系統留著的 context 可能比手錶自己存的快照還舊,舊的不要蓋掉新的
+            if onlyIfNewer, let current = snapshot, current.at > value.at { return true }
+            accept(value)
             return true
         } catch {
             report(error)
@@ -247,15 +250,20 @@ final class WatchStore: NSObject, ObservableObject {
 extension WatchStore: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         Task { @MainActor in
-            if !self.receiveContext(session.receivedApplicationContext) { self.readCache() }
+            if !self.receiveContext(session.receivedApplicationContext, onlyIfNewer: true) { self.readCache() }
             self.isReachable = activationState == .activated && session.isReachable
             if let error { self.report(error) }
+            // 打開手錶 App 時主動請 iPhone 抓最新看板,不要一直顯示上次存下來的清單
+            if self.isReachable { await self.refresh() }
         }
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
+            let wasReachable = self.isReachable
             self.isReachable = session.activationState == .activated && session.isReachable
+            // 從連不到變成連得到(例如 iPhone 回到身邊)時也更新一次
+            if !wasReachable, self.isReachable { await self.refresh() }
         }
     }
 
