@@ -28,6 +28,7 @@ struct SetupView: View {
                         .focused($focused)
                         .submitLabel(.go)
                         .onSubmit(save)
+                        .accessibilityIdentifier("server-url")
                 } header: {
                     Text("管家網址")
                 } footer: {
@@ -35,12 +36,24 @@ struct SetupView: View {
                         .foregroundStyle(error == nil ? Color.secondary : Color.red)
                 }
                 Section {
+                    Button("先看示範") {
+                        focused = false
+                        model.enterDemo()
+                        Task { await model.connect() }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("demo-enter")
+                } footer: {
+                    Text("不用連管家，用範例資料看看各個畫面")
+                }
+                Section {
                     Button("連線", action: save)
                         .frame(maxWidth: .infinity)
                         .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .onAppear { text = model.server?.absoluteString ?? ""; focused = true }
+            .onAppear { text = model.server?.absoluteString ?? "" }
         }
     }
 

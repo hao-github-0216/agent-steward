@@ -11,7 +11,7 @@
 └ 看板 · 程式碼 · 終端機        ┘  ← 系統分頁列(跟網頁三個模式同順序)
 ```
 
-- 主畫面名稱「專案管家 β」,bundle ID `io.github.haogithub0216.agentsteward.native`(跟 `ios-app/` 的 Tauri 版分開)
+- 主畫面名稱「專案管家」,bundle ID `io.github.haogithub0216.agentsteward.native`(跟 `ios-app/` 的 Tauri 版分開)
 - iPhone 和 iPad 都能用(iPad 上分頁列在頂端、看板一次看得到好幾欄、可以分割畫面)
 - 顏色用 iOS 系統顏色(深淺色由系統處理),強調色是網頁的藍;文字跟著 iPhone 的文字大小設定
 - 身分:透過 Tailscale 的 https 網址連線時管家自動認得;否則用管理密碼登入
@@ -124,16 +124,36 @@ build 號以這個 workflow 的 `github.run_number + 100` 計算，例如第 1 �
 
 成功匯出後，IPA 與 archive 裡的 dSYMs 會保存在該次執行的 `ios-<run_number>` artifact，保留 **14 天**；即使取消勾選 `upload`，仍可下載。
 
+## 示範模式
+
+第一次打開 App 時，在管家網址欄下方點「先看示範」，不用安裝電腦版，也不用連到管家。這個模式供 App Store 審查與功能展示使用，可以查看看板、工作卡、問管家、程式碼、Markdown 預覽與 Git 狀態。
+
+- 專案、工作卡、檔案、對話和路徑全部是虛構範例。送出問題只會得到固定的示範回答；核准、追問、存檔、提交等動作不會真的執行，也不會改動範例資料。
+- 不會要求推播權限或註冊推播。終端機、設定網頁、建立專案與完整網頁版會改顯示說明，不載入管家網頁。Markdown 預覽仍可從 CDN 載入排版程式。
+- App 會記住示範狀態，重開後仍在示範模式。畫面底部橫幅的「離開」會回到網址畫面，還原進入前的管家網址，不會自動連線。
+- 示範 API 固定使用 `https://demo.agentsteward.invalid/`，由 App 內的 URLProtocol 回覆；其他網址的請求不受影響。
+
+UI 測試與截圖可用啟動參數 `-demo YES` 直接進入示範模式：
+
+```sh
+xcrun simctl launch <UDID> io.github.haogithub0216.agentsteward.native -demo YES
+xcodebuild -project Steward.xcodeproj -scheme Steward \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+  -only-testing:StewardTests -only-testing:StewardUITests/DemoTests test
+```
+
+`StewardUITests/DemoTests.swift` 會依序操作主要畫面，並將 `01-board`、`02-card` 等英文名稱的截圖保留在測試結果中。可以用 `xcrun xcresulttool export attachments --path <結果.xcresult> --output-path <輸出資料夾>` 匯出截圖。測試結束後，請只移除模擬器中的測試 App 和測試 runner，清除測試資料，不要刪除模擬器。
+
 ## 推播通知
 
 - 提案通知可直接按「核准派工」或「不要」；卡住的工作可按「重新派工」或「標成完成」。只有通知附有有效類別與工作卡資訊時才顯示按鈕。
 - 所有按鈕都要先解鎖才能執行，會在背景送給目前設定的管家，不會打開 App；成功不另通知，失敗會顯示原因，點失敗通知可開啟原本的專案。示範模式不執行通知操作。
 - Apple Watch 會跟著 iPhone 的通知設定顯示通知和按鈕，也需要先解鎖；實際顯示位置由系統依裝置狀態決定。
 
-管家直接送 APNs:developer.apple.com → Keys → 「+」勾 Apple Push Notifications service,下載 `AuthKey_<KEY ID>.p8`,
-放進管家電腦的 `~/.agent-steward/apns/`,同資料夾加 `config.json`:`{"teamId": "<Team ID>", "bundleId": "io.github.haogithub0216.agentsteward.native"}`。
+推播預設經過推播中繼(`relay/`,規格見 `relay/PROTOCOL.md`):App 第一次允許通知時自己產生加密金鑰交給管家,管家把通知加密後交給中繼,中繼轉給 APNs,通知服務擴充(`StewardNotify/`)解密後顯示。中繼和 Apple 都看不到內容。
+
+自己編 App(換了 bundle id 或 Team)的人,中繼送不到你的 App,要改成管家直接送:developer.apple.com → Keys → 「+」勾 Apple Push Notifications service,下載 `AuthKey_<KEY ID>.p8`,放進管家電腦的 `~/.agent-steward/apns/`,同資料夾加 `config.json`:`{"teamId": "<Team ID>", "bundleId": "<你的 bundle id>"}`。有這個資料夾時管家就不經過中繼。
 
 ## 還沒做的
 
-- iPhone 推播的金鑰(上面)
 - SwiftMath 不支援的數學指令(例如 `\underbrace`)照原文顯示

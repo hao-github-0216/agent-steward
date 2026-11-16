@@ -32,7 +32,7 @@ final class WebStore {
     }
 
     private var url: URL? {
-        guard let model, let base = model.server else { return nil }
+        guard let model, !model.isDemo, let base = model.server else { return nil }
         var c = URLComponents(url: base, resolvingAgainstBaseURL: false)
         c?.queryItems = [URLQueryItem(name: "app", value: "1")] + (model.currentProjectId.map { [URLQueryItem(name: "project", value: $0)] } ?? [])
         c?.fragment = "terminal"
@@ -99,8 +99,11 @@ final class WebStore {
     }
 
     func reset() {
+        main?.stopLoading()
+        main?.configuration.userContentController.removeScriptMessageHandler(forName: "steward")
         main?.removeFromSuperview()
         main = nil
+        ready = false
     }
 
     static func jsString(_ s: String) -> String {
@@ -134,10 +137,12 @@ struct WebContainer: UIViewRepresentable {
     }
 
     func updateUIView(_ host: UIView, context: Context) {
+        guard !model.isDemo else { return }
         if model.web.view().superview !== host { attach(to: host) }
     }
 
     private func attach(to host: UIView) {
+        guard !model.isDemo else { return }
         let web = model.web.view()
         web.removeFromSuperview()
         web.frame = host.bounds
@@ -182,7 +187,7 @@ struct WebPage: View {
     }
 
     private var url: URL? {
-        guard let base = model.server else { return nil }
+        guard !model.isDemo, let base = model.server else { return nil }
         var c = URLComponents(url: base, resolvingAgainstBaseURL: false)
         switch sheet {
         case .settings(let s, _): c?.queryItems = [.init(name: "app", value: "1"), .init(name: "settings", value: s)]
@@ -208,7 +213,9 @@ struct WebPage: View {
 
     var body: some View {
         Group {
-            if let url {
+            if model.isDemo {
+                DemoWebUnavailableView()
+            } else if let url {
                 OneShotWebView(url: url, bridge: bridged) { msg in
                     let t = msg["type"] as? String
                     if t == "settingsClosed" || t == "dialogClosed" { dismiss() }
@@ -218,6 +225,16 @@ struct WebPage: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct DemoWebUnavailableView: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label("示範模式", systemImage: "desktopcomputer")
+        } description: {
+            Text("這個畫面是電腦上專案管家的網頁，示範模式沒有。")
+        }
     }
 }
 

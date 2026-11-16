@@ -13,15 +13,24 @@ struct AppShell: View {
         @Bindable var model = model
         @Bindable var snap = model.snap
         TabView(selection: $model.mode) {
-            BoardTab()
-                .tabItem { Label("看板", systemImage: "rectangle.split.3x1") }
-                .tag(Mode.board)
-            CodeTab()
-                .tabItem { Label("程式碼", systemImage: "chevron.left.forwardslash.chevron.right") }
-                .tag(Mode.code)
-            WebModeTab(mode: .terminal)
-                .tabItem { Label("終端機", systemImage: "terminal") }
-                .tag(Mode.terminal)
+            VStack(spacing: 0) {
+                BoardTab()
+                DemoBanner()
+            }
+            .tabItem { Label("看板", systemImage: "rectangle.split.3x1") }
+            .tag(Mode.board)
+            VStack(spacing: 0) {
+                CodeTab()
+                DemoBanner()
+            }
+            .tabItem { Label("程式碼", systemImage: "chevron.left.forwardslash.chevron.right") }
+            .tag(Mode.code)
+            VStack(spacing: 0) {
+                WebModeTab(mode: .terminal)
+                DemoBanner()
+            }
+            .tabItem { Label("終端機", systemImage: "terminal") }
+            .tag(Mode.terminal)
         }
         // 看檔案全螢幕:狀態列、Home 列也收起來(要掛在最外層,掛在分頁裡面系統不理)
         .statusBarHidden(model.isReaderFullScreen)
@@ -39,6 +48,7 @@ struct AppShell: View {
         }
         .sheet(isPresented: $model.showChat, onDismiss: { model.drainPending() }) {
             ChatPanel()
+                .safeAreaInset(edge: .top, spacing: 0) { DemoWriteNotice() }
                 // 一打開就是全高(對話需要空間),往下拉變半高
                 .presentationDetents([.large, .medium], selection: $chatDetent)
                 .presentationDragIndicator(.visible)
@@ -46,6 +56,7 @@ struct AppShell: View {
         }
         .sheet(item: Binding(get: { model.openCardId.map(CardRef.init) }, set: { model.openCardId = $0?.id }), onDismiss: { model.drainPending() }) { ref in
             CardPopup(cardId: ref.id)
+                .safeAreaInset(edge: .top, spacing: 0) { DemoWriteNotice() }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -66,6 +77,49 @@ struct AppShell: View {
 }
 
 struct CardRef: Identifiable { let id: String }
+
+private struct DemoBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.isDemo {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("示範模式・資料都是範例")
+                    Spacer()
+                    Button("離開") { model.leaveDemo() }
+                        .accessibilityIdentifier("demo-exit")
+                }
+                .font(.footnote)
+                .padding(.horizontal).padding(.vertical, 8)
+                .background(Theme.accent.opacity(0.1), ignoresSafeAreaEdges: [])
+                DemoWriteNotice()
+            }
+            .background(Color(.systemBackground), ignoresSafeAreaEdges: [])
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("demo-banner")
+        }
+    }
+}
+
+private struct DemoWriteNotice: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.isDemo, let message = model.lastError {
+            HStack {
+                Label(message, systemImage: "info.circle")
+                    .accessibilityIdentifier("demo-write-notice")
+                Spacer()
+                Button { model.lastError = nil } label: { Image(systemName: "xmark") }
+                    .accessibilityLabel("關閉提示")
+            }
+            .font(.footnote)
+            .padding(.horizontal).padding(.vertical, 8)
+            .background(Color(.secondarySystemBackground))
+        }
+    }
+}
 
 // MARK: - 每一頁共用的頂端:標題是目前專案(點了換專案)
 
@@ -177,7 +231,10 @@ struct WebModeTab: View {
     var body: some View {
         NavigationStack {
             Group {
-                if model.current != nil {
+                if model.isDemo {
+                    DemoWebUnavailableView()
+                        .overlay { BallLayer() }
+                } else if model.current != nil {
                     WebContainer(token: attachToken)
                         .overlay { BallLayer() }
                 } else {
