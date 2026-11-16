@@ -154,6 +154,29 @@ xcodebuild -project Steward.xcodeproj -scheme Steward \
 
 `StewardUITests/DemoTests.swift` 會依序操作主要畫面，並將 `01-board`、`02-card` 等英文名稱的截圖保留在測試結果中。可以用 `xcrun xcresulttool export attachments --path <結果.xcresult> --output-path <輸出資料夾>` 匯出截圖。測試結束後，請只移除模擬器中的測試 App 和測試 runner，清除測試資料，不要刪除模擬器。
 
+## Apple Watch
+
+iPhone App 內含 Apple Watch App（watchOS 10 以上），需要配對的 iPhone，不能獨立連到管家。手錶只透過 WatchConnectivity 請 iPhone 代為呼叫既有 API，不會儲存管家網址、登入資訊或密碼。第一次使用前，請先在 iPhone 上連到管家；iPhone 的示範模式也能提供示範快照。
+
+- **看進度：** 專案清單顯示卡住與提案數、最後更新時間。專案頁可以查看目標、進度、最多三個下一步和卡點。
+- **看工作卡與核准：** 每個專案最多顯示十五張提案、卡住或進行中的卡片。提案可以核准派工或退回；卡住的工作可以重新派工或標成完成。每次操作都會先請你確認。
+- **問管家：** 可以點建議問題，或使用系統聽寫、鍵盤輸入問題，並查看最近五則對話。回答超過 25 秒時會先顯示等待訊息，iPhone 收到答案後再傳到手錶；也可以按「重新整理」讀取最近對話。程式碼區塊會提示改在 iPhone 上看。
+- **iPhone 不在附近：** 仍可查看最後快照，但重新整理、提問與工作卡操作會停用，並顯示「iPhone 不在附近」。快照不是即時狀態，操作前請留意更新時間。
+- **隱私專案：** 手錶只顯示「隱私專案」與各欄工作卡數，不傳送原始名稱、目標、進度、下一步、卡點或工作卡內容，也不能從手錶提問或操作這些卡片。
+- **錶面小工具：** 圓形顯示卡住數，矩形與單行顯示卡住、提案數；矩形最多再顯示一個非隱私專案名稱。點擊即可開啟手錶 App。小工具和手錶 App 透過 App Group 共用快照，沒有快照時顯示「專案管家」。
+
+手錶介面支援繁體中文與英文。建置與 UI 測試方式：
+
+```sh
+cd ios-native
+xcodegen generate
+xcodebuild -scheme StewardWatch \
+  -destination 'platform=watchOS Simulator,name=Apple Watch Series 12 (46mm)' \
+  test CODE_SIGNING_ALLOWED=NO
+```
+
+`StewardWatchUITests` 使用只編進 DEBUG 的 `-watchFixture YES` 假資料，不需要連到管家。測試會以繁中與英文各走一次專案清單、進度、工作卡、核准按鈕和建議問題，並保留 `watch-01-projects` 到 `watch-05-ask` 五張截圖。測試結束後，只移除模擬器裡的 App 與測試 runner，不刪除模擬器。
+
 ## 推播通知
 
 - 提案通知可直接按「核准派工」或「不要」；卡住的工作可按「重新派工」或「標成完成」。只有通知附有有效類別與工作卡資訊時才顯示按鈕。

@@ -1,0 +1,22 @@
+{
+  "sourceLanguage": "zh-Hant",
+  "strings": {
+    "CFBundleDisplayName": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Steward"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "專案管家"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
