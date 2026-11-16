@@ -99,6 +99,31 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
   - 標題列的測試 `testProjectTitleMenu` 只在隔離的管家跑(會換專案):另外給 `TEST_RUNNER_STEWARD_TITLE_PROJECT`(長名字、隱私的專案 id)、`TEST_RUNNER_STEWARD_TITLE_NAME`(它的名字)、`TEST_RUNNER_STEWARD_TITLE_OTHER`(另一個專案的名字)
 - 注意:切到終端機、在終端機換專案會讓 herdr 跳到那個專案的 space(跟網頁一樣),電腦上的 herdr 畫面也會跟著換
 
+## TestFlight
+
+**目前用的方式：從這台 Mac 上傳。** 在 repo 根目錄執行 `sh scripts/ios-testflight.sh`，它會 archive 並直接上傳到 App Store Connect，簽章和上傳都用 Xcode → Settings → Accounts 裡登入的開發者帳號，不需要 API 金鑰。加 `--no-upload` 只匯出 ipa。build 號用上傳當下的 UTC 時間（年月日時分），每次都會比上一次大。
+
+下面的 GitHub Actions 流程要用 **Admin 角色**的 App Store Connect API 金鑰（Apple 代管發佈憑證需要 Admin），目前的金鑰是開發者角色，所以先不用。
+
+
+在 GitHub 開啟 **Actions → iOS App → Run workflow**，填入要建置的 `ref`（分支、tag 或 commit，預設 `main`）。`upload` 預設為 `true`，會在單元測試、archive 和 IPA 匯出成功後上傳到 TestFlight；取消勾選則只建置、封存和匯出，不上傳。這個 workflow 只接受手動觸發，push 不會執行。
+
+需要下列三個 GitHub Actions repository secrets，桌面 App 已經使用同一組，不需要另外新增憑證：
+
+| Secret | 內容 |
+|---|---|
+| `APPLE_API_KEY` | App Store Connect API Key ID |
+| `APPLE_API_ISSUER` | App Store Connect API Issuer ID |
+| `APPLE_API_KEY_P8` | API 金鑰的 `.p8` 全文 |
+
+API 金鑰在 App Store Connect 的角色必須是 **Admin**，Xcode 才能使用雲端管理的發佈憑證（cloud-managed distribution certificate）。CI 透過 API 金鑰與 Xcode 自動簽章，不匯入發佈憑證，也不另設鑰匙圈；暫存的 `.p8` 權限為 `600`，job 結束時會清除。任何一個 secret 缺少時，第一個步驟就會失敗，僅列出缺少的名稱。
+
+第一次上傳前，先在 App Store Connect 建立 App 記錄，bundle ID 選 **`io.github.haogithub0216.agentsteward.native`**。
+
+build 號以這個 workflow 的 `github.run_number + 100` 計算，例如第 1 次執行為 `101`。archive 時用 `xcodebuild CURRENT_PROJECT_VERSION=…` 覆寫，App 與通知擴充會使用同一個 build 號；不會改寫 `project.yml`。版本號沿用 `project.yml` 的 `MARKETING_VERSION`。重新執行同一次 run 不會增加 build 號；若該 build 已上傳，請重新按 **Run workflow** 建立新的 run。
+
+成功匯出後，IPA 與 archive 裡的 dSYMs 會保存在該次執行的 `ios-<run_number>` artifact，保留 **14 天**；即使取消勾選 `upload`，仍可下載。
+
 ## 推播通知
 
 管家直接送 APNs:developer.apple.com → Keys → 「+」勾 Apple Push Notifications service,下載 `AuthKey_<KEY ID>.p8`,
