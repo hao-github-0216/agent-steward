@@ -27,11 +27,19 @@ struct SettingsView: View {
                 }
                 Section {
                     LabeledContent("管家網址", value: model.server?.absoluteString ?? "—")
-                    Button("更換管家網址", role: .destructive) { confirmForget = true }
+                    if model.isDemo {
+                        Button("離開示範模式") { dismiss(); model.leaveDemo() }
+                    } else {
+                        Button("更換管家網址", role: .destructive) { confirmForget = true }
+                    }
                 } header: {
                     Text("這支 iPhone")
                 }
-                PushSettingsSection()
+                if model.isDemo {
+                    Section("推播通知") { Text("示範模式不會要求通知權限，也不會註冊或傳送推播。") }
+                } else {
+                    PushSettingsSection()
+                }
                 Section {
                     NavigationLink { WebPage(sheet: .full) } label: { Label("完整網頁版", systemImage: "safari") }
                 } footer: {
@@ -95,13 +103,14 @@ struct PushSettingsSection: View {
             Text(result ?? push.lastError ?? "有新提案、工作卡卡住、派出去的工作完成或在等你回應時通知你;點通知會打開那個專案。")
         }
         .task {
+            guard !model.isDemo else { return }
             await push.refreshAuthorization()
             serverReady = (try? await model.api?.pushStatus())?.configured ?? false
         }
     }
 
     private func test() async {
-        guard let api = model.api, let token = push.token else { return }
+        guard !model.isDemo, let api = model.api, let token = push.token else { return }
         testing = true
         defer { testing = false }
         await push.sendToken(api: api)

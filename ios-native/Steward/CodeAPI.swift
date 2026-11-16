@@ -162,6 +162,7 @@ extension API {
     /// 上傳大檔可能很久:另外一個不會 30 秒就逾時的連線
     static let uploadSession: URLSession = {
         let c = URLSessionConfiguration.default
+        c.protocolClasses = [DemoURLProtocol.self] + (c.protocolClasses ?? [])
         c.timeoutIntervalForRequest = 120
         c.timeoutIntervalForResource = 6 * 3600
         c.httpCookieStorage = .shared

@@ -64,6 +64,9 @@ final class AppModel {
 
     /// 管家網址存在 UserDefaults(key: serverURL);測試時可以用 `simctl spawn … defaults write` 先填好
     private(set) var server: URL? = UserDefaults.standard.string(forKey: "serverURL").flatMap(API.normalize)
+    private(set) var isDemo = UserDefaults.standard.bool(forKey: "isDemo") {
+        didSet { UserDefaults.standard.set(isDemo, forKey: "isDemo") }
+    }
     var phase: Phase = .setup
     /// 管家記得的所有專案(含雜務、總覽、收起來的、停止追蹤的、待登記的資料夾)
     var allProjects: [Project] = []
@@ -170,6 +173,7 @@ final class AppModel {
     var api: API? { server.map { API(base: $0, worktree: codeWorktree?.id) } }
 
     init() {
+        if isDemo { server = DemoData.baseURL; currentProjectId = DemoData.projectID }
         phase = server == nil ? .setup : .checking
         web = WebStore(model: self)
         snap.terminalText = { [weak self] rect in await self?.web.terminalText(in: rect) }
@@ -281,18 +285,81 @@ final class AppModel {
 
     // MARK: 連線
 
+    func enterDemo() {
+        let defaults = UserDefaults.standard
+        if !isDemo {
+            defaults.set(server?.absoluteString, forKey: "serverBeforeDemo")
+            defaults.set(currentProjectId, forKey: "projectBeforeDemo")
+        }
+        resetConnectionState()
+        isDemo = true
+        server = DemoData.baseURL
+        currentProjectId = DemoData.projectID
+        mode = .board
+        boardCollapsed = false
+        allCards = false
+        foldedColumns = []
+        codeSection = "files"
+        phase = .checking
+    }
+
+    func leaveDemo() {
+        guard isDemo else { return }
+        resetConnectionState()
+        let defaults = UserDefaults.standard
+        isDemo = false
+        server = defaults.string(forKey: "serverBeforeDemo").flatMap(API.normalize)
+        defaults.set(server?.absoluteString, forKey: "serverURL")
+        currentProjectId = defaults.string(forKey: "projectBeforeDemo")
+        defaults.set(currentProjectId, forKey: "currentProject")
+        defaults.removeObject(forKey: "serverBeforeDemo")
+        defaults.removeObject(forKey: "projectBeforeDemo")
+        phase = .setup
+    }
+
+    private func resetConnectionState() {
+        stopEvents()
+        web.reset()
+        allProjects = []
+        cards = []
+        spaces = [:]
+        agents = []
+        worktreeCounts = [:]
+        missingRoutes = []
+        lastError = nil
+        currentProjectId = nil
+        codeWorktree = nil
+        codePath = []
+        readerFullScreen = nil
+        openCardId = nil
+        chatCardId = nil
+        drawerCardId = nil
+        showChat = false
+        showSettings = false
+        showProjectPicker = false
+        drawerOpen = false
+        webSheet = nil
+        pendingPresentation = nil
+        pendingChat = nil
+        chatBusy = false
+        chatUnread = false
+        needSpace = nil
+        termState = TermState()
+    }
+
     func setServer(_ url: URL) {
+        if url.host == DemoData.baseURL.host { enterDemo(); return }
+        if isDemo { leaveDemo() }
         server = url
         UserDefaults.standard.set(url.absoluteString, forKey: "serverURL")
         phase = .checking
     }
 
     func forgetServer() {
-        stopEvents()
-        web.reset()
+        if isDemo { leaveDemo(); return }
+        resetConnectionState()
         server = nil
         UserDefaults.standard.removeObject(forKey: "serverURL")
-        allProjects = []
         phase = .setup
     }
 
@@ -301,17 +368,25 @@ final class AppModel {
         if case .ready = phase {} else { phase = .checking }
         do {
             let s = try await api.authStatus()
+            guard server == api.base else { return }
             if s.authed {
                 await refresh()
+                guard server == api.base else { return }
                 await ensureCurrent()
+                guard server == api.base else { return }
                 phase = .ready
                 startEvents()
-                if agents.isEmpty { agents = (try? await api.agents()) ?? [] }
-                if let link = UserDefaults.standard.string(forKey: "openURL"), let url = URL(string: link) { open(url) }
+                if agents.isEmpty {
+                    let list = (try? await api.agents()) ?? []
+                    guard server == api.base else { return }
+                    agents = list
+                }
+                if !isDemo, let link = UserDefaults.standard.string(forKey: "openURL"), let url = URL(string: link) { open(url) }
             } else {
                 phase = .needPassword(s.reason ?? "請輸入管家的管理密碼")
             }
         } catch {
+            guard server == api.base else { return }
             phase = .offline(error.localizedDescription)
         }
     }
@@ -335,18 +410,22 @@ final class AppModel {
         defer { loading = false }
         do {
             let b = try await api.board()
+            // 管家還沒更新到有分支總覽的版本就沒有(不算錯誤)
+            let counts = try? await api.worktreeCounts()
+            guard server == api.base else { return }
             allProjects = b.projects
             cards = b.cards ?? []
             spaces = b.spaceInfo ?? [:]
             missingRoutes = b.setup?.missing ?? []
-            // 管家還沒更新到有分支總覽的版本就沒有(不算錯誤)
-            if let c = try? await api.worktreeCounts() { worktreeCounts = c }
-            lastError = nil
+            if let counts { worktreeCounts = counts }
+            if lastError != DemoData.writeNotice { lastError = nil }
             // 目前專案被停止追蹤或收起來了:換到最近活動的專案
             if phase == .ready, let p = current, p.status != "active", let next = projects.first?.id { switchProject(next) }
         } catch APIError.needLogin(let why) {
+            guard server == api.base else { return }
             phase = .needPassword(why)
         } catch {
+            guard server == api.base else { return }
             lastError = error.localizedDescription
         }
     }
@@ -377,6 +456,8 @@ final class AppModel {
     func stopEvents() {
         eventsTask?.cancel()
         eventsTask = nil
+        refreshTask?.cancel()
+        refreshTask = nil
         live = false
     }
 

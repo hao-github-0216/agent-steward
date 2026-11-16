@@ -16,14 +16,17 @@ settings:
     DEVELOPMENT_TEAM: N8XLCRL5GL
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   Steward:
     type: application
     platform: iOS
     sources:
-      - Steward
+      - path: Steward
+        excludes: [PrivacyInfo.xcprivacy]
+      - path: Steward/PrivacyInfo.xcprivacy
+        buildPhase: resources
     dependencies:
       - package: SwiftMath
       - target: StewardNotify
@@ -43,7 +46,9 @@ targets:
     info:
       path: Steward/Info.plist
       properties:
-        CFBundleDisplayName: 專案管家 β
+        CFBundleDisplayName: 專案管家
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         StewardKeychainGroup: $(AppIdentifierPrefix)io.github.haogithub0216.agentsteward.shared
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]

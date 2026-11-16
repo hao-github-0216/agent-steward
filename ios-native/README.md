@@ -11,7 +11,7 @@
 └ 看板 · 程式碼 · 終端機        ┘  ← 系統分頁列(跟網頁三個模式同順序)
 ```
 
-- 主畫面名稱「專案管家 β」,bundle ID `io.github.haogithub0216.agentsteward.native`(跟 `ios-app/` 的 Tauri 版分開)
+- 主畫面名稱「專案管家」,bundle ID `io.github.haogithub0216.agentsteward.native`(跟 `ios-app/` 的 Tauri 版分開)
 - iPhone 和 iPad 都能用(iPad 上分頁列在頂端、看板一次看得到好幾欄、可以分割畫面)
 - 顏色用 iOS 系統顏色(深淺色由系統處理),強調色是網頁的藍;文字跟著 iPhone 的文字大小設定
 - 身分:透過 Tailscale 的 https 網址連線時管家自動認得;否則用管理密碼登入
@@ -98,6 +98,26 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
   - 最好接隔離的管家跑(`TEST_RUNNER_STEWARD_TEST_SERVER=http://127.0.0.1:<port>`,專案用那個管家裡登記的 repo 複本):用連結打開專案會把它記成「目前專案」,接真的管家會把你其他裝置的專案也換掉
   - 標題列的測試 `testProjectTitleMenu` 只在隔離的管家跑(會換專案):另外給 `TEST_RUNNER_STEWARD_TITLE_PROJECT`(長名字、隱私的專案 id)、`TEST_RUNNER_STEWARD_TITLE_NAME`(它的名字)、`TEST_RUNNER_STEWARD_TITLE_OTHER`(另一個專案的名字)
 - 注意:切到終端機、在終端機換專案會讓 herdr 跳到那個專案的 space(跟網頁一樣),電腦上的 herdr 畫面也會跟著換
+
+## 示範模式
+
+第一次打開 App 時，在管家網址欄下方點「先看示範」，不用安裝電腦版，也不用連到管家。這個模式供 App Store 審查與功能展示使用，可以查看看板、工作卡、問管家、程式碼、Markdown 預覽與 Git 狀態。
+
+- 專案、工作卡、檔案、對話和路徑全部是虛構範例。送出問題只會得到固定的示範回答；核准、追問、存檔、提交等動作不會真的執行，也不會改動範例資料。
+- 不會要求推播權限或註冊推播。終端機、設定網頁、建立專案與完整網頁版會改顯示說明，不載入管家網頁。Markdown 預覽仍可從 CDN 載入排版程式。
+- App 會記住示範狀態，重開後仍在示範模式。畫面底部橫幅的「離開」會回到網址畫面，還原進入前的管家網址，不會自動連線。
+- 示範 API 固定使用 `https://demo.agentsteward.invalid/`，由 App 內的 URLProtocol 回覆；其他網址的請求不受影響。
+
+UI 測試與截圖可用啟動參數 `-demo YES` 直接進入示範模式：
+
+```sh
+xcrun simctl launch <UDID> io.github.haogithub0216.agentsteward.native -demo YES
+xcodebuild -project Steward.xcodeproj -scheme Steward \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+  -only-testing:StewardTests -only-testing:StewardUITests/DemoTests test
+```
+
+`StewardUITests/DemoTests.swift` 會依序操作主要畫面，並將 `01-board`、`02-card` 等英文名稱的截圖保留在測試結果中。可以用 `xcrun xcresulttool export attachments --path <結果.xcresult> --output-path <輸出資料夾>` 匯出截圖。測試結束後，請只移除模擬器中的測試 App 和測試 runner，清除測試資料，不要刪除模擬器。
 
 ## 推播通知
 
