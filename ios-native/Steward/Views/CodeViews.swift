@@ -66,7 +66,7 @@ struct CodeToolbarItems: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button(model.drawerOpen ? "收起管家" : "管家") { model.drawerOpen.toggle() }
+            Button(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
             SettingsToolbarButton()
             Menu {
                 Button { Task { await importWeb() } } label: { Label("帶入網頁版的版面", systemImage: "square.and.arrow.down.on.square") }
@@ -87,7 +87,7 @@ struct CodeToolbarItems: ToolbarContent {
         guard let api = model.api, let pid = model.currentProjectId else { return }
         do {
             let n = model.code.importWeb(try await api.codeSession(project: pid))
-            notice = n > 0 ? "已帶入網頁版的版面(\(n) 個分頁)" : "網頁版還沒有存版面"
+            notice = n > 0 ? String(localized: "已帶入網頁版的版面(\(n) 個分頁)", bundle: AppLanguage.bundle) : String(localized: "網頁版還沒有存版面", bundle: AppLanguage.bundle)
             if n > 0, model.compact, model.codePath.last != .editor { model.codePath.append(.editor) }
         } catch {
             notice = error.localizedDescription
@@ -158,7 +158,7 @@ struct RegularCodeLayout: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button { withAnimation(.snappy) { showSidebar.toggle() } } label: { Image(systemName: "sidebar.left") }
-                            .accessibilityLabel(showSidebar ? "收起側欄" : "打開側欄")
+                            .accessibilityLabel(showSidebar ? String(localized: "收起側欄", bundle: AppLanguage.bundle) : String(localized: "打開側欄", bundle: AppLanguage.bundle))
                     }
                     CodeToolbarItems(notice: $notice)
                 }
@@ -187,7 +187,7 @@ struct CodeHome: View {
                 GitView(project: project)
             } else {
                 // 找檔名(搜整個專案)放在「檔案|版本控制」下面
-                SearchField(prompt: "找檔名", text: $query)
+                SearchField(prompt: String(localized: "找檔名", bundle: AppLanguage.bundle), text: $query)
                     .padding(.horizontal).padding(.bottom, 6)
                 FolderView(project: project, dir: "", rootQuery: $query)
             }
@@ -282,7 +282,7 @@ struct FolderView: View {
                         Button { newName = ""; naming = .newFile(dir) } label: { Label("新檔案", systemImage: "doc.badge.plus") }
                         Button { newName = ""; naming = .newFolder(dir) } label: { Label("新資料夾", systemImage: "folder.badge.plus") }
                     }
-                    Section(dir.isEmpty ? "上傳到專案最上層" : "上傳到「\((dir as NSString).lastPathComponent)」") { uploadButtons(to: dir) }
+                    Section(dir.isEmpty ? String(localized: "上傳到專案最上層", bundle: AppLanguage.bundle) : String(localized: "上傳到「\((dir as NSString).lastPathComponent)」", bundle: AppLanguage.bundle)) { uploadButtons(to: dir) }
                     Section {
                         Toggle(isOn: Binding(get: { model.showHiddenFiles }, set: { model.showHiddenFiles = $0 })) {
                             Label("顯示 . 開頭的檔案", systemImage: "eye")
@@ -339,9 +339,9 @@ struct FolderView: View {
 
     private var alertTitle: String {
         switch naming {
-        case .newFile(let d): d == dir ? "新檔案" : "在「\((d as NSString).lastPathComponent)」新增檔案"
-        case .newFolder(let d): d == dir ? "新資料夾" : "在「\((d as NSString).lastPathComponent)」新增資料夾"
-        case .rename: "重新命名"
+        case .newFile(let d): d == dir ? String(localized: "新檔案", bundle: AppLanguage.bundle) : String(localized: "在「\((d as NSString).lastPathComponent)」新增檔案", bundle: AppLanguage.bundle)
+        case .newFolder(let d): d == dir ? String(localized: "新資料夾", bundle: AppLanguage.bundle) : String(localized: "在「\((d as NSString).lastPathComponent)」新增資料夾", bundle: AppLanguage.bundle)
+        case .rename: String(localized: "重新命名", bundle: AppLanguage.bundle)
         case nil: ""
         }
     }
@@ -359,7 +359,7 @@ struct FolderView: View {
 
     private func startUpload(to base: String, _ gather: () async -> [UploadItem]) async {
         guard let api = model.api else { return }
-        guard !model.uploads.running else { model.uploads.notice("還有檔案在上傳,等它傳完"); return }
+        guard !model.uploads.running else { model.uploads.notice(String(localized: "還有檔案在上傳,等它傳完", bundle: AppLanguage.bundle)); return }
         let items = await gather()
         let pid = project.id
         await model.uploads.upload(items, to: base, project: pid, api: api) { model.currentProjectId == pid }
@@ -546,13 +546,13 @@ func gitColor(_ code: String) -> Color {
 
 func gitLabel(_ code: String) -> String {
     switch code {
-    case "U", "?": "新檔案"
-    case "A": "新增"
-    case "M": "修改過"
-    case "D": "刪除"
-    case "R": "改名"
-    case "!": "衝突"
-    default: "裡面有變更"
+    case "U", "?": String(localized: "新檔案", bundle: AppLanguage.bundle)
+    case "A": String(localized: "新增", bundle: AppLanguage.bundle)
+    case "M": String(localized: "修改過", bundle: AppLanguage.bundle)
+    case "D": String(localized: "刪除", bundle: AppLanguage.bundle)
+    case "R": String(localized: "改名", bundle: AppLanguage.bundle)
+    case "!": String(localized: "衝突", bundle: AppLanguage.bundle)
+    default: String(localized: "裡面有變更", bundle: AppLanguage.bundle)
     }
 }
 
@@ -713,7 +713,7 @@ struct FileView: View {
         v
         .quickLookPreview($quickLookURL)
         .sheet(isPresented: $showHistory) {
-            OfficeHistoryView(project: project, path: path) { Task { await reloadFromDisk(note: "已還原") } }
+            OfficeHistoryView(project: project, path: path) { Task { await reloadFromDisk(note: String(localized: "已還原", bundle: AppLanguage.bundle)) } }
         }
         .alert("存檔失敗", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
             Button("好") {}
@@ -753,12 +753,12 @@ struct FileView: View {
                 } else {
                     // 跟網頁一樣的排版(表格、圖片、HTML、清單…);點連結照常、點其他地方切換全螢幕
                     MarkdownWebView(project: project.id, path: path, source: f.content ?? "", onTap: { toggleFullScreen() }, onFallback: { mdFallback = true })
-                        .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { toggleFullScreen() }
+                        .accessibilityAction(named: fullScreen ? String(localized: "結束全螢幕", bundle: AppLanguage.bundle) : String(localized: "全螢幕", bundle: AppLanguage.bundle)) { toggleFullScreen() }
                 }
             } else {
                 CodeText(
                     text: f.content ?? "",
-                    truncated: f.truncated.map { "檔案太大,只顯示開頭和結尾各 \($0.shown) 行(共 \($0.total) 行)" },
+                    truncated: f.truncated.map { String(localized: "檔案太大,只顯示開頭和結尾各 \($0.shown) 行(共 \($0.total) 行)", bundle: AppLanguage.bundle) },
                     onMore: f.truncated == nil ? nil : { more += 2000; Task { await reloadFromDisk(note: nil) } },
                     find: finding ? findText : "",
                     findIndex: findIndex,
@@ -771,13 +771,13 @@ struct FileView: View {
             if let data, let img = UIImage(data: data) {
                 ZoomableImage(image: img) { toggleFullScreen() }
                     .ignoresSafeArea(edges: fullScreen ? .all : [])
-                    .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { toggleFullScreen() }
+                    .accessibilityAction(named: fullScreen ? String(localized: "結束全螢幕", bundle: AppLanguage.bundle) : String(localized: "全螢幕", bundle: AppLanguage.bundle)) { toggleFullScreen() }
             } else { ProgressView() }
         case "pdf":
             if let data {
                 PDFKitView(data: data) { toggleFullScreen() }
                     .ignoresSafeArea(edges: fullScreen ? .all : .bottom)
-                    .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { toggleFullScreen() }
+                    .accessibilityAction(named: fullScreen ? String(localized: "結束全螢幕", bundle: AppLanguage.bundle) : String(localized: "全螢幕", bundle: AppLanguage.bundle)) { toggleFullScreen() }
             } else { ProgressView() }
         case "office":
             VStack(spacing: 16) {
@@ -968,7 +968,7 @@ struct FileView: View {
             if st.gone == true { gone = true; continue }
             gone = false
             guard let h = st.hash else { continue }
-            if stamp == nil { stamp = h } else if h != stamp { await reloadFromDisk(note: "電腦上的檔案改過了,已更新") }
+            if stamp == nil { stamp = h } else if h != stamp { await reloadFromDisk(note: String(localized: "電腦上的檔案改過了,已更新", bundle: AppLanguage.bundle)) }
         }
     }
 
@@ -1025,7 +1025,7 @@ struct FileView: View {
                 .focused($findFocused)
                 .onSubmit { if !hits.isEmpty { findIndex = (findIndex + 1) % hits.count } }
             if !findText.isEmpty {
-                Text(hits.isEmpty ? "找不到" : "\(min(findIndex, hits.count - 1) + 1)/\(hits.count)")
+                Text(hits.isEmpty ? String(localized: "找不到", bundle: AppLanguage.bundle) : "\(min(findIndex, hits.count - 1) + 1)/\(hits.count)")
                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
             Button { findIndex = (findIndex - 1 + hits.count) % max(hits.count, 1) } label: { Image(systemName: "chevron.up") }
@@ -1046,7 +1046,7 @@ struct FileView: View {
                 Spacer(minLength: 4)
                 Button("問管家") { askLines(sel) }
                 Button("開工作卡") { cardLines(sel) }
-                Button("複製") { UIPasteboard.general.string = lineText(sel); flash("已複製 \(lineLabel(sel))"); lineSel = nil }
+                Button("複製") { UIPasteboard.general.string = lineText(sel); flash(String(localized: "已複製 \(lineLabel(sel))", bundle: AppLanguage.bundle)); lineSel = nil }
                 Button { lineSel = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                     .buttonStyle(.plain).accessibilityLabel("取消選取")
             }
@@ -1059,7 +1059,7 @@ struct FileView: View {
     }
 
     private func lineLabel(_ sel: ClosedRange<Int>) -> String {
-        sel.lowerBound == sel.upperBound ? "第 \(sel.lowerBound) 行" : "第 \(sel.lowerBound)–\(sel.upperBound) 行"
+        sel.lowerBound == sel.upperBound ? String(localized: "第 \(sel.lowerBound) 行", bundle: AppLanguage.bundle) : String(localized: "第 \(sel.lowerBound)–\(sel.upperBound) 行", bundle: AppLanguage.bundle)
     }
 
     private func lineText(_ sel: ClosedRange<Int>) -> String {
@@ -1077,7 +1077,7 @@ struct FileView: View {
 
     /// 選取的行 → 請管家擬工作卡(跟圈選的「開工作卡」一樣,擬好可以改再放進提案)
     private func cardLines(_ sel: ClosedRange<Int>) {
-        model.pendingChat = .draft("依照這段程式碼開工作卡\n出處:\(path) \(lineLabel(sel))\n內容:\n```\n\(lineText(sel).prefix(3000))\n```")
+        model.pendingChat = .draft(String(localized: "依照這段程式碼開工作卡\n出處:\(path) \(lineLabel(sel))\n內容:\n```\n\(lineText(sel).prefix(3000))\n```", bundle: AppLanguage.bundle))
         lineSel = nil
         model.present(.chat)
     }
@@ -1230,7 +1230,7 @@ struct ReaderTap: ViewModifier {
         content
             .contentShape(Rectangle())
             .onTapGesture { action() }
-            .accessibilityAction(named: fullScreen ? "結束全螢幕" : "全螢幕") { action() }
+            .accessibilityAction(named: fullScreen ? String(localized: "結束全螢幕", bundle: AppLanguage.bundle) : String(localized: "全螢幕", bundle: AppLanguage.bundle)) { action() }
     }
 }
 
@@ -1277,7 +1277,7 @@ final class ImageZoomView: UIScrollView, UIScrollViewDelegate {
     /// 縮放(塞滿寬度 = 100%):VoiceOver 和 UI 測試讀這個
     private func report() {
         guard fitScale > 0 else { return }
-        accessibilityValue = "縮放 \(Int((zoomScale / fitScale * 100).rounded()))%"
+        accessibilityValue = String(localized: "縮放 \(Int((zoomScale / fitScale * 100).rounded()))%", bundle: AppLanguage.bundle)
     }
 
     override func layoutSubviews() {
@@ -1406,7 +1406,7 @@ final class FitPDFView: PDFView {
     /// 縮放(最寬的那頁塞滿寬度 = 100%):VoiceOver 和 UI 測試讀這個
     @objc private func report() {
         guard fitScale > 0 else { return }
-        accessibilityValue = "縮放 \(Int((scaleFactor / fitScale * 100).rounded()))%"
+        accessibilityValue = String(localized: "縮放 \(Int((scaleFactor / fitScale * 100).rounded()))%", bundle: AppLanguage.bundle)
     }
 
     private func updateFit() {
@@ -1538,7 +1538,7 @@ struct OfficeHistoryView: View {
                     }
                 } footer: {
                     if let vs = info?.versions {
-                        Text(vs.isEmpty ? "還沒有歷史版本。從電腦的 Office 存檔之後,每次存檔前的版本會留在這裡。" : "每次從 Office 存檔前會留下舊版本(最近 20 版、30 天內)。點一下預覽;左滑或長按可以還原,還原時目前的版本也會先留一份。")
+                        Text(vs.isEmpty ? String(localized: "還沒有歷史版本。從電腦的 Office 存檔之後,每次存檔前的版本會留在這裡。", bundle: AppLanguage.bundle) : String(localized: "每次從 Office 存檔前會留下舊版本(最近 20 版、30 天內)。點一下預覽;左滑或長按可以還原,還原時目前的版本也會先留一份。", bundle: AppLanguage.bundle))
                     }
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
@@ -1554,7 +1554,7 @@ struct OfficeHistoryView: View {
             .confirmationDialog("還原這個版本?", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), titleVisibility: .visible, presenting: restoring) { v in
                 Button("還原") { Task { await restore(v) } }
             } message: { v in
-                Text("把「\(name)」還原成 \(Self.time(v.at)) 的版本?目前的版本會先留一份在歷史版本裡。\(info?.editing == true ? "\n注意:這個檔案正在 Office 編輯中,還原後請在 Office 重新打開,否則 Office 存檔時會蓋掉還原的內容。" : "")")
+                Text("把「\(name)」還原成 \(Self.time(v.at)) 的版本?目前的版本會先留一份在歷史版本裡。\(info?.editing == true ? String(localized: "\n注意:這個檔案正在 Office 編輯中,還原後請在 Office 重新打開,否則 Office 存檔時會蓋掉還原的內容。", bundle: AppLanguage.bundle) : "")")
             }
         }
     }

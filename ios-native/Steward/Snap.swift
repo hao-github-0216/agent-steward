@@ -72,7 +72,7 @@ final class SnapState {
                 r.path = f.path
                 r.from = m.from
                 r.to = m.to
-                r.label = "\(f.path) 第 \(m.from)\(m.to != m.from ? "–\(m.to)" : "") 行"
+                r.label = String(localized: "\(f.path) 第 \(m.from)\(m.to != m.from ? "–\(m.to)" : "") 行", bundle: AppLanguage.bundle)
                 let a = max(0, m.from - 31), b = min(lines.count, m.to + 30)
                 r.context = lines[a..<b].enumerated().map { "\(a + $0.offset + 1): \($0.element)" }.joined(separator: "\n")
             } else if kind == "code" {
@@ -226,9 +226,9 @@ struct SnapSheet: View {
     @FocusState private var inputFocused: Bool
 
     private static let quick: [(String, String, String)] = [
-        ("解釋", "lightbulb", "解釋這段內容"),
-        ("翻譯", "character.book.closed", "把這段翻譯成繁體中文;如果本來就是中文,翻成英文"),
-        ("找錯", "ladybug", "這裡有什麼錯誤或問題?說明原因和怎麼修"),
+        (String(localized: "解釋", bundle: AppLanguage.bundle), "lightbulb", String(localized: "解釋這段內容", bundle: AppLanguage.bundle)),
+        (String(localized: "翻譯", bundle: AppLanguage.bundle), "character.book.closed", String(localized: "把這段翻譯成繁體中文;如果本來就是中文,翻成英文", bundle: AppLanguage.bundle)),
+        (String(localized: "找錯", bundle: AppLanguage.bundle), "ladybug", String(localized: "這裡有什麼錯誤或問題?說明原因和怎麼修", bundle: AppLanguage.bundle)),
     ]
 
     init(snap: SnapResult, projectId: String) {
@@ -249,11 +249,11 @@ struct SnapSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
                     DisclosureGroup(isExpanded: $showText) {
-                        Text(hasText ? snap.text : "沒有讀到文字,管家只看圈到的圖片。")
+                        Text(hasText ? snap.text : String(localized: "沒有讀到文字,管家只看圈到的圖片。", bundle: AppLanguage.bundle))
                             .font(.footnote).foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     } label: {
-                        Label(hasText ? "讀到的文字(\(snap.text.count) 字,和圖片一起送)" : "沒有讀到文字", systemImage: "text.viewfinder")
+                        Label(hasText ? String(localized: "讀到的文字(\(snap.text.count) 字,和圖片一起送)", bundle: AppLanguage.bundle) : String(localized: "沒有讀到文字", bundle: AppLanguage.bundle), systemImage: "text.viewfinder")
                     }
                 } footer: {
                     Text(snap.label)
@@ -289,10 +289,10 @@ struct SnapSheet: View {
                 if !turns.isEmpty && !busy {
                     Section {
                         if let a = lastAnswer {
-                            Button { UIPasteboard.general.string = a; info = "已複製" } label: { Label("複製回答", systemImage: "doc.on.doc") }
+                            Button { UIPasteboard.general.string = a; info = String(localized: "已複製", bundle: AppLanguage.bundle) } label: { Label("複製回答", systemImage: "doc.on.doc") }
                         }
                         if let pane, lastAnswer != nil {
-                            Button { Task { await handToAgent(pane) } } label: { Label("交給 \(pane.agent ?? "這個 agent")", systemImage: "arrow.turn.down.right") }
+                            Button { Task { await handToAgent(pane) } } label: { Label("交給 \(pane.agent ?? String(localized: "這個 agent", bundle: AppLanguage.bundle))", systemImage: "arrow.turn.down.right") }
                         }
                         Button {
                             model.switchProject(projectId)
@@ -319,7 +319,7 @@ struct SnapSheet: View {
     /// iMessage 式的輸入列:寫問題按送出;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField(turns.isEmpty ? "問這一塊,或寫要做的事(再按「開工作卡」)…" : "接著問,或寫要做的事(再按「開工作卡」)…", text: $question, axis: .vertical)
+            TextField(turns.isEmpty ? String(localized: "問這一塊,或寫要做的事(再按「開工作卡」)…", bundle: AppLanguage.bundle) : String(localized: "接著問,或寫要做的事(再按「開工作卡」)…", bundle: AppLanguage.bundle), text: $question, axis: .vertical)
                 .lineLimit(1...4)
                 .focused($inputFocused)
                 .padding(.horizontal, 14).padding(.vertical, 9)
@@ -327,7 +327,7 @@ struct SnapSheet: View {
             Button {
                 let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
                 question = ""
-                Task { await ask(q.isEmpty ? "解釋這段內容" : q, shown: q.isEmpty ? "解釋" : q) }
+                Task { await ask(q.isEmpty ? String(localized: "解釋這段內容", bundle: AppLanguage.bundle) : q, shown: q.isEmpty ? String(localized: "解釋", bundle: AppLanguage.bundle) : q) }
             } label: {
                 Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
             }
@@ -367,14 +367,14 @@ struct SnapSheet: View {
         guard let api = model.api, let answer = lastAnswer else { return }
         do {
             try await api.snapAgent(pane: pane.paneId)
-            let text = "關於這段:\n\(snap.text)\n\n管家的建議:\n\(answer.trimmingCharacters(in: .whitespacesAndNewlines))"
+            let text = String(localized: "關於這段:\n\(snap.text)\n\n管家的建議:\n\(answer.trimmingCharacters(in: .whitespacesAndNewlines))", bundle: AppLanguage.bundle)
             dismiss()
             model.mode = .terminal
             try? await Task.sleep(for: .milliseconds(400))
             model.web.pasteToTerminal(text)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
-            info = "沒辦法切到那個 agent:\(error.localizedDescription)"
+            info = String(localized: "沒辦法切到那個 agent:\(error.localizedDescription)", bundle: AppLanguage.bundle)
         }
     }
 
@@ -383,7 +383,7 @@ struct SnapSheet: View {
     private func draft() async {
         let task = question.trimmingCharacters(in: .whitespacesAndNewlines)
         question = ""
-        let body = hasText ? snap.text : "(圈到的是圖片,沒有文字)"
+        let body = hasText ? snap.text : String(localized: "(圈到的是圖片,沒有文字)", bundle: AppLanguage.bundle)
         model.switchProject(projectId)
         model.pendingChat = .draft(Self.cardMessage(task: task, label: snap.label, body: body, answer: lastAnswer))
         model.pendingPresentation = .chat // 圈選視窗收好再打開問管家
@@ -392,10 +392,10 @@ struct SnapSheet: View {
 
     /// 給管家擬工作卡的話(跟網頁 snap.js 的格式一樣)
     static func cardMessage(task: String, label: String, body: String, answer: String?) -> String {
-        var m = "依照這段圈選的內容開工作卡"
-        if !task.isEmpty { m += "\n要做的事:\(task)" }
-        m += "\n出處:\(label)\n內容:\n\(body.prefix(3000))"
-        if let answer { m += "\n\n管家的看法:\n\(answer.prefix(2000))" }
+        var m = String(localized: "依照這段圈選的內容開工作卡", bundle: AppLanguage.bundle)
+        if !task.isEmpty { m += String(localized: "\n要做的事:\(task)", bundle: AppLanguage.bundle) }
+        m += String(localized: "\n出處:\(label)\n內容:\n\(body.prefix(3000))", bundle: AppLanguage.bundle)
+        if let answer { m += String(localized: "\n\n管家的看法:\n\(answer.prefix(2000))", bundle: AppLanguage.bundle) }
         return m
     }
 }

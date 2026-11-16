@@ -131,7 +131,7 @@ struct ProjectChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .navigationTitle(model.current?.name ?? "選專案")
+            .navigationTitle(model.current?.name ?? String(localized: "選專案", bundle: AppLanguage.bundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarTitleMenu { ProjectTitleMenu() }
             .modifier(PrivateSubtitle(isPrivate: model.current?.private == true))
@@ -245,7 +245,7 @@ struct WebModeTab: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if mode == .terminal { branchTools }
-                    Button(model.drawerOpen ? "收起管家" : "管家") { model.drawerOpen.toggle() }
+                    Button(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
                         .accessibilityHint("打開或收起管家側欄")
                 }
             }
@@ -261,7 +261,7 @@ struct WebModeTab: View {
         if let main = model.termState.branchMain {
             Button("帶回") { model.web.handoff() }
                 .disabled(!model.termState.mainAlive)
-                .accessibilityLabel(model.termState.mainAlive ? "把這條支線的結論帶回「\(main)」" : "主線已經關閉,沒辦法帶回")
+                .accessibilityLabel(model.termState.mainAlive ? String(localized: "把這條支線的結論帶回「\(main)」", bundle: AppLanguage.bundle) : String(localized: "主線已經關閉,沒辦法帶回", bundle: AppLanguage.bundle))
         } else if model.termState.agent {
             Menu {
                 Button("開支線(另開 worktree)") { model.web.openBranch(here: false) }
@@ -409,7 +409,7 @@ struct StewardDrawer: View {
                     ContentUnavailableView("還沒有專案", systemImage: "tray", description: Text("在看板、程式碼頁面或 herdr 選一個專案"))
                 }
             }
-            .navigationTitle(model.current?.name ?? "管家")
+            .navigationTitle(model.current?.name ?? String(localized: "管家", bundle: AppLanguage.bundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -430,7 +430,7 @@ struct StewardDrawer: View {
     @ViewBuilder
     private func sections(_ p: Project) -> some View {
         let s = p.state
-        let groups: [(String, [String])] = [("待核准", ["proposed"]), ("進行中", ["approved", "running"]), ("卡住", ["blocked"])]
+        let groups: [(String, [String])] = [(String(localized: "待核准", bundle: AppLanguage.bundle), ["proposed"]), (String(localized: "進行中", bundle: AppLanguage.bundle), ["approved", "running"]), (String(localized: "卡住", bundle: AppLanguage.bundle), ["blocked"])]
         ForEach(groups, id: \.0) { label, cols in
             let list = model.cards.filter { $0.projectId == p.id && cols.contains($0.column) }
             if !list.isEmpty {
@@ -449,7 +449,7 @@ struct StewardDrawer: View {
                 Text("還沒有紀錄").foregroundStyle(.secondary)
             }
         } header: {
-            Text(s?.updatedAt != nil ? "目前進度 · \(Fmt.ago(Fmt.date(s?.updatedAt)))" : "目前進度")
+            Text(s?.updatedAt != nil ? String(localized: "目前進度 · \(Fmt.ago(Fmt.date(s?.updatedAt)))", bundle: AppLanguage.bundle) : String(localized: "目前進度", bundle: AppLanguage.bundle))
         }
         if let next = s?.nextSteps, !next.isEmpty {
             Section("下一步") {

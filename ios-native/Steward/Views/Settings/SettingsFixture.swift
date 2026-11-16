@@ -8,7 +8,7 @@ enum SettingsFixture {
     static var enabled: Bool { UserDefaults.standard.bool(forKey: "settingsFixture") }
     static let didWrite = Notification.Name("SettingsFixtureDidWrite")
     private static let lock = NSLock()
-    private static var receipt = "尚無 PUT"
+    private static var receipt = String(localized: "尚無 PUT", bundle: AppLanguage.bundle)
     private static let sample = SettingsSample(
         desktop: !UserDefaults.standard.bool(forKey: "settingsFixtureNoDesktop"),
         failingWrites: UserDefaults.standard.bool(forKey: "settingsFixtureFailure")

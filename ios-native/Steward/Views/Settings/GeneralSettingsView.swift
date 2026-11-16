@@ -5,12 +5,12 @@ struct GeneralSettingsView: View {
     @Environment(SettingsStore.self) private var store
 
     var body: some View {
-        SettingsForm("一般") {
+        SettingsForm(String(localized: "一般", bundle: AppLanguage.bundle)) {
             Section {
                 SettingsTextField(
-                    "管家怎麼稱呼你",
+                    String(localized: "管家怎麼稱呼你", bundle: AppLanguage.bundle),
                     path: "user.name",
-                    placeholder: "例如:小明(空白就叫「使用者」)"
+                    placeholder: String(localized: "例如:小明(空白就叫「使用者」)", bundle: AppLanguage.bundle)
                 )
                 Picker(
                     "語言",
@@ -31,9 +31,9 @@ struct GeneralSettingsView: View {
 
             Section {
                 SettingsTextField(
-                    "「建立專案」瀏覽資料夾的起點",
+                    String(localized: "「建立專案」瀏覽資料夾的起點", bundle: AppLanguage.bundle),
                     path: "paths.createRoot",
-                    placeholder: "~ 代表家目錄,例如 ~/Projects"
+                    placeholder: String(localized: "~ 代表家目錄,例如 ~/Projects", bundle: AppLanguage.bundle)
                 )
             }
 
@@ -42,14 +42,14 @@ struct GeneralSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 SettingsTextField(
-                    "隱私路徑",
+                    String(localized: "隱私路徑", bundle: AppLanguage.bundle),
                     path: "paths.privacy",
                     multiline: true
                 )
                 Toggle(
                     store.response?.detected?.piPrivacy == true
-                        ? "同時沿用 pi 的隱私清單"
-                        : "同時沿用 pi 的隱私清單(這台電腦沒有 pi 的清單)",
+                        ? String(localized: "同時沿用 pi 的隱私清單", bundle: AppLanguage.bundle)
+                        : String(localized: "同時沿用 pi 的隱私清單(這台電腦沒有 pi 的清單)", bundle: AppLanguage.bundle),
                     isOn: store.boolBinding("paths.usePiPrivacy")
                 )
                 .disabled(store.response?.detected?.piPrivacy != true)

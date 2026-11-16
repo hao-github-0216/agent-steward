@@ -22,6 +22,7 @@ struct StewardApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(\.locale, AppLanguage.locale)
                 .tint(Theme.accent) // 跟網頁一樣的藍
                 .task {
                     if UserDefaults.standard.bool(forKey: "demo") { model.enterDemo() }

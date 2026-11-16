@@ -6,7 +6,7 @@ struct NotifySettingsView: View {
     @State private var testing = false
 
     var body: some View {
-        SettingsForm("推播") {
+        SettingsForm(String(localized: "推播", bundle: AppLanguage.bundle)) {
             Section {
                 Text("工作卡提案、卡住、每日提醒時推播給你。")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -31,16 +31,16 @@ struct NotifySettingsView: View {
                 Section("通用 webhook") {
                     Text("會用 POST 送出 JSON:{\"text\": …, \"content\": …, \"message\": …}。Slack、Discord、ntfy 之類的服務都能接。")
                         .font(.footnote).foregroundStyle(.secondary)
-                    SettingsTextField("Webhook 網址", path: "notify.webhook.url", placeholder: "https://...")
+                    SettingsTextField(String(localized: "Webhook 網址", bundle: AppLanguage.bundle), path: "notify.webhook.url", placeholder: "https://...")
                 }
             case "hermes":
                 Section("Hermes") {
                     Text(store.response?.detected?.hermes == true
-                         ? "已找到 Hermes 的推播路由。"
-                         : "還沒找到 Hermes 的推播路由(~/.hermes/webhook_subscriptions.json)。")
+                         ? String(localized: "已找到 Hermes 的推播路由。", bundle: AppLanguage.bundle)
+                         : String(localized: "還沒找到 Hermes 的推播路由(~/.hermes/webhook_subscriptions.json)。", bundle: AppLanguage.bundle))
                         .font(.footnote).foregroundStyle(.secondary)
-                    SettingsTextField("Webhook 網址", path: "notify.hermes.url", placeholder: "例如 http://127.0.0.1:8644/p/<profile>/webhooks/steward")
-                    SettingsTextField("路由名稱", path: "notify.hermes.route")
+                    SettingsTextField(String(localized: "Webhook 網址", bundle: AppLanguage.bundle), path: "notify.hermes.url", placeholder: String(localized: "例如 http://127.0.0.1:8644/p/<profile>/webhooks/steward", bundle: AppLanguage.bundle))
+                    SettingsTextField(String(localized: "路由名稱", bundle: AppLanguage.bundle), path: "notify.hermes.route")
                 }
             default:
                 EmptyView()
@@ -87,11 +87,11 @@ struct NotifySettingsView: View {
         let count = status.devices?.count ?? 0
         switch status.mode {
         case "direct":
-            return "手機 App 推播：用這台管家的 APNs 金鑰直接送出，\(count) 台裝置。"
+            return String(localized: "手機 App 推播：用這台管家的 APNs 金鑰直接送出，\(count) 台裝置。", bundle: AppLanguage.bundle)
         case "relay":
-            return "手機 App 推播：經推播中繼送出，內容端對端加密，\(count) 台裝置。"
+            return String(localized: "手機 App 推播：經推播中繼送出，內容端對端加密，\(count) 台裝置。", bundle: AppLanguage.bundle)
         default:
-            return "手機 App 推播：還沒設定推播中繼。"
+            return String(localized: "手機 App 推播：還沒設定推播中繼。", bundle: AppLanguage.bundle)
         }
     }
 
@@ -108,7 +108,7 @@ struct NotifySettingsView: View {
             }
             guard await store.save(SettingsValues()), store.error == nil else { return }
             if await store.action(path) != nil {
-                store.message = "已送出測試推播"
+                store.message = String(localized: "已送出測試推播", bundle: AppLanguage.bundle)
             }
         }
     }

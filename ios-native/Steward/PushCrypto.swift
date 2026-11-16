@@ -2,6 +2,21 @@ import CryptoKit
 import Foundation
 import Security
 
+/// 以第一個偏好語言選擇介面；所有中文變體都使用繁體中文。
+enum AppLanguage {
+    static func code(for preferred: String?) -> String {
+        preferred?.lowercased().hasPrefix("zh") == true ? "zh-Hant" : "en"
+    }
+
+    static var code: String { code(for: Locale.preferredLanguages.first) }
+    static var locale: Locale { Locale(identifier: code) }
+    static var bundle: Bundle {
+        guard let path = Bundle.main.path(forResource: code, ofType: "lproj"),
+              let bundle = Bundle(path: path) else { return .main }
+        return bundle
+    }
+}
+
 struct PushPlain: Decodable {
     let title: String
     let body: String
@@ -16,10 +31,10 @@ enum PushAction: String {
 
     var title: String {
         switch self {
-        case .approve: "核准派工"
-        case .reject: "不要"
-        case .redispatch: "重新派工"
-        case .done: "標成完成"
+        case .approve: String(localized: "核准派工", bundle: AppLanguage.bundle)
+        case .reject: String(localized: "不要", bundle: AppLanguage.bundle)
+        case .redispatch: String(localized: "重新派工", bundle: AppLanguage.bundle)
+        case .done: String(localized: "標成完成", bundle: AppLanguage.bundle)
         }
     }
 
@@ -42,10 +57,10 @@ enum PushCrypto {
 
         var errorDescription: String? {
             switch self {
-            case .invalidBase64: "推播密文不是有效的 base64"
-            case .invalidKey: "推播金鑰必須是 32 位元組"
-            case .missingKeychainGroup: "尚未設定推播鑰匙圈群組"
-            case .keychain(let status): "推播鑰匙圈錯誤（\(status)）"
+            case .invalidBase64: String(localized: "推播密文不是有效的 base64", bundle: AppLanguage.bundle)
+            case .invalidKey: String(localized: "推播金鑰必須是 32 位元組", bundle: AppLanguage.bundle)
+            case .missingKeychainGroup: String(localized: "尚未設定推播鑰匙圈群組", bundle: AppLanguage.bundle)
+            case .keychain(let status): String(localized: "推播鑰匙圈錯誤（\(status)）", bundle: AppLanguage.bundle)
             }
         }
     }

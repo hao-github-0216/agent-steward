@@ -9,9 +9,9 @@ struct SettingsView: View {
 
     /// 跟網頁相同的八個設定分頁。
     private static let webTabs: [(String, String, String)] = [
-        ("general", "一般", "gearshape"), ("ai", "AI 接口", "cpu"), ("routing", "路由", "arrow.triangle.branch"),
-        ("agents", "Agent", "person.2"), ("access", "存取", "lock.shield"), ("notify", "推播", "bell"),
-        ("plugins", "外掛", "puzzlepiece.extension"), ("about", "關於", "info.circle"),
+        ("general", String(localized: "一般", bundle: AppLanguage.bundle), "gearshape"), ("ai", String(localized: "AI 接口", bundle: AppLanguage.bundle), "cpu"), ("routing", String(localized: "路由", bundle: AppLanguage.bundle), "arrow.triangle.branch"),
+        ("agents", "Agent", "person.2"), ("access", String(localized: "存取", bundle: AppLanguage.bundle), "lock.shield"), ("notify", String(localized: "推播", bundle: AppLanguage.bundle), "bell"),
+        ("plugins", String(localized: "外掛", bundle: AppLanguage.bundle), "puzzlepiece.extension"), ("about", String(localized: "關於", bundle: AppLanguage.bundle), "info.circle"),
     ]
 
     var body: some View {
@@ -124,7 +124,7 @@ struct PushSettingsSection: View {
         } header: {
             Text("推播通知")
         } footer: {
-            Text(result ?? push.lastError ?? "有新提案、工作卡卡住、派出去的工作完成或在等你回應時通知你;點通知會打開那個專案。")
+            Text(result ?? push.lastError ?? String(localized: "有新提案、工作卡卡住、派出去的工作完成或在等你回應時通知你;點通知會打開那個專案。", bundle: AppLanguage.bundle))
         }
         .task {
             guard !model.isDemo else { return }
@@ -140,7 +140,7 @@ struct PushSettingsSection: View {
         await push.sendToken(api: api)
         do {
             try await api.testPush(token: token)
-            result = "已送出,幾秒內會收到。"
+            result = String(localized: "已送出,幾秒內會收到。", bundle: AppLanguage.bundle)
         } catch {
             result = error.localizedDescription
         }

@@ -74,7 +74,7 @@ struct AgentSettingsView: View {
             }
             Section {
                 let other = store.agents.filter { $0.installed != true }
-                DisclosureGroup("其他支援的 agent(這台電腦沒有裝,\(other.count) 個)") {
+                DisclosureGroup(String(localized: "其他支援的 agent(這台電腦沒有裝,\(other.count) 個)", bundle: AppLanguage.bundle)) {
                     ForEach(other) { agent in
                         NavigationLink(agent.name ?? agent.id) {
                             AgentSettingsDetailView(agentID: agent.id)
@@ -98,7 +98,7 @@ struct AgentSettingsView: View {
 private struct AgentSettingsCapabilities: View {
     let agent: SettingsAgent
     static let parts: [(id: String, title: String)] = [
-        ("brief", "開工簡報"), ("mcp", "MCP 工具"), ("instructions", "工作說明")
+        ("brief", String(localized: "開工簡報", bundle: AppLanguage.bundle)), ("mcp", String(localized: "MCP 工具", bundle: AppLanguage.bundle)), ("instructions", String(localized: "工作說明", bundle: AppLanguage.bundle))
     ]
 
     var body: some View {
@@ -106,7 +106,7 @@ private struct AgentSettingsCapabilities: View {
             ForEach(Self.parts, id: \.id) { part in
                 if agent.can?[part.id] == true {
                     Text(part.title + (agent.on?[part.id] == true ? " ✓" : ""))
-                        .accessibilityValue(agent.on?[part.id] == true ? "已接上" : "還沒接上")
+                        .accessibilityValue(agent.on?[part.id] == true ? String(localized: "已接上", bundle: AppLanguage.bundle) : String(localized: "還沒接上", bundle: AppLanguage.bundle))
                 }
             }
             if agent.records == true { Text("自動記錄") }
@@ -128,7 +128,7 @@ private struct AgentSettingsDetailView: View {
                 Section {
                     ForEach(AgentSettingsCapabilities.parts, id: \.id) { part in
                         LabeledContent(part.title, value: agent.can?[part.id] == true
-                            ? (agent.on?[part.id] == true ? "已接上" : "還沒接上") : "—")
+                            ? (agent.on?[part.id] == true ? String(localized: "已接上", bundle: AppLanguage.bundle) : String(localized: "還沒接上", bundle: AppLanguage.bundle)) : "—")
                     }
                     LabeledContent("自動記錄", value: agent.records == true ? "✓" : "—")
                         .accessibilityHint("管家會自動讀它的對話記錄")
@@ -139,11 +139,11 @@ private struct AgentSettingsDetailView: View {
                     if agent.dispatch == true { Text("看板可以把工作卡派給它(要有 herdr)") }
                 }
                 Section {
-                    Text(agent.installed == true ? (agent.path ?? "—") : "這台電腦沒有裝")
+                    Text(agent.installed == true ? (agent.path ?? "—") : String(localized: "這台電腦沒有裝", bundle: AppLanguage.bundle))
                         .font(.footnote)
                         .textSelection(.enabled)
                     if let manual = agent.manual, !manual.isEmpty, agent.installed == true {
-                        DisclosureGroup("手動接上 MCP") {
+                        DisclosureGroup(String(localized: "手動接上 MCP", bundle: AppLanguage.bundle)) {
                             Text(manual)
                                 .font(.system(.footnote, design: .monospaced))
                                 .textSelection(.enabled)
@@ -152,7 +152,7 @@ private struct AgentSettingsDetailView: View {
                 }
                 if agent.can?.values.contains(true) == true {
                     Section {
-                        Button(changing ? "設定中…" : agent.integrated == true ? "拿掉" : "接上專案管家") {
+                        Button(changing ? String(localized: "設定中…", bundle: AppLanguage.bundle) : agent.integrated == true ? String(localized: "拿掉", bundle: AppLanguage.bundle) : String(localized: "接上專案管家", bundle: AppLanguage.bundle)) {
                             Task { await setIntegration(agent) }
                         }
                         .disabled(changing || store.saving)
@@ -181,7 +181,7 @@ private struct AgentSettingsDetailView: View {
         let result = await store.action("api/settings/agents/\(agent.id)", body: ["enable": .bool(agent.integrated != true)])
         if let result {
             let count = result.changed?.count ?? 0
-            store.message = count > 0 ? "已更新 \(count) 個設定" : "沒有需要改的"
+            store.message = count > 0 ? String(localized: "已更新 \(count) 個設定", bundle: AppLanguage.bundle) : String(localized: "沒有需要改的", bundle: AppLanguage.bundle)
         }
         await store.loadAgents()
     }

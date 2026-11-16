@@ -16,7 +16,7 @@ struct AISettingsView: View {
     }
 
     var body: some View {
-        SettingsForm("AI 接口") {
+        SettingsForm(String(localized: "AI 接口", bundle: AppLanguage.bundle)) {
             Section {
                 Text("管家用到的 AI 都從這裡設定。改了會自動儲存;「測試連線」會先幫你儲存。")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -136,7 +136,7 @@ private enum AIProviderLabels {
     static let compatible: [Compatible] = [
         .init(id: "ollama", name: "Ollama", savedName: "Ollama", url: "http://localhost:11434/v1"),
         .init(id: "lmstudio", name: "LM Studio", savedName: "LM Studio", url: "http://localhost:1234/v1"),
-        .init(id: "local", name: "vLLM / 其他網址", savedName: "自架模型", url: "http://")
+        .init(id: "local", name: String(localized: "vLLM / 其他網址", bundle: AppLanguage.bundle), savedName: String(localized: "自架模型", bundle: AppLanguage.bundle), url: "http://")
     ]
     static func loginName(_ id: String) -> String {
         ["openai": "ChatGPT", "anthropic": "Claude", "github-copilot": "GitHub Copilot", "xai": "Grok",
@@ -145,10 +145,10 @@ private enum AIProviderLabels {
     static func kind(_ provider: SettingsProvider) -> String {
         switch provider.type {
         case "builtin":
-            return provider.auth == "pi" ? "沿用 pi 的登入" : provider.auth == "login" ? "訂閱登入" : "API 金鑰"
-        case "pi-models": return "沿用 pi 的模型設定"
-        case "agent-cli": return "電腦上的 CLI"
-        default: return "OpenAI 相容網址"
+            return provider.auth == "pi" ? String(localized: "沿用 pi 的登入", bundle: AppLanguage.bundle) : provider.auth == "login" ? String(localized: "訂閱登入", bundle: AppLanguage.bundle) : String(localized: "API 金鑰", bundle: AppLanguage.bundle)
+        case "pi-models": return String(localized: "沿用 pi 的模型設定", bundle: AppLanguage.bundle)
+        case "agent-cli": return String(localized: "電腦上的 CLI", bundle: AppLanguage.bundle)
+        default: return String(localized: "OpenAI 相容網址", bundle: AppLanguage.bundle)
         }
     }
 }
@@ -161,7 +161,7 @@ private struct AIProviderSummary: View {
             Text((provider.name?.isEmpty == false ? provider.name : nil) ?? provider.id)
                 .font(.headline)
             Text(AIProviderLabels.kind(provider)).font(.subheadline)
-            Text("代號 \(provider.id)" + (info?.models.map { " · \($0.count) 個模型" } ?? ""))
+            Text(String(localized: "代號 \(provider.id)", bundle: AppLanguage.bundle) + (info?.models.map { String(localized: " · \($0.count) 個模型", bundle: AppLanguage.bundle) } ?? ""))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -192,13 +192,13 @@ private struct AIProviderDetailView: View {
             if let provider {
                 Section {
                     AIProviderSummary(provider: provider, info: info)
-                    textField("顯示名稱", field: "name")
+                    textField(String(localized: "顯示名稱", bundle: AppLanguage.bundle), field: "name")
                 }
                 if provider.auth == "login" {
                     Section {
-                        Text("\(info?.signedIn == true ? "✓ 已登入" : "還沒登入") · 登入資料存在這台電腦的 ~/.agent-steward/auth.json")
+                        Text("\(info?.signedIn == true ? String(localized: "✓ 已登入", bundle: AppLanguage.bundle) : String(localized: "還沒登入", bundle: AppLanguage.bundle)) · 登入資料存在這台電腦的 ~/.agent-steward/auth.json")
                             .font(.footnote).foregroundStyle(.secondary)
-                        Button(info?.signedIn == true ? "重新登入" : "登入") {
+                        Button(info?.signedIn == true ? String(localized: "重新登入", bundle: AppLanguage.bundle) : String(localized: "登入", bundle: AppLanguage.bundle)) {
                             perform { await login.start(provider: providerID, store: store) }
                         }
                         .disabled(login.starting)
@@ -206,7 +206,7 @@ private struct AIProviderDetailView: View {
                             Button("登出") {
                                 perform {
                                     if await store.action("api/settings/logout-provider", body: ["provider": .string(providerID)]) != nil {
-                                        store.message = "已登出"
+                                        store.message = String(localized: "已登出", bundle: AppLanguage.bundle)
                                         await store.loadModels()
                                     }
                                 }
@@ -215,18 +215,18 @@ private struct AIProviderDetailView: View {
                     }
                 }
                 if provider.type == "builtin" && provider.auth != "pi" && provider.auth != "login" {
-                    Section { secretField("API 金鑰", provider: provider) }
+                    Section { secretField(String(localized: "API 金鑰", bundle: AppLanguage.bundle), provider: provider) }
                 }
                 if provider.builtin == "google" && provider.auth != "pi" {
                     Section {
-                        Text(.init("沒有金鑰?到 [Google AI Studio](https://aistudio.google.com/apikey) 用 Google 帳號登入就能免費建立(有免費額度)。"))
+                        Text(.init(String(localized: "沒有金鑰?到 [Google AI Studio](https://aistudio.google.com/apikey) 用 Google 帳號登入就能免費建立(有免費額度)。", bundle: AppLanguage.bundle)))
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
                 if provider.type == "openai-compatible" {
                     Section {
-                        textField("網址(OpenAI 相容,通常結尾是 /v1)", field: "baseUrl")
-                        secretField("API 金鑰(沒有就空白)", provider: provider)
+                        textField(String(localized: "網址(OpenAI 相容,通常結尾是 /v1)", bundle: AppLanguage.bundle), field: "baseUrl")
+                        secretField(String(localized: "API 金鑰(沒有就空白)", bundle: AppLanguage.bundle), provider: provider)
                         localToggle(provider)
                     }
                 }
@@ -416,9 +416,9 @@ private struct AIProviderDetailView: View {
         testError = nil
         Task {
             defer { testing = false }
-            guard await saved.value else { testError = store.error ?? "失敗"; return }
+            guard await saved.value else { testError = store.error ?? String(localized: "失敗", bundle: AppLanguage.bundle); return }
             testResult = await store.action("api/settings/test-provider", body: ["id": .string(providerID)])
-            if testResult == nil { testError = store.error ?? "失敗" }
+            if testResult == nil { testError = store.error ?? String(localized: "失敗", bundle: AppLanguage.bundle) }
             // 測試後重新讀取管家找到的模型清單。
             await store.reload()
             await store.loadModels()
@@ -468,7 +468,7 @@ private final class AIProviderLoginController {
         }
         starting = false
         guard let result, let session = result.session, !session.isEmpty else {
-            status = SettingsAction(status: "error", message: store.error ?? "登入失敗")
+            status = SettingsAction(status: "error", message: store.error ?? String(localized: "登入失敗", bundle: AppLanguage.bundle))
             return
         }
         sessionID = session
@@ -489,7 +489,7 @@ private final class AIProviderLoginController {
         let token = generation
         guard let result = await store.action("api/settings/login/\(sessionID)", method: "GET") else {
             guard generation == token, !finished else { return }
-            status = SettingsAction(status: "error", message: store.error ?? "連不上管家")
+            status = SettingsAction(status: "error", message: store.error ?? String(localized: "連不上管家", bundle: AppLanguage.bundle))
             polling?.cancel()
             return
         }
@@ -499,8 +499,8 @@ private final class AIProviderLoginController {
         if status.status == "done" {
             polling?.cancel()
             self.sessionID = nil
-            store.message = "登入完成"
-            notice = "登入完成"
+            store.message = String(localized: "登入完成", bundle: AppLanguage.bundle)
+            notice = String(localized: "登入完成", bundle: AppLanguage.bundle)
             await store.reload()
             await store.loadModels()
         } else if status.status == "error" {
@@ -516,16 +516,16 @@ private final class AIProviderLoginController {
         defer { if generation == token { sending = false } }
         if await store.action("api/settings/login/\(sessionID)/code", body: ["code": .string(code)]) != nil,
            generation == token {
-            notice = "驗證中…"
+            notice = String(localized: "驗證中…", bundle: AppLanguage.bundle)
             await refresh(store: store)
         }
     }
 
     func openBrowser(store: SettingsStore) {
-        guard let url = browserURL else { store.error = "登入網址必須是 http 或 https 網址"; return }
+        guard let url = browserURL else { store.error = String(localized: "登入網址必須是 http 或 https 網址", bundle: AppLanguage.bundle); return }
         UIApplication.shared.open(url, options: [:]) { success in
             if !success {
-                Task { @MainActor in store.error = "無法打開登入頁面，請複製網址到瀏覽器開啟" }
+                Task { @MainActor in store.error = String(localized: "無法打開登入頁面，請複製網址到瀏覽器開啟", bundle: AppLanguage.bundle) }
             }
         }
     }
@@ -574,7 +574,7 @@ private struct AIProviderLoginView: View {
                             Text("輸入並同意後,這裡會自動完成。")
                                 .font(.footnote).foregroundStyle(.secondary)
                         } else {
-                            Text(controller.status.url == nil ? "準備中…" : "已經打開 \(controller.name) 的登入頁面(沒看到的話點這裡打開)。")
+                            Text(controller.status.url == nil ? String(localized: "準備中…", bundle: AppLanguage.bundle) : String(localized: "已經打開 \(controller.name) 的登入頁面(沒看到的話點這裡打開)。", bundle: AppLanguage.bundle))
                                 .font(.footnote)
                             Text("在這台電腦登入的話,完成後會自動接上。用手機或別台電腦時,登入後的頁面會打不開(網址開頭是 http://127.0.0.1 或 http://localhost),把那一頁的整段網址貼到這裡:")
                                 .font(.footnote).foregroundStyle(.secondary)
@@ -603,7 +603,7 @@ private struct AIProviderLoginView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(controller.finished ? "關閉" : "取消") {
+                    Button(controller.finished ? String(localized: "關閉", bundle: AppLanguage.bundle) : String(localized: "取消", bundle: AppLanguage.bundle)) {
                         Task { await controller.cancel(store: store); dismiss() }
                     }
                 }

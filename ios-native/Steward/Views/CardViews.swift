@@ -33,12 +33,12 @@ struct CardPopup: View {
                             Section("最新狀態") { Text(note).textSelection(.enabled) }
                         }
                         Section("指示") {
-                            Text(c.instructions?.isEmpty == false ? c.instructions! : "(沒有)")
+                            Text(c.instructions?.isEmpty == false ? c.instructions! : String(localized: "(沒有)", bundle: AppLanguage.bundle))
                                 .font(.callout.monospaced())
                                 .textSelection(.enabled)
                         }
                         Section("完成標準") {
-                            Text(c.doneCriteria?.isEmpty == false ? c.doneCriteria! : "(沒有)")
+                            Text(c.doneCriteria?.isEmpty == false ? c.doneCriteria! : String(localized: "(沒有)", bundle: AppLanguage.bundle))
                         }
                         actions(c)
                         if let thread = c.thread, !thread.isEmpty {
@@ -85,7 +85,7 @@ struct CardPopup: View {
 
     private func meta(_ c: Card) -> some View {
         let p = model.project(c.projectId)
-        let parts = ["#\(c.id)", c.agent, p?.name, (c.attempts ?? 0) > 1 ? "第 \(c.attempts!) 次派工" : nil, c.lastChanged.map { Fmt.ago($0) }].compactMap { $0 }
+        let parts = ["#\(c.id)", c.agent, p?.name, (c.attempts ?? 0) > 1 ? String(localized: "第 \(c.attempts!) 次派工", bundle: AppLanguage.bundle) : nil, c.lastChanged.map { Fmt.ago($0) }].compactMap { $0 }
         return HStack(spacing: 8) {
             Text(columnLabel[c.column] ?? c.column)
                 .font(.caption.bold())
@@ -106,9 +106,9 @@ struct CardPopup: View {
         let canJump = (c.terminalId != nil || c.paneId != nil) && ["running", "blocked", "done"].contains(c.column)
         let moves: [(String, String, Bool)] = {
             switch c.column {
-            case "proposed": [("核准派工", "approved", true), ("不要", "rejected", false)]
-            case "blocked": [("重新派工", "approved", true), ("標成完成", "done", false)]
-            case "done": [("重做一次", "approved", false)]
+            case "proposed": [(String(localized: "核准派工", bundle: AppLanguage.bundle), "approved", true), (String(localized: "不要", bundle: AppLanguage.bundle), "rejected", false)]
+            case "blocked": [(String(localized: "重新派工", bundle: AppLanguage.bundle), "approved", true), (String(localized: "標成完成", bundle: AppLanguage.bundle), "done", false)]
+            case "done": [(String(localized: "重做一次", bundle: AppLanguage.bundle), "approved", false)]
             default: []
             }
         }()
@@ -120,7 +120,7 @@ struct CardPopup: View {
                         set: { agent in Task { await updateAgent(c, agent) } }
                     )) {
                         if agentIdOf(c.agent ?? "") == nil {
-                            Text(agentsReady ? "\(c.agent ?? "")(沒有安裝)" : (c.agent ?? "")).tag(c.agent ?? "")
+                            Text(agentsReady ? String(localized: "\(c.agent ?? "")(沒有安裝)", bundle: AppLanguage.bundle) : (c.agent ?? "")).tag(c.agent ?? "")
                         }
                         ForEach(agents) { agent in
                             Text(agent.name ?? agent.id).tag(agent.id)
@@ -150,7 +150,7 @@ struct CardPopup: View {
     /// 追問的輸入列
     private func askBar(_ c: Card) -> some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField(c.column == "running" ? "追問(這一輪做完就送出)" : "追問這張卡…", text: $question, axis: .vertical)
+            TextField(c.column == "running" ? String(localized: "追問(這一輪做完就送出)", bundle: AppLanguage.bundle) : String(localized: "追問這張卡…", bundle: AppLanguage.bundle), text: $question, axis: .vertical)
                 .lineLimit(1...5)
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -249,7 +249,7 @@ private struct TurnRow: View {
             .accessibilityIdentifier("turn-\(turn.id)")
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Label(turn.original == true ? "原本的結果" : (card.agent ?? "agent"), systemImage: turn.original == true ? "checkmark.seal" : "sparkles")
+                Label(turn.original == true ? String(localized: "原本的結果", bundle: AppLanguage.bundle) : (card.agent ?? "agent"), systemImage: turn.original == true ? "checkmark.seal" : "sparkles")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 MarkdownText(turn.text)
@@ -266,14 +266,14 @@ private struct TurnRow: View {
         switch turn.status {
         case "queued":
             HStack(spacing: 10) {
-                Text(card.column == "running" ? "排隊中,這一輪做完就送出" : "等這個 agent 空下來就送出").font(.caption).foregroundStyle(.secondary)
+                Text(card.column == "running" ? String(localized: "排隊中,這一輪做完就送出", bundle: AppLanguage.bundle) : String(localized: "等這個 agent 空下來就送出", bundle: AppLanguage.bundle)).font(.caption).foregroundStyle(.secondary)
                 Button("取消") { onAction("cancel") }.font(.caption).buttonStyle(.borderless)
             }
         case "sent":
             Text("已送出,等回覆").font(.caption).foregroundStyle(.secondary)
         case "failed":
             VStack(alignment: .trailing, spacing: 4) {
-                Text(turn.note ?? "送不出去").font(.caption).foregroundStyle(.red)
+                Text(turn.note ?? String(localized: "送不出去", bundle: AppLanguage.bundle)).font(.caption).foregroundStyle(.red)
                 HStack(spacing: 14) {
                     Button("重送") { onAction("retry") }.buttonStyle(.borderless)
                     Button("取消", role: .destructive) { onAction("cancel") }.buttonStyle(.borderless)

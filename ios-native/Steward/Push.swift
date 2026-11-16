@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        Task { @MainActor in PushState.shared.lastError = "iPhone 沒有給推播憑證:\(error.localizedDescription)" }
+        Task { @MainActor in PushState.shared.lastError = String(localized: "iPhone 沒有給推播憑證:\(error.localizedDescription)", bundle: AppLanguage.bundle) }
     }
 
     // app 開著的時候也顯示通知
@@ -141,11 +141,11 @@ private final class PushActionRequest {
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "PushAction") {
             Task { @MainActor in
                 self.task?.cancel()
-                self.finish(reason: "背景執行時間已到，請打開專案確認工作卡狀態")
+                self.finish(reason: String(localized: "背景執行時間已到，請打開專案確認工作卡狀態", bundle: AppLanguage.bundle))
             }
         }
         guard backgroundTask != .invalid else {
-            finish(reason: "無法取得背景執行時間，請打開專案再試一次")
+            finish(reason: String(localized: "無法取得背景執行時間，請打開專案再試一次", bundle: AppLanguage.bundle))
             return
         }
         task = Task { @MainActor in
@@ -167,7 +167,7 @@ private final class PushActionRequest {
         task = nil
         if let reason {
             let content = UNMutableNotificationContent()
-            content.title = "沒辦法\(action.title):\(reason)"
+            content.title = String(localized: "沒辦法\(action.title):\(reason)", bundle: AppLanguage.bundle)
             content.sound = .default
             if let link { content.userInfo["link"] = link }
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)

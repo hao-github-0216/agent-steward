@@ -58,7 +58,7 @@ struct ProjectPicker: View {
                         ForEach(closed) { p in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(p.name).font(.headline)
-                                Text("\(p.root ?? "")\(p.closedAt.map { " · \(Fmt.ago(Fmt.date($0)))收起" } ?? "")").font(.caption).foregroundStyle(.secondary)
+                                Text("\(p.root ?? "")\(p.closedAt.map { String(localized: " · \(Fmt.ago(Fmt.date($0)))收起", bundle: AppLanguage.bundle) } ?? "")").font(.caption).foregroundStyle(.secondary)
                                 HStack {
                                     Button("打開") { Task { await reopen(p) } }.buttonStyle(.borderedProminent)
                                     Button("停止追蹤") { Task { await set(p, ["status": "ignored"]) } }.buttonStyle(.bordered)
@@ -79,7 +79,7 @@ struct ProjectPicker: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(p.name)
-                                    Text("\(p.root ?? "")\(p.state?.updatedAt.map { " · 紀錄保留到 \(Fmt.ago(Fmt.date($0)))" } ?? "")").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text("\(p.root ?? "")\(p.state?.updatedAt.map { String(localized: " · 紀錄保留到 \(Fmt.ago(Fmt.date($0)))", bundle: AppLanguage.bundle) } ?? "")").font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                 }
                                 Spacer()
                                 Button("恢復追蹤") { Task { await set(p, ["status": "active"]) } }.buttonStyle(.bordered)
@@ -89,7 +89,7 @@ struct ProjectPicker: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .searchable(text: $query, prompt: "找專案")
+            .searchable(text: $query, prompt: String(localized: "找專案", bundle: AppLanguage.bundle))
             .refreshable { await model.refresh() }
             .navigationTitle("專案")
             .navigationBarTitleDisplayMode(.inline)
@@ -207,7 +207,7 @@ struct ProjectRow: View {
                 if let progress = project.state?.progress, !progress.isEmpty {
                     Text(Markdown.plain(progress)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
-                Text(project.lastActive.map { Fmt.ago($0) } ?? "尚無紀錄").font(.caption).foregroundStyle(.tertiary)
+                Text(project.lastActive.map { Fmt.ago($0) } ?? String(localized: "尚無紀錄", bundle: AppLanguage.bundle)).font(.caption).foregroundStyle(.tertiary)
             }
             if selected {
                 Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Theme.accent)

@@ -41,7 +41,7 @@ struct SplitProjectView: View {
                 } header: {
                     Text("子資料夾")
                 } footer: {
-                    Text("拆出來的子資料夾會變成獨立專案;之後在裡面的工作改記到新專案(已經記在「\(project?.name ?? "這個專案")」的內容不會搬過去)。")
+                    Text("拆出來的子資料夾會變成獨立專案;之後在裡面的工作改記到新專案(已經記在「\(project?.name ?? String(localized: "這個專案", bundle: AppLanguage.bundle))」的內容不會搬過去)。")
                 }
                 Section {
                     TextField("例如 \(project?.root ?? "~")/某個資料夾", text: $customPath, axis: .vertical)

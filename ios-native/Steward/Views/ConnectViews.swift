@@ -32,7 +32,7 @@ struct SetupView: View {
                 } header: {
                     Text("管家網址")
                 } footer: {
-                    Text(error ?? "在電腦的專案管家「設定 → 遠端存取」可以看到 Tailscale 網址。手機要先連上 Tailscale。")
+                    Text(error ?? String(localized: "在電腦的專案管家「設定 → 遠端存取」可以看到 Tailscale 網址。手機要先連上 Tailscale。", bundle: AppLanguage.bundle))
                         .foregroundStyle(error == nil ? Color.secondary : Color.red)
                 }
                 Section {
@@ -59,7 +59,7 @@ struct SetupView: View {
 
     private func save() {
         guard let url = API.normalize(text) else {
-            error = "網址看起來不對,例如 https://my-mac.tail1234.ts.net:8793/"
+            error = String(localized: "網址看起來不對,例如 https://my-mac.tail1234.ts.net:8793/", bundle: AppLanguage.bundle)
             return
         }
         error = nil
@@ -94,7 +94,7 @@ struct LoginView: View {
                     Button("更換管家網址", role: .destructive) { model.forgetServer() }
                 }
             }
-            .navigationTitle(model.server?.host() ?? "管家")
+            .navigationTitle(model.server?.host() ?? String(localized: "管家", bundle: AppLanguage.bundle))
         }
     }
 

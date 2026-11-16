@@ -13,7 +13,7 @@ struct AboutSettingsView: View {
     private var busy: Bool { loading || applying || checkingDesktop || store.update?.running == true }
 
     var body: some View {
-        SettingsForm("關於") {
+        SettingsForm(String(localized: "關於", bundle: AppLanguage.bundle)) {
             Section {
                 LabeledContent("目前版本") {
                     Text(store.update?.current ?? "")
@@ -39,7 +39,7 @@ struct AboutSettingsView: View {
                         Task { await requestDesktopUpdate() }
                     } label: {
                         HStack {
-                            Text(store.update?.hasUpdate == true ? "更新 App 到 \(store.update?.latest ?? "")" : "用 App 檢查更新")
+                            Text(store.update?.hasUpdate == true ? String(localized: "更新 App 到 \(store.update?.latest ?? "")", bundle: AppLanguage.bundle) : String(localized: "用 App 檢查更新", bundle: AppLanguage.bundle))
                             if checkingDesktop { Spacer(); ProgressView() }
                         }
                     }
@@ -83,7 +83,7 @@ struct AboutSettingsView: View {
                         }
                     }
                 } else {
-                    Text(store.update == nil ? "讀取中…" : "無法載入第三方元件")
+                    Text(store.update == nil ? String(localized: "讀取中…", bundle: AppLanguage.bundle) : String(localized: "無法載入第三方元件", bundle: AppLanguage.bundle))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -124,7 +124,7 @@ struct AboutSettingsView: View {
             } else if let error = update.error {
                 Text(error).foregroundStyle(.red)
             } else if update.dev == true {
-                Text("這是開發版,不會自動更新\(update.latest.map { "(最新發布版 \($0))" } ?? "")")
+                Text("這是開發版,不會自動更新\(update.latest.map { String(localized: "(最新發布版 \($0))", bundle: AppLanguage.bundle) } ?? "")")
                     .foregroundStyle(.secondary)
             } else {
                 Text("已經是最新版").foregroundStyle(.secondary)
@@ -146,7 +146,7 @@ struct AboutSettingsView: View {
         defer { checkingDesktop = false }
         store.error = nil
         if await store.action("api/desktop/update") != nil {
-            store.message = "已請 App 檢查更新，請看 App 跳出的視窗"
+            store.message = String(localized: "已請 App 檢查更新，請看 App 跳出的視窗", bundle: AppLanguage.bundle)
         }
     }
 

@@ -292,6 +292,6 @@ extension MarkdownWebView {
         render(\(json(source)), false);
         </script>
         </body></html>
-        """
+        """ // i18n-ok: 內嵌 JavaScript 中的中文全是程式註解，不是介面文字。
     }
 }

@@ -127,7 +127,7 @@ extension API {
         let r = try request(codePath(project, "session"))
         let (data, resp) = try await API.session.data(for: r)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(code) else { throw APIError.server(code, "讀不到網頁版的版面") }
+        guard (200..<300).contains(code) else { throw APIError.server(code, String(localized: "讀不到網頁版的版面", bundle: AppLanguage.bundle)) }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
@@ -146,7 +146,7 @@ extension API {
         let r = try request(codePath(project, "office/version", [URLQueryItem(name: "path", value: path), URLQueryItem(name: "id", value: id)]))
         let (data, resp) = try await API.slowSession.data(for: r)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(code) else { throw APIError.server(code, "讀不到這個版本") }
+        guard (200..<300).contains(code) else { throw APIError.server(code, String(localized: "讀不到這個版本", bundle: AppLanguage.bundle)) }
         return data
     }
 
@@ -182,8 +182,8 @@ extension API {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if code == 409, json?["exists"] as? Bool == true { return .exists }
-        if code == 401 || code == 403 { throw APIError.needLogin(json?["error"] as? String ?? "請先登入") }
-        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? "上傳失敗") }
+        if code == 401 || code == 403 { throw APIError.needLogin(json?["error"] as? String ?? String(localized: "請先登入", bundle: AppLanguage.bundle)) }
+        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? String(localized: "上傳失敗", bundle: AppLanguage.bundle)) }
         return .ok
     }
 
@@ -194,7 +194,7 @@ extension API {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else {
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw APIError.server(code, msg ?? "讀不到檔案")
+            throw APIError.server(code, msg ?? String(localized: "讀不到檔案", bundle: AppLanguage.bundle))
         }
         return data
     }
@@ -208,9 +208,9 @@ extension API {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if code == 409, let disk = json?["disk"] as? [String: Any] {
-            throw SaveConflict(message: json?["error"] as? String ?? "檔案在你開啟之後被改過了", diskContent: disk["content"] as? String ?? "", diskHash: disk["hash"] as? String ?? "")
+            throw SaveConflict(message: json?["error"] as? String ?? String(localized: "檔案在你開啟之後被改過了", bundle: AppLanguage.bundle), diskContent: disk["content"] as? String ?? "", diskHash: disk["hash"] as? String ?? "")
         }
-        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? "存檔失敗") }
+        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? String(localized: "存檔失敗", bundle: AppLanguage.bundle)) }
         return json?["hash"] as? String
     }
 
@@ -252,10 +252,10 @@ extension API {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if code == 409, let o = json?["outside"] as? [String], !o.isEmpty {
-            throw CommitOutside(message: json?["error"] as? String ?? "暫存區裡有其他資料夾的檔案", outside: o)
+            throw CommitOutside(message: json?["error"] as? String ?? String(localized: "暫存區裡有其他資料夾的檔案", bundle: AppLanguage.bundle), outside: o)
         }
-        if code == 401 || code == 403 { throw APIError.needLogin(json?["error"] as? String ?? "請先登入") }
-        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? "提交失敗") }
+        if code == 401 || code == 403 { throw APIError.needLogin(json?["error"] as? String ?? String(localized: "請先登入", bundle: AppLanguage.bundle)) }
+        guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? String(localized: "提交失敗", bundle: AppLanguage.bundle)) }
     }
 
     private struct Out<T: Decodable>: Decodable { var out: T }

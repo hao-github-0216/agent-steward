@@ -5,8 +5,8 @@
 import SwiftUI
 
 /// 網頁的 COLS
-let boardColumns: [(id: String, label: String)] = [("proposed", "提案"), ("approved", "已核准"), ("running", "進行中"), ("blocked", "卡住"), ("done", "完成")]
-let columnLabel: [String: String] = Dictionary(uniqueKeysWithValues: boardColumns.map { ($0.id, $0.label) } + [("rejected", "不要了")])
+let boardColumns: [(id: String, label: String)] = [("proposed", String(localized: "提案", bundle: AppLanguage.bundle)), ("approved", String(localized: "已核准", bundle: AppLanguage.bundle)), ("running", String(localized: "進行中", bundle: AppLanguage.bundle)), ("blocked", String(localized: "卡住", bundle: AppLanguage.bundle)), ("done", String(localized: "完成", bundle: AppLanguage.bundle))]
+let columnLabel: [String: String] = Dictionary(uniqueKeysWithValues: boardColumns.map { ($0.id, $0.label) } + [("rejected", String(localized: "不要了", bundle: AppLanguage.bundle))])
 
 struct BoardView: View {
     @Environment(AppModel.self) private var model
@@ -41,7 +41,7 @@ struct BoardView: View {
                         dots
                             .listRowBackground(Color.clear)
                     } header: {
-                        Text(model.allCards ? "所有專案的工作卡" : "工作卡")
+                        Text(model.allCards ? String(localized: "所有專案的工作卡", bundle: AppLanguage.bundle) : String(localized: "board.section.cards", defaultValue: "工作卡", bundle: AppLanguage.bundle))
                     } footer: {
                         Text("點卡片看詳情;長按選動作,或拖到「已核准」= 派工或重新派工、拖回「提案」= 退回")
                     }
@@ -163,7 +163,7 @@ struct BoardColumn: View {
                                 .draggable(c.id) { KCardFace(card: c, projectName: nil).frame(width: 240) }
                         }
                         if id == "done" && cards.count > Self.doneShown {
-                            Button(showAllDone ? "只看最近 \(Self.doneShown) 張" : "看更多(\(cards.count - Self.doneShown))") { showAllDone.toggle() }
+                            Button(showAllDone ? String(localized: "只看最近 \(Self.doneShown) 張", bundle: AppLanguage.bundle) : String(localized: "看更多(\(cards.count - Self.doneShown))", bundle: AppLanguage.bundle)) { showAllDone.toggle() }
                                 .font(.subheadline)
                                 .padding(.top, 2)
                         }
@@ -250,7 +250,7 @@ struct KCardFace: View {
                     let waiting = card.thread?.contains { $0.status == "sent" || $0.status == "queued" } == true
                     Label("\(asked)", systemImage: "bubble.left.and.bubble.right.fill").labelStyle(.titleAndIcon)
                         .foregroundStyle(waiting ? Theme.accent : .secondary)
-                        .accessibilityLabel(waiting ? "追問 \(asked) 次,等回覆中" : "追問 \(asked) 次")
+                        .accessibilityLabel(waiting ? String(localized: "追問 \(asked) 次,等回覆中", bundle: AppLanguage.bundle) : String(localized: "追問 \(asked) 次", bundle: AppLanguage.bundle))
                 }
                 if let n = card.note, !n.isEmpty {
                     Image(systemName: "text.bubble.fill").foregroundStyle(.orange).accessibilityLabel("有備註")
@@ -279,7 +279,7 @@ struct BriefSections: View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
                 Text(project.name).font(.title3.bold())
-                Text("\(project.root ?? "")\(s?.updatedAt?.isEmpty == false ? " · 更新於 \(Fmt.ago(Fmt.date(s?.updatedAt)))" : "")")
+                Text("\(project.root ?? "")\(s?.updatedAt?.isEmpty == false ? String(localized: " · 更新於 \(Fmt.ago(Fmt.date(s?.updatedAt)))", bundle: AppLanguage.bundle) : "")")
                     .font(.footnote).foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -298,7 +298,7 @@ struct BriefSections: View {
                         Task { await bootstrap() }
                     } label: {
                         HStack {
-                            Label(busy ? "整理中…(約 1 分鐘)" : "從現有記錄補建", systemImage: "arrow.triangle.2.circlepath")
+                            Label(busy ? String(localized: "整理中…(約 1 分鐘)", bundle: AppLanguage.bundle) : String(localized: "從現有記錄補建", bundle: AppLanguage.bundle), systemImage: "arrow.triangle.2.circlepath")
                             Spacer()
                             if busy { ProgressView() }
                         }
@@ -308,14 +308,14 @@ struct BriefSections: View {
             } header: {
                 Text("目前進度")
             } footer: {
-                Text(isProject ? "管家還沒有這個專案的紀錄。agent 收工後會自動整理,或現在就從現有記錄補建。" : "管家還沒有這個專案的紀錄。agent 收工後會自動整理。")
+                Text(isProject ? String(localized: "管家還沒有這個專案的紀錄。agent 收工後會自動整理,或現在就從現有記錄補建。", bundle: AppLanguage.bundle) : String(localized: "管家還沒有這個專案的紀錄。agent 收工後會自動整理。", bundle: AppLanguage.bundle))
             }
         }
-        rows("下一步", s?.nextSteps)
-        rows("卡住的地方", s?.blockers)
+        rows(String(localized: "下一步", bundle: AppLanguage.bundle), s?.nextSteps)
+        rows(String(localized: "卡住的地方", bundle: AppLanguage.bundle), s?.blockers)
         if let d = s?.decisions, !d.isEmpty {
             Section {
-                DisclosureGroup("重要決定(\(d.count))") {
+                DisclosureGroup(String(localized: "重要決定(\(d.count))", bundle: AppLanguage.bundle)) {
                     ForEach(Array(d.enumerated()), id: \.offset) { _, x in MarkdownText(x, fixEscapes: true) }
                 }
             }
@@ -353,7 +353,7 @@ struct BriefSections: View {
                 Button("把 \(n) 個在別的 space 的窗格搬過去") { Task { await moveStrays() } }
             }
         } else {
-            LabeledContent("herdr space", value: "還沒有綁定")
+            LabeledContent("herdr space", value: String(localized: "還沒有綁定", bundle: AppLanguage.bundle))
         }
     }
 
@@ -373,7 +373,7 @@ struct BriefSections: View {
     private func bootstrap() async {
         busy = true
         defer { busy = false }
-        do { try await model.api?.bootstrap(project.id); await model.refresh(); message = nil } catch { message = "補建失敗:\(error.localizedDescription)" }
+        do { try await model.api?.bootstrap(project.id); await model.refresh(); message = nil } catch { message = String(localized: "補建失敗:\(error.localizedDescription)", bundle: AppLanguage.bundle) }
     }
 
     private func fixName(_ use: String) async {

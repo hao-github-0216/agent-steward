@@ -20,7 +20,7 @@ struct Attachment: Identifiable, Hashable {
 
     var label: String {
         switch kind {
-        case .image: "圖片"
+        case .image: String(localized: "圖片", bundle: AppLanguage.bundle)
         case .projectFile(let rel), .editorFile(let rel, _): (rel as NSString).lastPathComponent
         case .phoneFile(let name, _): name
         }
@@ -45,8 +45,8 @@ struct Attachment: Identifiable, Hashable {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
-        guard data.count <= 400_000 else { throw AttachError("「\(url.lastPathComponent)」太大(上限 400KB)") }
-        guard let text = String(data: data, encoding: .utf8) else { throw AttachError("「\(url.lastPathComponent)」不是文字檔;圖片請用「照片」") }
+        guard data.count <= 400_000 else { throw AttachError(String(localized: "「\(url.lastPathComponent)」太大(上限 400KB)", bundle: AppLanguage.bundle)) }
+        guard let text = String(data: data, encoding: .utf8) else { throw AttachError(String(localized: "「\(url.lastPathComponent)」不是文字檔;圖片請用「照片」", bundle: AppLanguage.bundle)) }
         return Attachment(kind: .phoneFile(name: url.lastPathComponent, content: text))
     }
 }
@@ -128,7 +128,7 @@ struct ProjectFilePicker: View {
                     .overlay { if results.isEmpty { ContentUnavailableView.search(text: query) } }
                 }
             }
-            .searchable(text: $query, prompt: "找檔名")
+            .searchable(text: $query, prompt: String(localized: "找檔名", bundle: AppLanguage.bundle))
             .task(id: query) {
                 let q = query.trimmingCharacters(in: .whitespaces)
                 guard !q.isEmpty else { results = []; return }
@@ -138,7 +138,7 @@ struct ProjectFilePicker: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(picked.isEmpty ? "加入" : "加入 \(picked.count) 個") { onDone(Array(picked)); dismiss() }
+                    Button(picked.isEmpty ? String(localized: "加入", bundle: AppLanguage.bundle) : String(localized: "加入 \(picked.count) 個", bundle: AppLanguage.bundle)) { onDone(Array(picked)); dismiss() }
                         .disabled(picked.isEmpty)
                 }
             }

@@ -178,11 +178,11 @@ struct WebPage: View {
     private var title: String {
         switch sheet {
         case .settings(_, let t): t
-        case .create: "建立專案"
-        case .tidy: "整理 spaces"
-        case .split: "拆出子資料夾"
-        case .codeEditor: "網頁版編輯器"
-        case .full: "完整網頁版"
+        case .create: String(localized: "建立專案", bundle: AppLanguage.bundle)
+        case .tidy: String(localized: "整理 spaces", bundle: AppLanguage.bundle)
+        case .split: String(localized: "拆出子資料夾", bundle: AppLanguage.bundle)
+        case .codeEditor: String(localized: "網頁版編輯器", bundle: AppLanguage.bundle)
+        case .full: String(localized: "完整網頁版", bundle: AppLanguage.bundle)
         }
     }
 

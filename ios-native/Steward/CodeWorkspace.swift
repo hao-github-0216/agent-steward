@@ -29,10 +29,10 @@ struct EditorTab: Codable, Hashable, Identifiable, Transferable {
     var detail: String? {
         guard kind == .diff else { return nil }
         switch which {
-        case "staged": return "已暫存"
-        case "untracked": return "新檔案"
-        case "commit": return "提交 \((commit ?? "").prefix(7))"
-        default: return "變更"
+        case "staged": return String(localized: "已暫存", bundle: AppLanguage.bundle)
+        case "untracked": return String(localized: "新檔案", bundle: AppLanguage.bundle)
+        case "commit": return String(localized: "提交 \((commit ?? "").prefix(7))", bundle: AppLanguage.bundle)
+        default: return String(localized: "變更", bundle: AppLanguage.bundle)
         }
     }
 

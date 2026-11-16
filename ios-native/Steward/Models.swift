@@ -84,12 +84,12 @@ struct Card: Codable, Hashable, Identifiable {
 
     var columnLabel: String {
         switch column {
-        case "proposed": "提案"
-        case "approved": "已核准"
-        case "running": "進行中"
-        case "blocked": "卡住"
-        case "done": "完成"
-        case "rejected": "退回"
+        case "proposed": String(localized: "提案", bundle: AppLanguage.bundle)
+        case "approved": String(localized: "已核准", bundle: AppLanguage.bundle)
+        case "running": String(localized: "進行中", bundle: AppLanguage.bundle)
+        case "blocked": String(localized: "卡住", bundle: AppLanguage.bundle)
+        case "done": String(localized: "完成", bundle: AppLanguage.bundle)
+        case "rejected": String(localized: "退回", bundle: AppLanguage.bundle)
         default: column
         }
     }
@@ -111,12 +111,12 @@ enum CardAction: String, Identifiable {
 
     var label: String {
         switch self {
-        case .dispatch: "核准並派工"
-        case .redispatch: "重新派工"
-        case .reject: "不要了"
-        case .markDone: "標成完成"
-        case .markBlocked: "標成卡住"
-        case .backToProposed: "退回提案"
+        case .dispatch: String(localized: "核准並派工", bundle: AppLanguage.bundle)
+        case .redispatch: String(localized: "重新派工", bundle: AppLanguage.bundle)
+        case .reject: String(localized: "不要了", bundle: AppLanguage.bundle)
+        case .markDone: String(localized: "標成完成", bundle: AppLanguage.bundle)
+        case .markBlocked: String(localized: "標成卡住", bundle: AppLanguage.bundle)
+        case .backToProposed: String(localized: "退回提案", bundle: AppLanguage.bundle)
         }
     }
 
@@ -255,7 +255,7 @@ enum Fmt {
 
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: "zh-Hant")
+        f.locale = AppLanguage.locale
         f.unitsStyle = .short
         return f
     }()

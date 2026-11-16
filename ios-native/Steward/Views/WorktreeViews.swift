@@ -85,7 +85,7 @@ final class WorktreeController {
         let r = await WorktreeLoader.fetch(api, project: project.id)
         list = r.list
         demo = r.demo
-        error = r.error.map { "讀不到分支總覽:\($0)" }
+        error = r.error.map { String(localized: "讀不到分支總覽:\($0)", bundle: AppLanguage.bundle) }
         guard r.list?.repo == true, !r.demo else { tree = r.demo ? WorktreeTreeDemo.tree : nil; treeDemo = r.demo; return }
         do {
             tree = try await api.worktreeTree(project: project.id)
@@ -114,7 +114,7 @@ final class WorktreeController {
 
     /// 窗格開著就跳過去;關了就在同 space 開新 tab 接回對話;對不到就在 worktree 資料夾開新 agent。管家會在 herdr 切過去,app 跟著切到終端機
     func chat(_ w: Worktree, _ model: AppModel, _ project: Project) async {
-        if fake(w) { info = "示意資料:管家更新後會跳到 \(w.session?.pane?.paneId ?? "新的 tab")"; return }
+        if fake(w) { info = String(localized: "示意資料:管家更新後會跳到 \(w.session?.pane?.paneId ?? String(localized: "新的 tab", bundle: AppLanguage.bundle))", bundle: AppLanguage.bundle); return }
         guard let api = model.api else { return }
         busy = w.id
         defer { busy = nil }
@@ -122,9 +122,9 @@ final class WorktreeController {
             let r = try await api.worktreeChat(project: project.id, id: w.id)
             error = nil
             switch r.kind {
-            case "focus": info = "已在 herdr 跳到 \(r.paneId ?? "窗格")"
-            case "resume": info = "已在新 tab「\(r.label ?? "")」接回原本的對話"
-            default: info = "已在 worktree 裡開新的 \(r.agent ?? "agent")(找不到原本的對話)"
+            case "focus": info = String(localized: "已在 herdr 跳到 \(r.paneId ?? String(localized: "窗格", bundle: AppLanguage.bundle))", bundle: AppLanguage.bundle)
+            case "resume": info = String(localized: "已在新 tab「\(r.label ?? "")」接回原本的對話", bundle: AppLanguage.bundle)
+            default: info = String(localized: "已在 worktree 裡開新的 \(r.agent ?? "agent")(找不到原本的對話)", bundle: AppLanguage.bundle)
             }
             if let n = r.note, !n.isEmpty { note = n }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -138,19 +138,19 @@ final class WorktreeController {
 
     /// 程式碼頁切到 worktree 資料夾(nil = 回主資料夾)
     func browse(_ w: Worktree?, _ model: AppModel) {
-        if let w, fake(w) { info = "示意資料:管家更新前讀不到這個 worktree 的檔案"; return }
+        if let w, fake(w) { info = String(localized: "示意資料:管家更新前讀不到這個 worktree 的檔案", bundle: AppLanguage.bundle); return }
         model.codeWorktree = w.map { CodeWorktree(id: $0.id, branch: $0.branch, cwd: $0.cwd ?? $0.path) }
         model.codeSection = "files"
     }
 
     func remove(_ w: Worktree, confirm: WorktreeRemoveConfirm, _ model: AppModel, _ project: Project) async {
-        if fake(w) { info = "示意資料:管家更新後才能移除"; return }
+        if fake(w) { info = String(localized: "示意資料:管家更新後才能移除", bundle: AppLanguage.bundle); return }
         guard let api = model.api else { return }
         busy = w.id
         defer { busy = nil }
         do {
             try await api.worktreeRemove(project: project.id, id: w.id, confirm: confirm)
-            info = "已移除 \(w.branch ?? "worktree") 的資料夾,分支保留"
+            info = String(localized: "已移除 \(w.branch ?? "worktree") 的資料夾,分支保留", bundle: AppLanguage.bundle)
             error = nil
             if model.codeWorktree?.id == w.id { model.codeWorktree = nil }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -168,7 +168,7 @@ final class WorktreeController {
     }
 
     func apply(_ fix: Fix, _ model: AppModel, _ project: Project) async {
-        if demo { info = "示意資料:管家更新後才能修"; return }
+        if demo { info = String(localized: "示意資料:管家更新後才能修", bundle: AppLanguage.bundle); return }
         guard let api = model.api else { return }
         busy = fix.rawValue
         defer { busy = nil }
@@ -176,10 +176,10 @@ final class WorktreeController {
             switch fix {
             case .ignore:
                 let r = try await api.worktreeIgnore(project: project.id)
-                info = r.added.isEmpty ? "已經在 .gitignore 裡了" : "已把 \(r.added.joined(separator: "、")) 加進 \(r.file ?? ".gitignore")"
+                info = r.added.isEmpty ? String(localized: "已經在 .gitignore 裡了", bundle: AppLanguage.bundle) : String(localized: "已把 \(r.added.joined(separator: "、")) 加進 \(r.file ?? ".gitignore")", bundle: AppLanguage.bundle)
             case .untrack:
                 if let n = try await api.worktreeUntrack(project: project.id) { note = n }
-                info = "已從版本控制移除(在暫存區,還沒提交)"
+                info = String(localized: "已從版本控制移除(在暫存區,還沒提交)", bundle: AppLanguage.bundle)
             }
             error = nil
             model.code.gitChanged += 1
@@ -226,7 +226,7 @@ struct WorktreeSection: View {
                     if others.isEmpty { Text("只有主資料夾,沒有其他 worktree。").font(.subheadline).foregroundStyle(.secondary) }
                     ForEach(relevant) { row($0, l.target) }
                     if !unrelated.isEmpty {
-                        DisclosureGroup("同 repo 的其他 worktree(\(unrelated.count))") {
+                        DisclosureGroup(String(localized: "同 repo 的其他 worktree(\(unrelated.count))", bundle: AppLanguage.bundle)) {
                             ForEach(unrelated) { row($0, l.target) }
                         }
                     }
@@ -251,8 +251,8 @@ struct WorktreeSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label {
                     Text(fix == .ignore
-                         ? "worktree 資料夾放在專案裡,但沒被 .gitignore 排除(\(ctl.patterns)),「全部加入」時會被一起加進去。"
-                         : "\(ctl.gitlinks) 已經被 commit 成子專案,git 會把它當成另一個 repo。")
+                         ? String(localized: "worktree 資料夾放在專案裡,但沒被 .gitignore 排除(\(ctl.patterns)),「全部加入」時會被一起加進去。", bundle: AppLanguage.bundle)
+                         : String(localized: "\(ctl.gitlinks) 已經被 commit 成子專案,git 會把它當成另一個 repo。", bundle: AppLanguage.bundle))
                         .font(.subheadline)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
@@ -260,7 +260,7 @@ struct WorktreeSection: View {
                 Button {
                     ctl.fixing = fix
                 } label: {
-                    if ctl.busy == fix.rawValue { ProgressView() } else { Text(fix == .ignore ? "加入 .gitignore" : "從版本控制移除") }
+                    if ctl.busy == fix.rawValue { ProgressView() } else { Text(fix == .ignore ? String(localized: "加入 .gitignore", bundle: AppLanguage.bundle) : String(localized: "從版本控制移除", bundle: AppLanguage.bundle)) }
                 }
                 .buttonStyle(.bordered)
                 .tint(.orange)
@@ -372,17 +372,17 @@ struct WorktreeDialogs: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(item: $ctl.merging) { w in
-                let target = ctl.list?.target ?? "主線"
+                let target = ctl.list?.target ?? String(localized: "主線", bundle: AppLanguage.bundle)
                 WorktreeMergeSheet(project: project, worktree: w, target: target, demo: ctl.fake(w)) { commit, removeAfter in
-                    ctl.info = "已把 \(w.branch ?? "") 合併進 \(target)" + (commit.map { "(\($0))" } ?? "")
+                    ctl.info = String(localized: "已把 \(w.branch ?? "") 合併進 \(target)", bundle: AppLanguage.bundle) + (commit.map { "(\($0))" } ?? "")
                     model.code.gitChanged += 1
                     Task { if removeAfter { await ctl.remove(w, confirm: WorktreeRemoveConfirm(), model, project) } else { await ctl.load(model, project) } }
                 }
             }
-            .confirmationDialog(ctl.removing.map { "移除 \($0.branch ?? "這個 worktree") 的資料夾?" } ?? "", isPresented: Binding(get: { ctl.removing != nil }, set: { if !$0 { ctl.removing = nil } }), titleVisibility: .visible, presenting: ctl.removing) { w in
+            .confirmationDialog(ctl.removing.map { String(localized: "移除 \($0.branch ?? String(localized: "這個 worktree", bundle: AppLanguage.bundle)) 的資料夾?", bundle: AppLanguage.bundle) } ?? "", isPresented: Binding(get: { ctl.removing != nil }, set: { if !$0 { ctl.removing = nil } }), titleVisibility: .visible, presenting: ctl.removing) { w in
                 Button("移除資料夾", role: .destructive) { Task { await ctl.remove(w, confirm: WorktreeRemoveConfirm(), model, project) } }
             } message: { w in
-                Text("只刪資料夾,分支 \(w.branch ?? "") 會保留,之後還能再開回來。" + ((w.dirty ?? 0) > 0 ? "\n⚠️ 裡面有 \(w.dirty ?? 0) 個沒 commit 的改動。" : ""))
+                Text(String(localized: "只刪資料夾,分支 \(w.branch ?? "") 會保留,之後還能再開回來。", bundle: AppLanguage.bundle) + ((w.dirty ?? 0) > 0 ? String(localized: "\n⚠️ 裡面有 \(w.dirty ?? 0) 個沒 commit 的改動。", bundle: AppLanguage.bundle) : ""))
             }
             .alert("還要移除嗎?", isPresented: Binding(get: { ctl.removeAsk != nil }, set: { if !$0 { ctl.removeAsk = nil } }), presenting: ctl.removeAsk) { ask in
                 Button("仍然移除", role: .destructive) {
@@ -401,12 +401,12 @@ struct WorktreeDialogs: ViewModifier {
                     Task { await ctl.remove(ask.worktree, confirm: c, model, project) }
                 }
             }
-            .confirmationDialog(ctl.fixing == .ignore ? "把 worktree 資料夾加入 .gitignore?" : "把 worktree 從版本控制移除?", isPresented: Binding(get: { ctl.fixing != nil }, set: { if !$0 { ctl.fixing = nil } }), titleVisibility: .visible, presenting: ctl.fixing) { fix in
-                Button(fix == .ignore ? "加入 .gitignore" : "從版本控制移除") { Task { await ctl.apply(fix, model, project) } }
+            .confirmationDialog(ctl.fixing == .ignore ? String(localized: "把 worktree 資料夾加入 .gitignore?", bundle: AppLanguage.bundle) : String(localized: "把 worktree 從版本控制移除?", bundle: AppLanguage.bundle), isPresented: Binding(get: { ctl.fixing != nil }, set: { if !$0 { ctl.fixing = nil } }), titleVisibility: .visible, presenting: ctl.fixing) { fix in
+                Button(fix == .ignore ? String(localized: "加入 .gitignore", bundle: AppLanguage.bundle) : String(localized: "從版本控制移除", bundle: AppLanguage.bundle)) { Task { await ctl.apply(fix, model, project) } }
             } message: { fix in
                 Text(fix == .ignore
-                     ? "會在 .gitignore 加上 \(ctl.patterns),之後「全部加入」就不會把 worktree 資料夾一起加進去。"
-                     : "會執行 git rm --cached \(ctl.gitlinks):只從版本控制拿掉,資料夾和檔案都不動。只放進暫存區,還要你自己提交。")
+                     ? String(localized: "會在 .gitignore 加上 \(ctl.patterns),之後「全部加入」就不會把 worktree 資料夾一起加進去。", bundle: AppLanguage.bundle)
+                     : String(localized: "會執行 git rm --cached \(ctl.gitlinks):只從版本控制拿掉,資料夾和檔案都不動。只放進暫存區,還要你自己提交。", bundle: AppLanguage.bundle))
             }
             .alert("提醒", isPresented: Binding(get: { ctl.note != nil }, set: { if !$0 { ctl.note = nil } })) {
                 Button("好") {}
@@ -425,11 +425,11 @@ struct WorktreeRow: View {
 
     var body: some View {
         let w = worktree
-        let main = target ?? "主線"
+        let main = target ?? String(localized: "主線", bundle: AppLanguage.bundle)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: w.source == "main" ? "house" : "arrow.triangle.branch").foregroundStyle(.secondary).font(.caption)
-                Text(w.branch ?? "(沒有分支)").font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(w.branch ?? String(localized: "(沒有分支)", bundle: AppLanguage.bundle)).font(.subheadline.weight(.semibold)).lineLimit(1)
                 if viewing { Text("正在看").font(.caption2.bold()).foregroundStyle(Theme.accent) }
                 Spacer(minLength: 4)
                 if busy { ProgressView().controlSize(.small) }
@@ -459,7 +459,7 @@ struct WorktreeRow: View {
                     if let s = w.session {
                         Text(s.agent ?? "agent")
                         if let p = s.pane { Text("·"); Text(p.paneId) }
-                        Text(s.alive == true ? "開著" : "已關").foregroundStyle(s.alive == true ? .green : .secondary)
+                        Text(s.alive == true ? String(localized: "開著", bundle: AppLanguage.bundle) : String(localized: "已關", bundle: AppLanguage.bundle)).foregroundStyle(s.alive == true ? .green : .secondary)
                     } else {
                         Text("開它的 agent:不明")
                     }
@@ -475,8 +475,8 @@ struct WorktreeRow: View {
 
     private func aheadText(_ w: Worktree, _ main: String) -> String {
         let a = w.ahead ?? 0, b = w.behind ?? 0
-        if a == 0 && b == 0 { return "跟 \(main) 一樣" }
-        return [a > 0 ? "領先 \(main) \(a)" : nil, b > 0 ? "落後 \(b)" : nil].compactMap { $0 }.joined(separator: "、")
+        if a == 0 && b == 0 { return String(localized: "跟 \(main) 一樣", bundle: AppLanguage.bundle) }
+        return [a > 0 ? String(localized: "領先 \(main) \(a)", bundle: AppLanguage.bundle) : nil, b > 0 ? String(localized: "落後 \(b)", bundle: AppLanguage.bundle) : nil].compactMap { $0 }.joined(separator: "、")
     }
 }
 
@@ -504,7 +504,7 @@ struct WorktreeMergeSheet: View {
                 if let error { Section { Label(error, systemImage: "hand.raised.fill").foregroundStyle(.orange) } }
                 if let commit = merged {
                     Section {
-                        Label("已把 \(worktree.branch ?? "") 合併進 \(target)" + (commit.map { "(\($0))" } ?? ""), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        Label(String(localized: "已把 \(worktree.branch ?? "") 合併進 \(target)", bundle: AppLanguage.bundle) + (commit.map { "(\($0))" } ?? ""), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                         Toggle("一併移除這個 worktree", isOn: $removeAfter)
                     } footer: {
                         Text("只刪資料夾,分支保留。")
@@ -531,7 +531,7 @@ struct WorktreeMergeSheet: View {
                                 GitFileRow(file: GitFile(path: f.path, code: String(f.status.prefix(1))))
                             }
                             if let d = p.diff, !d.isEmpty {
-                                NavigationLink { WorktreeDiffView(diff: d, title: worktree.branch ?? "差異") } label: { Label("看完整差異", systemImage: "plus.forwardslash.minus") }
+                                NavigationLink { WorktreeDiffView(diff: d, title: worktree.branch ?? String(localized: "差異", bundle: AppLanguage.bundle)) } label: { Label("看完整差異", systemImage: "plus.forwardslash.minus") }
                             }
                         } header: {
                             Text("改到的檔案(\(p.files.count))")
@@ -573,9 +573,9 @@ struct WorktreeMergeSheet: View {
 
     private func load() async {
         if demo {
-            preview = WorktreeMergePreview(target: target, branch: worktree.branch, commits: [.init(hash: "34f3aef", subject: "示意:修正登入流程")],
+            preview = WorktreeMergePreview(target: target, branch: worktree.branch, commits: [.init(hash: "34f3aef", subject: String(localized: "示意:修正登入流程", bundle: AppLanguage.bundle))],
                                            files: [.init(status: "M", path: "packages/app/login.ts")], stat: " 1 file changed, 12 insertions(+)",
-                                           diff: "diff --git a/packages/app/login.ts b/packages/app/login.ts\n@@ -1,3 +1,4 @@\n function login() {\n-  return check(user)\n+  return check(user, token)\n+  // 新增 token 檢查\n", blocker: nil, uncommitted: worktree.dirty)
+                                           diff: String(localized: "diff --git a/packages/app/login.ts b/packages/app/login.ts\n@@ -1,3 +1,4 @@\n function login() {\n-  return check(user)\n+  return check(user, token)\n+  // 新增 token 檢查\n", bundle: AppLanguage.bundle), blocker: nil, uncommitted: worktree.dirty)
             return
         }
         guard let api = model.api else { return }
@@ -583,7 +583,7 @@ struct WorktreeMergeSheet: View {
     }
 
     private func merge() async {
-        if demo { error = "示意資料:管家更新後才能合併"; return }
+        if demo { error = String(localized: "示意資料:管家更新後才能合併", bundle: AppLanguage.bundle); return }
         guard let api = model.api else { return }
         merging = true
         defer { merging = false }
@@ -689,8 +689,8 @@ struct WorktreeDirtySheet: View {
                     Text("沒 commit 的檔案(\(d.total ?? files.count))")
                 } footer: {
                     Text(suggestDiscard
-                         ? "這個分支已經合併過了:捨棄比較好,存進分支會讓它看起來又沒合併。"
-                         : "「存進分支」會把這些改動 commit 到 \(ask.worktree.branch ?? "分支") 再移除資料夾,之後還找得回來。")
+                         ? String(localized: "這個分支已經合併過了:捨棄比較好,存進分支會讓它看起來又沒合併。", bundle: AppLanguage.bundle)
+                         : String(localized: "「存進分支」會把這些改動 commit 到 \(ask.worktree.branch ?? String(localized: "分支", bundle: AppLanguage.bundle)) 再移除資料夾,之後還找得回來。", bundle: AppLanguage.bundle))
                 }
             }
             .listStyle(.insetGrouped)
@@ -699,9 +699,9 @@ struct WorktreeDirtySheet: View {
             // 兩個選擇固定在底部,半高時也看得到;建議的那個醒目
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
-                    choice("捨棄這些改動", value: "discard", primary: suggestDiscard, tint: .red)
+                    choice(String(localized: "捨棄這些改動", bundle: AppLanguage.bundle), value: "discard", primary: suggestDiscard, tint: .red)
                     if d.canCommit != false {
-                        choice("存進分支再移除", value: "commit", primary: !suggestDiscard, tint: .accentColor)
+                        choice(String(localized: "存進分支再移除", bundle: AppLanguage.bundle), value: "commit", primary: !suggestDiscard, tint: .accentColor)
                     }
                 }
                 .padding(.horizontal).padding(.vertical, 10)
@@ -718,7 +718,7 @@ struct WorktreeDirtySheet: View {
             dismiss()
             onChoose(value)
         } label: {
-            Text(primary ? "\(title)(建議)" : title).fontWeight(primary ? .semibold : .regular).frame(maxWidth: .infinity)
+            Text(primary ? String(localized: "\(title)(建議)", bundle: AppLanguage.bundle) : title).fontWeight(primary ? .semibold : .regular).frame(maxWidth: .infinity)
         }
         .controlSize(.large)
         .tint(tint)

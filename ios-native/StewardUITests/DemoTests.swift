@@ -131,7 +131,7 @@ final class DemoTests: XCTestCase {
 
     func testDemoWalkthrough() {
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "YES", "-resetCodeLayout", "YES"]
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES"]
         app.launch()
         defer { app.terminate() }
 

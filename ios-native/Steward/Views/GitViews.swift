@@ -24,10 +24,10 @@ struct GitView: View {
             } else if let s = status {
                 header(s)
                 commitSection(s)
-                files("衝突", s.conflicted, which: "unstaged")
-                files("已暫存", s.staged, which: "staged")
-                files("變更", s.unstaged, which: "unstaged")
-                files("新檔案", s.untracked, which: "untracked")
+                files(String(localized: "衝突", bundle: AppLanguage.bundle), s.conflicted, which: "unstaged")
+                files(String(localized: "已暫存", bundle: AppLanguage.bundle), s.staged, which: "staged")
+                files(String(localized: "變更", bundle: AppLanguage.bundle), s.unstaged, which: "unstaged")
+                files(String(localized: "新檔案", bundle: AppLanguage.bundle), s.untracked, which: "untracked")
                 WorktreeSection(project: project, ctl: worktrees)
                 Section {
                     NavigationLink(value: CodeRoute.history) { Label("最近的提交", systemImage: "clock.arrow.circlepath") }
@@ -41,7 +41,7 @@ struct GitView: View {
         .onChange(of: model.uploads.refresh) { Task { await load() } }
         .onChange(of: model.code.gitChanged) { Task { await load() } }
         .modifier(WorktreeDialogs(project: project, ctl: worktrees))
-        .confirmationDialog(discarding.map { $0.count > 1 ? "捨棄 \($0.count) 個檔案的變更?" : "捨棄這些變更?" } ?? "", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } }), titleVisibility: .visible) {
+        .confirmationDialog(discarding.map { $0.count > 1 ? String(localized: "捨棄 \($0.count) 個檔案的變更?", bundle: AppLanguage.bundle) : String(localized: "捨棄這些變更?", bundle: AppLanguage.bundle) } ?? "", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } }), titleVisibility: .visible) {
             Button("捨棄", role: .destructive) { if let paths = discarding { Task { await run("discard", ["paths": paths]) } } }
         } message: {
             Text("改過的檔案會還原成上次提交的內容;新檔案會移到電腦的垃圾桶(救得回來)。")
@@ -51,7 +51,7 @@ struct GitView: View {
             Button("一起提交") { Task { await commit("include") } }
             Button("取消", role: .cancel) {}
         } message: { o in
-            Text(o.message + "\n「只提交這個資料夾」會先把其他資料夾的檔案取消暫存(改動還在)。")
+            Text(o.message + String(localized: "\n「只提交這個資料夾」會先把其他資料夾的檔案取消暫存(改動還在)。", bundle: AppLanguage.bundle))
         }
         .alert("建立新分支", isPresented: Binding(get: { newBranch != nil }, set: { if !$0 { newBranch = nil } })) {
             TextField("分支名稱", text: Binding(get: { newBranch ?? "" }, set: { newBranch = $0 }))
@@ -59,7 +59,7 @@ struct GitView: View {
                 .autocorrectionDisabled()
             Button("建立並切換") {
                 let name = (newBranch ?? "").trimmingCharacters(in: .whitespaces)
-                if !name.isEmpty { Task { await run("checkout", ["branch": name, "create": true], done: "已建立並切換到 \(name)") } }
+                if !name.isEmpty { Task { await run("checkout", ["branch": name, "create": true], done: String(localized: "已建立並切換到 \(name)", bundle: AppLanguage.bundle)) } }
             }
             Button("取消", role: .cancel) {}
         } message: {
@@ -81,16 +81,16 @@ struct GitView: View {
                     Divider()
                     Button { newBranch = "" } label: { Label("建立新分支…", systemImage: "plus") }
                 } label: {
-                    Label(s.branch ?? "(沒有分支)", systemImage: "arrow.triangle.branch").font(.headline)
+                    Label(s.branch ?? String(localized: "(沒有分支)", bundle: AppLanguage.bundle), systemImage: "arrow.triangle.branch").font(.headline)
                 }
                 Spacer()
                 if let a = s.ahead, a > 0 { Label("\(a)", systemImage: "arrow.up").font(.caption).foregroundStyle(.secondary).accessibilityLabel("領先 \(a) 個提交") }
                 if let b = s.behind, b > 0 { Label("\(b)", systemImage: "arrow.down").font(.caption).foregroundStyle(.secondary).accessibilityLabel("落後 \(b) 個提交") }
             }
             HStack(spacing: 8) {
-                gitButton("拉取", "pull", "arrow.down.circle")
-                gitButton("推送", "push", "arrow.up.circle")
-                gitButton("抓取", "fetch", "arrow.triangle.2.circlepath")
+                gitButton(String(localized: "拉取", bundle: AppLanguage.bundle), "pull", "arrow.down.circle")
+                gitButton(String(localized: "推送", bundle: AppLanguage.bundle), "push", "arrow.up.circle")
+                gitButton(String(localized: "抓取", bundle: AppLanguage.bundle), "fetch", "arrow.triangle.2.circlepath")
             }
             .buttonStyle(.bordered)
         } footer: {
@@ -105,7 +105,7 @@ struct GitView: View {
 
     private func gitButton(_ title: String, _ action: String, _ icon: String) -> some View {
         Button {
-            Task { await run(action, [:], done: "\(title)完成") }
+            Task { await run(action, [:], done: String(localized: "\(title)完成", bundle: AppLanguage.bundle)) }
         } label: {
             if busy == action { ProgressView().frame(maxWidth: .infinity) } else { Label(title, systemImage: icon).frame(maxWidth: .infinity) }
         }
@@ -130,7 +130,7 @@ struct GitView: View {
                 Button {
                     Task { await commit(nil) }
                 } label: {
-                    if busy == "commit" { ProgressView() } else { Text(stagedCount > 0 ? "提交(\(stagedCount) 個檔案)" : "提交") }
+                    if busy == "commit" { ProgressView() } else { Text(stagedCount > 0 ? String(localized: "提交(\(stagedCount) 個檔案)", bundle: AppLanguage.bundle) : String(localized: "提交", bundle: AppLanguage.bundle)) }
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(busy != nil || stagedCount == 0 || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -170,13 +170,13 @@ struct GitView: View {
                     Spacer()
                     if which == "staged" {
                         Button("全部取消暫存") { Task { await run("unstage", ["all": true]) } }.font(.caption).textCase(nil)
-                    } else if title != "衝突" {
+                    } else if title != String(localized: "衝突", bundle: AppLanguage.bundle) {
                         Button("全部捨棄") { discarding = list.map(\.path) }.font(.caption).textCase(nil).tint(.red)
                         Button("全部暫存") { Task { await run("stage", ["paths": list.map(\.path)]) } }.font(.caption).textCase(nil)
                     }
                 }
             } footer: {
-                if title == "衝突" { Text("合併衝突請到終端機處理。") }
+                if title == String(localized: "衝突", bundle: AppLanguage.bundle) { Text("合併衝突請到終端機處理。") }
             }
         }
     }
@@ -221,7 +221,7 @@ struct GitView: View {
         do {
             try await api.gitCommit(project: project.id, message: message, outside: outsideChoice)
             message = ""
-            info = "已提交"
+            info = String(localized: "已提交", bundle: AppLanguage.bundle)
             error = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch let o as CommitOutside {
@@ -312,10 +312,10 @@ struct DiffView: View {
 
     private var kindLabel: String {
         switch which {
-        case "staged": "已暫存的變更"
-        case "untracked": "新檔案"
-        case "commit": "提交 \((commit ?? "").prefix(7)) 的變更"
-        default: "還沒暫存的變更"
+        case "staged": String(localized: "已暫存的變更", bundle: AppLanguage.bundle)
+        case "untracked": String(localized: "新檔案", bundle: AppLanguage.bundle)
+        case "commit": String(localized: "提交 \((commit ?? "").prefix(7)) 的變更", bundle: AppLanguage.bundle)
+        default: String(localized: "還沒暫存的變更", bundle: AppLanguage.bundle)
         }
     }
 
@@ -460,13 +460,13 @@ struct DiffRow: Identifiable {
         var hidden = 0
         for (k, r) in all.enumerated() {
             if keep[k] {
-                if hidden > 0 { out.append(DiffRow(id: out.count, kind: .skipped, oldNo: nil, newNo: nil, text: "⋯ \(hidden) 行沒變")); hidden = 0 }
+                if hidden > 0 { out.append(DiffRow(id: out.count, kind: .skipped, oldNo: nil, newNo: nil, text: String(localized: "⋯ \(hidden) 行沒變", bundle: AppLanguage.bundle))); hidden = 0 }
                 out.append(DiffRow(id: out.count, kind: r.0, oldNo: r.1, newNo: r.2, text: r.3))
             } else {
                 hidden += 1
             }
         }
-        if hidden > 0 { out.append(DiffRow(id: out.count, kind: .skipped, oldNo: nil, newNo: nil, text: "⋯ \(hidden) 行沒變")) }
+        if hidden > 0 { out.append(DiffRow(id: out.count, kind: .skipped, oldNo: nil, newNo: nil, text: String(localized: "⋯ \(hidden) 行沒變", bundle: AppLanguage.bundle))) }
         return out
     }
 }

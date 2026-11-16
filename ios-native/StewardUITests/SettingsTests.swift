@@ -7,7 +7,7 @@ final class SettingsTests: XCTestCase {
 
     private func launch(failingWrites: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-settingsFixture", "YES", "-noPush", "YES", "-mode", "board", "-settingsFixtureFailure", failingWrites ? "YES" : "NO"]
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-settingsFixture", "YES", "-noPush", "YES", "-mode", "board", "-settingsFixtureFailure", failingWrites ? "YES" : "NO"]
         app.launch()
         let settings = app.buttons["設定"].firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 20), "未經 fixture 登入進入 App")

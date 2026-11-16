@@ -141,7 +141,7 @@ struct SplitDivider: View {
             }
             .zIndex(1)
             .accessibilityElement()
-            .accessibilityLabel(v ? "左右調整格子大小" : "上下調整格子大小")
+            .accessibilityLabel(v ? String(localized: "左右調整格子大小", bundle: AppLanguage.bundle) : String(localized: "上下調整格子大小", bundle: AppLanguage.bundle))
     }
 }
 
@@ -346,7 +346,7 @@ struct TabChip: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
         // 合併後 ✕ 點不到:VoiceOver 用「動作」關
-        .accessibilityAction(named: "關閉") { ws.requestClose(tab) }
+        .accessibilityAction(named: String(localized: "關閉", bundle: AppLanguage.bundle)) { ws.requestClose(tab) }
         .accessibilityIdentifier("tab-\(tab.id)")
     }
 
@@ -402,7 +402,7 @@ struct CloseTabDialog: ViewModifier {
             ws.close(tab.id)
         } catch is SaveConflict {
             if let p = ws.paneOf(tab: tab.id) { ws.activate(tab.id, in: p) }
-            error = "「\(tab.name)」在你開始改之後被別人改過了,先在分頁裡決定要覆蓋還是載入新版。"
+            error = String(localized: "「\(tab.name)」在你開始改之後被別人改過了,先在分頁裡決定要覆蓋還是載入新版。", bundle: AppLanguage.bundle)
         } catch {
             self.error = error.localizedDescription
         }

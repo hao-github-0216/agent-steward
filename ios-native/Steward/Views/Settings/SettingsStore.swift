@@ -33,13 +33,13 @@ final class SettingsStore {
     }
 
     func reload() async {
-        guard let api else { error = "請先連線到管家"; return }
+        guard let api else { error = String(localized: "請先連線到管家", bundle: AppLanguage.bundle); return }
         _ = await writeTail?.value
         loading = true
         defer { loading = false }
         do {
             let value = try await api.getSettings()
-            guard let settings = value.settings else { throw APIError.server(200, "看不懂管家的回應(管家可能要更新)") }
+            guard let settings = value.settings else { throw APIError.server(200, String(localized: "看不懂管家的回應(管家可能要更新)", bundle: AppLanguage.bundle)) }
             self.settings = settings
             response = value
             auth = try await api.authStatus()
@@ -59,7 +59,7 @@ final class SettingsStore {
         let previous = writeTail
         let task = Task { [self] in
             _ = await previous?.value
-            guard let api else { error = "請先連線到管家"; return false }
+            guard let api else { error = String(localized: "請先連線到管家", bundle: AppLanguage.bundle); return false }
             let clean = SettingsValue.object(patch.fields).withoutSecrets.object ?? [:]
             guard !clean.isEmpty else { return true }
             if patch.fields.allSatisfy({ settings.fields[$0.0] == $0.1 }) { return true }
@@ -69,10 +69,10 @@ final class SettingsStore {
             defer { saving = false }
             do {
                 let value = try await api.putSettings(SettingsValues(clean))
-                guard let updated = value.settings else { throw APIError.server(200, "看不懂管家的回應(管家可能要更新)") }
+                guard let updated = value.settings else { throw APIError.server(200, String(localized: "看不懂管家的回應(管家可能要更新)", bundle: AppLanguage.bundle)) }
                 settings = updated
                 response?.settings = updated
-                message = value.restartNeeded == true ? "已儲存。埠號或位址要重新啟動管家才會生效" : "設定已儲存"
+                message = value.restartNeeded == true ? String(localized: "已儲存。埠號或位址要重新啟動管家才會生效", bundle: AppLanguage.bundle) : String(localized: "設定已儲存", bundle: AppLanguage.bundle)
                 return true
             } catch {
                 settings = before
@@ -116,11 +116,11 @@ final class SettingsStore {
 
     @discardableResult
     func action(_ path: String, method: String = "POST", body: [String: SettingsValue] = [:]) async -> SettingsAction? {
-        guard let api else { error = "請先連線到管家"; return nil }
+        guard let api else { error = String(localized: "請先連線到管家", bundle: AppLanguage.bundle); return nil }
         do {
             let result = try await api.settingsAction(path, method: method, body: body)
             if let why = result.error { throw APIError.server(200, why) }
-            if result.ok == false { throw APIError.server(200, "設定失敗") }
+            if result.ok == false { throw APIError.server(200, String(localized: "設定失敗", bundle: AppLanguage.bundle)) }
             if let settings = result.settings { self.settings = settings; response?.settings = settings }
             if let plugins = result.plugins { self.plugins = plugins; monitorPlugins() }
             return result
@@ -176,20 +176,20 @@ final class SettingsStore {
                     let result = try await api?.settingsAction("api/settings/update/log", method: "GET")
                     updateLog = result?.log ?? updateLog
                     let last = updateLog.components(separatedBy: "=====").last ?? ""
-                    if last.contains("已經裝好") || last.contains("is installed.") {
-                        message = "更新完成,重新整理頁面就是新版"
+                    if last.contains("已經裝好") || last.contains("is installed.") { // i18n-ok: 比對管家更新紀錄中的原始訊息，不是介面文字。
+                        message = String(localized: "更新完成,重新整理頁面就是新版", bundle: AppLanguage.bundle)
                         update = try await api?.getSettingsUpdate()
                         return
                     }
-                    if last.contains("錯誤:") || last.contains("錯誤：") || last.contains("Error: ") {
+                    if last.contains("錯誤:") || last.contains("錯誤：") || last.contains("Error: ") { // i18n-ok: 比對管家更新紀錄中的錯誤標記，不能隨介面語言改變。
                         update?.running = false
                         error = last
                         return
                     }
-                } catch { self.message = "正在更新…(完成後管家會自動重啟,這頁重新整理即可)" }
+                } catch { self.message = String(localized: "正在更新…(完成後管家會自動重啟,這頁重新整理即可)", bundle: AppLanguage.bundle) }
             }
             update?.running = false
-            error = "更新仍未完成，請重新整理查看進度。"
+            error = String(localized: "更新仍未完成，請重新整理查看進度。", bundle: AppLanguage.bundle)
         }
     }
 }
@@ -218,11 +218,11 @@ struct SettingsForm<Content: View>: View {
                     Task {
                         await store.reload()
                         switch title {
-                        case "AI 接口", "路由": await store.loadModels()
+                        case String(localized: "AI 接口", bundle: AppLanguage.bundle), String(localized: "路由", bundle: AppLanguage.bundle): await store.loadModels()
                         case "Agent": await store.loadAgents()
-                        case "推播": await store.loadPushStatus()
-                        case "外掛": await store.loadPlugins()
-                        case "關於": await store.loadUpdate()
+                        case String(localized: "推播", bundle: AppLanguage.bundle): await store.loadPushStatus()
+                        case String(localized: "外掛", bundle: AppLanguage.bundle): await store.loadPlugins()
+                        case String(localized: "關於", bundle: AppLanguage.bundle): await store.loadUpdate()
                         default: break
                         }
                     }
@@ -278,7 +278,7 @@ struct SettingsTextField: View {
         let value: SettingsValue
         if multiline { value = .array(draft.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map(SettingsValue.string)) }
         else if number {
-            guard let number = Double(draft), number.isFinite else { draft = original; store.error = "請輸入有效的數字"; return }
+            guard let number = Double(draft), number.isFinite else { draft = original; store.error = String(localized: "請輸入有效的數字", bundle: AppLanguage.bundle); return }
             value = .number(number)
         } else { value = .string(draft) }
         let submitted = draft
@@ -297,8 +297,8 @@ struct SettingsSecretField: View {
     @State private var editing = false
     init(_ title: String, path: String) { self.title = title; self.path = path }
     var body: some View {
-        LabeledContent(title, value: store.settings.string(path).isEmpty ? "還沒設定" : "已設定")
-        Button(store.settings.string(path).isEmpty ? "輸入\(title)" : "修改\(title)") { editing = true }
+        LabeledContent(title, value: store.settings.string(path).isEmpty ? String(localized: "還沒設定", bundle: AppLanguage.bundle) : String(localized: "已設定", bundle: AppLanguage.bundle))
+        Button(store.settings.string(path).isEmpty ? String(localized: "輸入\(title)", bundle: AppLanguage.bundle) : String(localized: "修改\(title)", bundle: AppLanguage.bundle)) { editing = true }
             .sheet(isPresented: $editing) { SettingsSecretEditor(title: title, path: path) }
     }
 }

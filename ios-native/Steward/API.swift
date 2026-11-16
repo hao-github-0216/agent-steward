@@ -10,10 +10,10 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .badURL: "管家網址不對"
+        case .badURL: String(localized: "管家網址不對", bundle: AppLanguage.bundle)
         case .needLogin(let why): why
-        case .server(let code, let msg): msg.isEmpty ? "管家回應錯誤(\(code))" : msg
-        case .network(let msg): "連不上管家:\(msg)"
+        case .server(let code, let msg): msg.isEmpty ? String(localized: "管家回應錯誤(\(code))", bundle: AppLanguage.bundle) : msg
+        case .network(let msg): String(localized: "連不上管家:\(msg)", bundle: AppLanguage.bundle)
         }
     }
 }
@@ -85,7 +85,7 @@ struct API {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401 || code == 403 {
             let msg = (try? JSONDecoder().decode([String: String?].self, from: data))?["error"] ?? nil
-            throw APIError.needLogin(msg ?? "請先登入")
+            throw APIError.needLogin(msg ?? String(localized: "請先登入", bundle: AppLanguage.bundle))
         }
         guard (200..<300).contains(code) else {
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
@@ -94,7 +94,7 @@ struct API {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            throw APIError.server(code, "看不懂管家的回應(管家可能要更新)")
+            throw APIError.server(code, String(localized: "看不懂管家的回應(管家可能要更新)", bundle: AppLanguage.bundle))
         }
     }
 
@@ -244,7 +244,7 @@ struct API {
     func moveStrays(_ id: String) async throws -> String {
         struct R: Decodable { var moved: Int?; var space: String?; var error: String? }
         let r: R = try await call(request("api/projects/\(id)/strays", method: "POST", body: [:]))
-        return r.error ?? "已搬 \(r.moved ?? 0) 個窗格到「\(r.space ?? "")」"
+        return r.error ?? String(localized: "已搬 \(r.moved ?? 0) 個窗格到「\(r.space ?? "")」", bundle: AppLanguage.bundle)
     }
 
     /// 專案名稱和 herdr space 名稱不同:use = "space"(專案改成 space 的名字)或 "project"(space 改回專案名)

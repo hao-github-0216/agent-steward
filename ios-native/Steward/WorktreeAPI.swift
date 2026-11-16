@@ -71,10 +71,10 @@ struct Worktree: Decodable, Hashable, Identifiable {
 
     var sourceLabel: String {
         switch source {
-        case "main": "主資料夾"
+        case "main": String(localized: "主資料夾", bundle: AppLanguage.bundle)
         case "claude": "Claude Code"
-        case "steward": "管家支線"
-        default: "手動"
+        case "steward": String(localized: "管家支線", bundle: AppLanguage.bundle)
+        default: String(localized: "手動", bundle: AppLanguage.bundle)
         }
     }
     var sourceIcon: String {
@@ -241,19 +241,19 @@ extension API {
         }
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        if status == 401 || status == 403 { throw APIError.needLogin(json?["error"] as? String ?? "請先登入") }
+        if status == 401 || status == 403 { throw APIError.needLogin(json?["error"] as? String ?? String(localized: "請先登入", bundle: AppLanguage.bundle)) }
         guard (200..<300).contains(status) else {
             let code = json?["code"] as? String
             var dirty: DirtyDetail?
             if code == "dirty", let d = json?["detail"], let raw = try? JSONSerialization.data(withJSONObject: d) {
                 dirty = try? JSONDecoder().decode(DirtyDetail.self, from: raw)
             }
-            throw WorktreeError(status: status, message: json?["error"] as? String ?? "管家回應錯誤(\(status))", code: code, dirty: dirty)
+            throw WorktreeError(status: status, message: json?["error"] as? String ?? String(localized: "管家回應錯誤(\(status))", bundle: AppLanguage.bundle), code: code, dirty: dirty)
         }
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            throw APIError.server(status, "看不懂管家的回應(管家可能要更新)")
+            throw APIError.server(status, String(localized: "看不懂管家的回應(管家可能要更新)", bundle: AppLanguage.bundle))
         }
     }
 
@@ -304,6 +304,6 @@ extension API {
     func worktreeUntrack(project: String) async throws -> String? {
         struct R: Decodable { var untracked: [String]?; var note: String? }
         let r: R = try await wtCall(request(worktreePath(project, "untrack"), method: "POST", body: [:]))
-        return r.note ?? (r.untracked.map { "已從版本控制移除:\($0.joined(separator: "、"))" })
+        return r.note ?? (r.untracked.map { String(localized: "已從版本控制移除:\($0.joined(separator: "、"))", bundle: AppLanguage.bundle) })
     }
 }

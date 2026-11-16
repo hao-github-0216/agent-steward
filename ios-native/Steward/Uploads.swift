@@ -112,7 +112,7 @@ final class UploadCenter {
     // MARK: 上傳
 
     func upload(_ items: [UploadItem], to base: String, project: String, api: API, still: @escaping @MainActor () -> Bool) async {
-        guard !running else { show("還有檔案在上傳,等它傳完"); return }
+        guard !running else { show(String(localized: "還有檔案在上傳,等它傳完", bundle: AppLanguage.bundle)); return }
         guard !items.isEmpty else { cleanup(); return }
         running = true
         finished = nil
@@ -135,10 +135,10 @@ final class UploadCenter {
         }
         cleanup()
         running = false
-        var msg = ok > 0 || skipped + failed + tooBig == 0 ? "已上傳 \(ok) 個檔案" : "沒有上傳檔案"
-        if skipped > 0 { msg += ",略過 \(skipped) 個" }
-        if tooBig > 0 { msg += ",\(tooBig) 個超過 500 MB 沒傳" }
-        if failed > 0 { msg += ",失敗 \(failed) 個(\(lastErr))" }
+        var msg = ok > 0 || skipped + failed + tooBig == 0 ? String(localized: "已上傳 \(ok) 個檔案", bundle: AppLanguage.bundle) : String(localized: "沒有上傳檔案", bundle: AppLanguage.bundle)
+        if skipped > 0 { msg += String(localized: ",略過 \(skipped) 個", bundle: AppLanguage.bundle) }
+        if tooBig > 0 { msg += String(localized: ",\(tooBig) 個超過 500 MB 沒傳", bundle: AppLanguage.bundle) }
+        if failed > 0 { msg += String(localized: ",失敗 \(failed) 個(\(lastErr))", bundle: AppLanguage.bundle) }
         show(msg)
         refresh += 1
         UINotificationFeedbackGenerator().notificationOccurred(failed > 0 ? .error : .success)
@@ -292,7 +292,7 @@ struct UploadStatusBar: View {
                     Label("上傳中 \(u.status)", systemImage: "arrow.up.circle").lineLimit(1)
                     ProgressView(value: u.fraction)
                 } else if let f = u.finished {
-                    Label(f, systemImage: f.contains("失敗") ? "exclamationmark.triangle" : "checkmark.circle")
+                    Label(f, systemImage: f.localizedCaseInsensitiveContains(String(localized: "失敗", bundle: AppLanguage.bundle)) ? "exclamationmark.triangle" : "checkmark.circle")
                 }
             }
             .font(.footnote)

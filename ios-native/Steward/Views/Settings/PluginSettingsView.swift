@@ -5,7 +5,7 @@ struct PluginSettingsView: View {
     @State private var loading = false
 
     var body: some View {
-        SettingsForm("外掛") {
+        SettingsForm(String(localized: "外掛", bundle: AppLanguage.bundle)) {
             Section {
                 Text("外掛需要的軟體會下載到 ~/.agent-steward/tools,不需要管理員權限。關閉只是把功能藏起來,下載的東西會保留;「移除下載的檔案」只刪專案管家自己下載的,不會動你自己裝的軟體。")
                     .font(.footnote)
@@ -80,7 +80,7 @@ private struct PluginSettingsDetailView: View {
                         if let message = job.message { Text(message) }
                         if let error = job.error, !error.isEmpty { Text(error).foregroundStyle(.red) }
                         if let log = job.log, !log.isEmpty {
-                            DisclosureGroup("安裝紀錄") {
+                            DisclosureGroup(String(localized: "安裝紀錄", bundle: AppLanguage.bundle)) {
                                 ScrollView(.horizontal) {
                                     Text(log.joined(separator: "\n"))
                                         .font(.system(.footnote, design: .monospaced))
@@ -120,7 +120,7 @@ private struct PluginSettingsDetailView: View {
         defer { busy = false }
         store.error = nil
         if let result = await store.action("api/settings/plugins/\(pluginID)", body: ["enable": .bool(value)]), result.started == true {
-            store.message = "開始下載安裝,可以先做別的事"
+            store.message = String(localized: "開始下載安裝,可以先做別的事", bundle: AppLanguage.bundle)
         }
     }
 
@@ -130,7 +130,7 @@ private struct PluginSettingsDetailView: View {
         defer { busy = false }
         store.error = nil
         if await store.action("api/settings/plugins/\(pluginID)/remove") != nil {
-            store.message = "已移除"
+            store.message = String(localized: "已移除", bundle: AppLanguage.bundle)
         }
     }
 }
@@ -138,18 +138,18 @@ private struct PluginSettingsDetailView: View {
 private extension SettingsPlugin {
     var statusTitle: String {
         switch status {
-        case "ready": return "可以用"
-        case "system": return "沿用電腦上的"
-        case "installed": return "已安裝"
-        case "missing": return "還沒安裝"
-        case "installing": return "安裝中"
+        case "ready": return String(localized: "可以用", bundle: AppLanguage.bundle)
+        case "system": return String(localized: "沿用電腦上的", bundle: AppLanguage.bundle)
+        case "installed": return String(localized: "已安裝", bundle: AppLanguage.bundle)
+        case "missing": return String(localized: "還沒安裝", bundle: AppLanguage.bundle)
+        case "installing": return String(localized: "安裝中", bundle: AppLanguage.bundle)
         default: return status ?? ""
         }
     }
 
     var enableTitle: String {
-        if job?.running == true { return "安裝中…" }
-        if enabled == true { return "已開啟" }
-        return status == "missing" ? "開啟並安裝" : "開啟"
+        if job?.running == true { return String(localized: "安裝中…", bundle: AppLanguage.bundle) }
+        if enabled == true { return String(localized: "已開啟", bundle: AppLanguage.bundle) }
+        return status == "missing" ? String(localized: "開啟並安裝", bundle: AppLanguage.bundle) : String(localized: "開啟", bundle: AppLanguage.bundle)
     }
 }

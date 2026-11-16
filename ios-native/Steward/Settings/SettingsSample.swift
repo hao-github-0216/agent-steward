@@ -2,6 +2,11 @@ import Foundation
 
 /// 設定範例只保存在記憶體，重新啟動 App 後還原。
 final class SettingsSample {
+    // 示範內容跟隨系統首選語言，不使用介面字串目錄。
+    private static func text(_ chinese: String, _ english: String) -> String {
+        (Locale.preferredLanguages.first ?? "").hasPrefix("zh") ? chinese : english
+    }
+
     private let lock = NSLock()
     private let demo: Bool
     private let desktop: Bool
@@ -22,7 +27,7 @@ final class SettingsSample {
 
     private static let initialSettings: [String: Any] = [
         "version": 1,
-        "user": ["name": "測試使用者"], "ui": ["lang": "zh-TW"],
+        "user": ["name": SettingsSample.text("測試使用者", "Test User")], "ui": ["lang": "zh-TW"], // i18n-ok: 依系統語言選擇的示範資料
         "desktop": ["herdrCli": true, "herdrConfig": true, "autostart": true, "autoUpdate": true, "notify": true],
         "paths": ["createRoot": "~/Projects", "privacy": ["~/Private"], "usePiPrivacy": false],
         "code": ["autoFetch": "ask", "autoFetchMinutes": 3],
@@ -60,9 +65,9 @@ final class SettingsSample {
     private var plugins: [[String: Any]] {
         let running = (1...2).contains(pluginPolls)
         return [
-            ["id": "latex", "name": "LaTeX 編譯", "enabled": pluginPolls >= 3, "status": running ? "installing" : pluginPolls >= 3 ? "installed" : "missing", "size": "約 250 MB(TinyTeX)", "description": "程式碼頁打開 .tex 時可以編譯,錯誤會列出來並跳到那一行,PDF 在旁邊自動更新。缺少的 LaTeX 套件會在編譯時自動安裝。", "detail": "還沒安裝", "removable": pluginPolls >= 3, "job": pluginPolls > 0 ? ["running": running, "progress": min(100, pluginPolls * 35), "message": running ? "下載中…" : "安裝完成", "log": ["準備安裝…", "下載中…"]] : NSNull()],
-            ["id": "notebook", "name": "Notebook 執行", "enabled": false, "status": "system", "size": "約 300 MB(Python + Jupyter)", "description": "程式碼頁的 .ipynb 可以直接執行儲存格。", "detail": "沿用電腦上已經裝了 ipykernel 的 Python", "removable": false],
-            ["id": "office", "name": "Office 編輯", "enabled": true, "status": "ready", "size": "不用下載", "description": "程式碼頁的 Word / Excel / PowerPoint 檔多一個「用 Office 編輯」。", "detail": "不需要安裝(Office 在你自己的電腦上)", "removable": false]
+            ["id": "latex", "name": SettingsSample.text("LaTeX 編譯", "LaTeX compilation"), "enabled": pluginPolls >= 3, "status": running ? "installing" : pluginPolls >= 3 ? "installed" : "missing", "size": SettingsSample.text("約 250 MB(TinyTeX)", "About 250 MB (TinyTeX)"), "description": SettingsSample.text("程式碼頁打開 .tex 時可以編譯,錯誤會列出來並跳到那一行,PDF 在旁邊自動更新。缺少的 LaTeX 套件會在編譯時自動安裝。", "Compile .tex files in Code, list errors and jump to their lines, and update the PDF alongside. Missing LaTeX packages are installed automatically during compilation."), "detail": SettingsSample.text("還沒安裝", "Not installed"), "removable": pluginPolls >= 3, "job": pluginPolls > 0 ? ["running": running, "progress": min(100, pluginPolls * 35), "message": running ? SettingsSample.text("下載中…", "Downloading…") : SettingsSample.text("安裝完成", "Installation complete"), "log": [SettingsSample.text("準備安裝…", "Preparing to install…"), SettingsSample.text("下載中…", "Downloading…")]] : NSNull()], // i18n-ok: 依系統語言選擇的示範資料
+            ["id": "notebook", "name": SettingsSample.text("Notebook 執行", "Notebook execution"), "enabled": false, "status": "system", "size": SettingsSample.text("約 300 MB(Python + Jupyter)", "About 300 MB (Python + Jupyter)"), "description": SettingsSample.text("程式碼頁的 .ipynb 可以直接執行儲存格。", "Run .ipynb cells directly in Code."), "detail": SettingsSample.text("沿用電腦上已經裝了 ipykernel 的 Python", "Using Python with ipykernel installed on this computer"), "removable": false], // i18n-ok: 依系統語言選擇的示範資料
+            ["id": "office", "name": SettingsSample.text("Office 編輯", "Office editing"), "enabled": true, "status": "ready", "size": SettingsSample.text("不用下載", "No download required"), "description": SettingsSample.text("程式碼頁的 Word / Excel / PowerPoint 檔多一個「用 Office 編輯」。", "Word / Excel / PowerPoint files in Code have an additional “Edit in Office” option."), "detail": SettingsSample.text("不需要安裝(Office 在你自己的電腦上)", "No installation needed (Office runs on your computer)"), "removable": false] // i18n-ok: 依系統語言選擇的示範資料
         ]
     }
 
@@ -83,7 +88,7 @@ final class SettingsSample {
         case ("GET", "/api/settings"):
             return (200, ["settings": values, "platform": "darwin", "desktop": desktop, "detected": ["tailscale": true, "piPrivacy": true, "hermes": false, "lanIps": ["192.0.2.10"], "port": 8800]])
         case ("PUT", "/api/settings"):
-            if failingWrites { return (500, ["error": "測試儲存失敗"]) }
+            if failingWrites { return (500, ["error": SettingsSample.text("測試儲存失敗", "Test save failed")]) } // i18n-ok: 依系統語言選擇的示範資料
             let patch = input["settings"] as? [String: Any] ?? [:]
             values = merged(values, patch)
             return (200, ["settings": values, "restartNeeded": patch["server"] != nil || (patch["access"] as? [String: Any])?["lan"] != nil])
@@ -92,26 +97,26 @@ final class SettingsSample {
             return (200, ["providers": providers.map { provider -> [String: Any] in
                 let id = provider["id"] as? String ?? ""
                 return ["id": id, "name": provider["name"] ?? id, "type": provider["type"] ?? "builtin", "local": provider["local"] ?? false, "signedIn": provider["auth"] as? String == "login", "models": provider["models"] ?? (id == "openai" ? ["gpt-4.1"] : ["default"]), "cli": provider["cli"] ?? NSNull()]
-            }, "loginProviders": ["openai": "ChatGPT", "anthropic": "Claude", "github-copilot": "GitHub Copilot"], "cliProviders": [["id": "codex-cli", "name": "Codex CLI", "type": "agent-cli", "cli": "codex"]], "piProviders": [["id": "pi-local", "name": "pi 本地", "type": "pi-models", "piProvider": "pi-local", "local": true]], "cliNotes": ["claude": "使用 Claude 訂閱"], "builtins": ["openai", "anthropic", "google"]])
+            }, "loginProviders": ["openai": "ChatGPT", "anthropic": "Claude", "github-copilot": "GitHub Copilot"], "cliProviders": [["id": "codex-cli", "name": "Codex CLI", "type": "agent-cli", "cli": "codex"]], "piProviders": [["id": "pi-local", "name": SettingsSample.text("pi 本地", "Local pi"), "type": "pi-models", "piProvider": "pi-local", "local": true]], "cliNotes": ["claude": SettingsSample.text("使用 Claude 訂閱", "Use Claude subscription")], "builtins": ["openai", "anthropic", "google"]]) // i18n-ok: 依系統語言選擇的示範資料
         case ("GET", "/api/settings/agents"):
             return (200, ["agents": [["id": "claude", "name": "Claude Code", "installed": true, "path": "/sample/bin/claude", "dispatch": true, "records": true, "can": ["brief": true, "mcp": true, "instructions": true], "on": ["brief": true, "mcp": true, "instructions": true], "integrated": true, "manual": "claude mcp add steward"], ["id": "codex", "name": "Codex", "installed": false, "dispatch": true, "records": true, "can": ["mcp": true], "on": [:], "integrated": false]]])
         case ("GET", "/api/settings/plugins"):
             if pluginPolls > 0 && pluginPolls < 3 { pluginPolls += 1 }
             return (200, ["plugins": plugins])
         case ("GET", "/api/settings/update"):
-            return (200, ["current": "0.4.0", "latest": "0.4.1", "hasUpdate": true, "running": updating, "desktop": desktop, "dev": false, "url": "https://example.invalid/release", "notes": "範例版本更新說明", "components": [["id": "herdr", "name": "herdr", "version": "1.0", "license": "MIT", "home": "https://example.invalid/herdr"]]])
+            return (200, ["current": "0.4.0", "latest": "0.4.1", "hasUpdate": true, "running": updating, "desktop": desktop, "dev": false, "url": "https://example.invalid/release", "notes": SettingsSample.text("範例版本更新說明", "Sample release notes"), "components": [["id": "herdr", "name": "herdr", "version": "1.0", "license": "MIT", "home": "https://example.invalid/herdr"]]]) // i18n-ok: 依系統語言選擇的示範資料
         case ("GET", "/api/settings/update/log"):
             updatePolls += 1
             if updatePolls > 1 { updating = false }
-            return (200, ["log": updating ? "正在下載…" : "已經裝好"])
+            return (200, ["log": updating ? SettingsSample.text("正在下載…", "Downloading…") : SettingsSample.text("已經裝好", "Installed")]) // i18n-ok: 依系統語言選擇的示範資料
         case ("GET", "/api/push/status"):
             if demo { return (200, ["configured": false, "mode": "none", "devices": [[String: Any]]()]) }
-            return (200, ["configured": true, "mode": "relay", "devices": [["name": "測試 iPhone", "platform": "ios", "encrypted": true], ["name": "舊版裝置", "platform": "ios", "encrypted": false]]])
+            return (200, ["configured": true, "mode": "relay", "devices": [["name": SettingsSample.text("測試 iPhone", "Test iPhone"), "platform": "ios", "encrypted": true], ["name": SettingsSample.text("舊版裝置", "Legacy device"), "platform": "ios", "encrypted": false]]]) // i18n-ok: 依系統語言選擇的示範資料
         case ("POST", "/api/settings/test-provider"):
             return (200, ["ok": true, "model": "gpt-4.1", "reply": "OK", "latencyMs": 12, "models": ["gpt-4.1"]])
         case ("POST", "/api/auth/password"):
             if !demo {
-                guard (input["next"] as? String ?? "").count >= 8 else { return (400, ["error": "新密碼至少要 8 個字"]) }
+                guard (input["next"] as? String ?? "").count >= 8 else { return (400, ["error": SettingsSample.text("新密碼至少要 8 個字", "New password must be at least 8 characters")]) } // i18n-ok: 依系統語言選擇的示範資料
                 passwordSet = true
             }
             return (200, ["ok": true])
@@ -148,7 +153,7 @@ final class SettingsSample {
                 else { pluginPolls = 0 }
                 return (200, ["plugins": plugins, "started": pluginPolls == 1])
             }
-            return (404, ["error": "範例資料未定義的路由: \(method) \(path)"])
+            return (404, ["error": SettingsSample.text("範例資料未定義的路由: \(method) \(path)", "Route not defined in sample data: \(method) \(path)")]) // i18n-ok: 依系統語言選擇的示範資料
         }
     }
 }

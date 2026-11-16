@@ -397,7 +397,7 @@ private struct ChatContent: View {
         var text = message.trimmingCharacters(in: .whitespacesAndNewlines)
         // 有引用一段程式:一起交給管家擬卡
         if let q = quote, let t = q.text, !t.isEmpty {
-            text = "依照這段程式碼開工作卡\(text.isEmpty ? "" : "\n要做的事:\(text)")\n出處:\(quoteLabel(q))\n內容:\n```\n\(t.prefix(3000))\n```"
+            text = String(localized: "依照這段程式碼開工作卡\(text.isEmpty ? "" : String(localized: "\n要做的事:\(text)", bundle: AppLanguage.bundle))\n出處:\(quoteLabel(q))\n內容:\n```\n\(t.prefix(3000))\n```", bundle: AppLanguage.bundle)
             quote = nil
         }
         let files = attachments.compactMap { switch $0.kind { case .projectFile(let r), .editorFile(let r, _): r; default: nil } }
@@ -405,7 +405,7 @@ private struct ChatContent: View {
         sending = true
         model.chatBusy = true
         let tempId = "local-\(UUID().uuidString)"
-        items.append(ChatEntry(id: tempId, role: "me", text: text.isEmpty ? "開工作卡" : "開工作卡:\(text)"))
+        items.append(ChatEntry(id: tempId, role: "me", text: text.isEmpty ? String(localized: "開工作卡", bundle: AppLanguage.bundle) : String(localized: "開工作卡:\(text)", bundle: AppLanguage.bundle)))
         Task {
             do {
                 let r = try await api.draftCard(project: project.id, message: text, files: files)
@@ -421,7 +421,7 @@ private struct ChatContent: View {
 
     private func quoteLabel(_ q: ChatQuote) -> String {
         guard let p = q.path else { return "" }
-        if let f = q.from { return "\(p) 第 \(f)\(q.to.map { $0 != f ? "–\($0)" : "" } ?? "") 行" }
+        if let f = q.from { return String(localized: "\(p) 第 \(f)\(q.to.map { $0 != f ? "–\($0)" : "" } ?? "") 行", bundle: AppLanguage.bundle) }
         return p
     }
 }
@@ -450,7 +450,7 @@ struct DraftCardView: View {
                 Label("工作卡草稿", systemImage: "rectangle.stack.badge.plus").font(.caption.bold()).foregroundStyle(Theme.accent)
                 Spacer()
                 if draft.status == "draft" {
-                    Button(editing ? "完成" : "修改") { editing.toggle() }.font(.caption)
+                    Button(editing ? String(localized: "完成", bundle: AppLanguage.bundle) : String(localized: "修改", bundle: AppLanguage.bundle)) { editing.toggle() }.font(.caption)
                 }
             }
             if editing {
@@ -470,9 +470,9 @@ struct DraftCardView: View {
             }
             switch draft.status {
             case "proposed":
-                statusLine("已放進提案", icon: "tray.and.arrow.down")
+                statusLine(String(localized: "已放進提案", bundle: AppLanguage.bundle), icon: "tray.and.arrow.down")
             case "dispatched":
-                statusLine("已派工", icon: "paperplane.fill")
+                statusLine(String(localized: "已派工", bundle: AppLanguage.bundle), icon: "paperplane.fill")
             default:
                 HStack {
                     Button { Task { await act("propose") } } label: {
@@ -497,7 +497,7 @@ struct DraftCardView: View {
         Button {
             if let id = draft.cardId { model.chatCardId = id }
         } label: {
-            Label(draft.cardId != nil ? "\(text) · 打開工作卡" : text, systemImage: icon).font(.subheadline.bold())
+            Label(draft.cardId != nil ? String(localized: "\(text) · 打開工作卡", bundle: AppLanguage.bundle) : text, systemImage: icon).font(.subheadline.bold())
         }
         .disabled(draft.cardId == nil)
     }
@@ -550,7 +550,7 @@ struct MessageBubble: View {
                 }
                 if let q = entry.quote, let t = q.text, !t.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        if let p = q.path { Text("\(entry.via == "圈選" ? "圈選:" : "")\(p)\(q.from.map { " 第 \($0) 行" } ?? "")").font(.caption.bold()) }
+                        if let p = q.path { Text("\(entry.via == "圈選" ? String(localized: "圈選:", bundle: AppLanguage.bundle) : "")\(p)\(q.from.map { String(localized: " 第 \($0) 行", bundle: AppLanguage.bundle) } ?? "")").font(.caption.bold()) } // i18n-ok: 「圈選」是管家回傳的 via 欄位值，僅用於判斷來源。
                         Text(t).font(.caption.monospaced()).lineLimit(5)
                     }
                     .foregroundStyle(.secondary)

@@ -11,9 +11,9 @@ enum Mode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .board: "看板"
-        case .code: "程式碼"
-        case .terminal: "終端機"
+        case .board: String(localized: "看板", bundle: AppLanguage.bundle)
+        case .code: String(localized: "程式碼", bundle: AppLanguage.bundle)
+        case .terminal: String(localized: "終端機", bundle: AppLanguage.bundle)
         }
     }
 
@@ -383,7 +383,7 @@ final class AppModel {
                 }
                 if !isDemo, let link = UserDefaults.standard.string(forKey: "openURL"), let url = URL(string: link) { open(url) }
             } else {
-                phase = .needPassword(s.reason ?? "請輸入管家的管理密碼")
+                phase = .needPassword(s.reason ?? String(localized: "請輸入管家的管理密碼", bundle: AppLanguage.bundle))
             }
         } catch {
             guard server == api.base else { return }
@@ -618,8 +618,8 @@ final class AppModel {
 
     /// 圈選提問的出處說明
     var screenLabel: String {
-        if showChat { return "iPhone app 問管家(\(current?.name ?? ""))" }
-        if let id = openCardId, let c = card(id) { return "iPhone app 工作卡「\(c.title)」" }
+        if showChat { return String(localized: "iPhone app 問管家(\(current?.name ?? ""))", bundle: AppLanguage.bundle) }
+        if let id = openCardId, let c = card(id) { return String(localized: "iPhone app 工作卡「\(c.title)」", bundle: AppLanguage.bundle) }
         return "iPhone app \(mode.title)(\(current?.name ?? ""))"
     }
 

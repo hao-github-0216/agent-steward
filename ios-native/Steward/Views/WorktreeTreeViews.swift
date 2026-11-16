@@ -23,10 +23,10 @@ enum WorktreeTreeDemo {
           {"branch":"worktree-old-api","source":"claude","folder":"","ahead":12,"merged":false,"session":{"agent":"pi"},"lastModified":"2026-10-25T10:00:00.000Z"}
          ],
          "graph":{"nodes":[
-           {"hash":"1","short":"4c1e2aa","subject":"專案初始化","gapBefore":3},
-           {"hash":"2","short":"9ba55f9","subject":"修正登入流程","gapBefore":0},
+           {"hash":"1","short":"4c1e2aa","subject":"\(String(localized: "專案初始化", bundle: AppLanguage.bundle))","gapBefore":3},
+           {"hash":"2","short":"9ba55f9","subject":"\(String(localized: "修正登入流程", bundle: AppLanguage.bundle))","gapBefore":0},
            {"hash":"3","short":"d07b3e1","subject":"Merge worktree-settings-page","gapBefore":5},
-           {"hash":"4","short":"e882fd8","subject":"新增設定頁","gapBefore":2}],
+           {"hash":"4","short":"e882fd8","subject":"\(String(localized: "新增設定頁", bundle: AppLanguage.bundle))","gapBefore":2}],
           "branches":[
            {"key":"branch:worktree-old-api","branch":"worktree-old-api","forkAt":0,"ahead":12},
            {"key":"branch:worktree-settings-page","branch":"worktree-settings-page","forkAt":1,"mergedAt":2,"ahead":2,"savedOnRemove":{"commits":1,"files":["packages/app/notes.md"]}},
@@ -65,7 +65,7 @@ struct WorktreeLeftoverRow: View {
                 Text("移除時另存了 \(n) 個沒 commit 的檔案").font(.caption).foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
-                if let a = l.ahead, a > 0, l.merged != true { Text("領先 \(target ?? "主線") \(a)") }
+                if let a = l.ahead, a > 0, l.merged != true { Text("領先 \(target ?? String(localized: "主線", bundle: AppLanguage.bundle)) \(a)") }
                 if let agent = l.session?.agent { Text(agent) }
                 Text(Fmt.ago(Fmt.date(l.lastModified)))
             }
@@ -211,7 +211,7 @@ struct WorktreeGraphView<Actions: View>: View {
 
     /// 估標籤寬度(只用來算畫布要多寬)
     private func labelWidth(_ b: WorktreeTree.Branch) -> CGFloat {
-        let text = (b.branch ?? b.key) + " +\(b.ahead ?? 0) " + (tree.agent(for: b.key) ?? "") + (b.mergedAt != nil ? " ✔ 已合併(另存 N 個檔)" : "")
+        let text = (b.branch ?? b.key) + " +\(b.ahead ?? 0) " + (tree.agent(for: b.key) ?? "") + (b.mergedAt != nil ? String(localized: " ✔ 已合併(另存 N 個檔)", bundle: AppLanguage.bundle) : "")
         return CGFloat(text.count) * 7.5 + 24
     }
 
@@ -235,7 +235,7 @@ struct WorktreeGraphView<Actions: View>: View {
                 p.addLine(to: CGPoint(x: (l.nodeX.last ?? padL) + 24, y: mainY))
             }
             .stroke(Color.primary.opacity(0.7), lineWidth: 3)
-            Text(tree.target ?? "主線")
+            Text(tree.target ?? String(localized: "主線", bundle: AppLanguage.bundle))
                 .font(.caption.bold())
                 .offset(x: padL - 4, y: mainY + 8)
             // 省略的 commit
@@ -308,7 +308,7 @@ struct WorktreeGraphView<Actions: View>: View {
             if let agent = tree.agent(for: b.key) { Text(agent).font(.caption2).foregroundStyle(.secondary) }
             if b.mergedAt != nil {
                 let saved = b.savedOnRemove?.files?.count ?? 0
-                Text(saved > 0 ? "✔ 已合併(另存 \(saved) 個檔)" : "✔ 已合併").font(.caption2.bold()).foregroundStyle(.green)
+                Text(saved > 0 ? String(localized: "✔ 已合併(另存 \(saved) 個檔)", bundle: AppLanguage.bundle) : String(localized: "✔ 已合併", bundle: AppLanguage.bundle)).font(.caption2.bold()).foregroundStyle(.green)
             }
             if b.key.hasPrefix("branch:") && b.mergedAt == nil { Text("worktree 已移除").font(.caption2).foregroundStyle(.tertiary) }
         }

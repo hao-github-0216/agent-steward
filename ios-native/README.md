@@ -16,6 +16,16 @@
 - 顏色用 iOS 系統顏色(深淺色由系統處理),強調色是網頁的藍;文字跟著 iPhone 的文字大小設定
 - 身分:透過 Tailscale 的 https 網址連線時管家自動認得;否則用管理密碼登入
 
+## 語言
+
+App 支援繁體中文與 English，預設跟著系統的第一個偏好語言：任何中文變體（`zh-*`，包括簡體中文）都顯示原有的繁體中文，其他語言顯示英文。也可以到 iOS「設定 → 專案管家 → 語言」為這個 App 單獨切換，不需要在 App 裡另設語言。
+
+示範模式的專案、工作卡、對話、檔案與 Git 訊息也會使用對應語言。使用者自己的資料和管家回傳的內容不會被翻譯；嵌入的管家網頁仍使用管家自己的語言設定。
+
+新增介面字串時，請寫進 `Steward/Localizable.xcstrings` 並填好英文。SwiftUI 的 `Text`、`Button` 等可直接使用字面值；需要 `String` 的地方使用 `String(localized: "…", bundle: AppLanguage.bundle)`。Info.plist 的顯示名稱、權限說明與類型描述放在 `Steward/InfoPlist.xcstrings`。不能翻譯的協定值，需在行尾加上 `// i18n-ok: 原因`。
+
+`LocalizationTests` 會檢查編譯後的中英文 key、英文是否殘留中文字，以及插值參數的數量和型別；靜態檢查會擋下沒有本地化、也沒有豁免理由的中文字面值。`EnglishTests` 會以英文示範模式走過看板、卡片、問管家、程式碼、Git、八個設定分頁與網址畫面，逐頁檢查文字並保留截圖。
+
 ## 網頁版和 iPhone 版對照
 
 | 網頁版 | iPhone 版 | 元件 |
