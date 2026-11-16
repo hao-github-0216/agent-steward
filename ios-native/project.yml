@@ -68,6 +68,7 @@ targets:
         NSCameraUsageDescription: 拍照附在問管家的問題裡
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: [remote-notification]
+        NSUserActivityTypes: [io.github.haogithub0216.agentsteward.native.open]
         # 程式碼頁的分頁拖曳(只在這個 app 裡面用)
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: io.github.haogithub0216.agentsteward.native.tab

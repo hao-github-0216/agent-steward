@@ -4,11 +4,25 @@ import WidgetKit
 struct StewardWatchEntry: TimelineEntry {
     let date: Date
     let snapshot: WatchSnapshot?
+    let projectID: String?
 
-    var blocked: Int { snapshot?.projects.reduce(0) { $0 + $1.counts.blocked } ?? 0 }
-    var proposed: Int { snapshot?.projects.reduce(0) { $0 + $1.counts.proposed } ?? 0 }
+    private var selectedProject: WatchProject? {
+        guard let projectID else { return nil }
+        return snapshot?.projects.first { $0.id == projectID }
+    }
+
+    private var projects: [WatchProject] {
+        if let selectedProject { return [selectedProject] }
+        return snapshot?.projects ?? []
+    }
+
+    var blocked: Int { projects.reduce(0) { $0 + $1.counts.blocked } }
+    var proposed: Int { projects.reduce(0) { $0 + $1.counts.proposed } }
     var projectName: String? {
-        snapshot?.projects.filter { !$0.isPrivate }.max {
+        if let selectedProject {
+            return selectedProject.isPrivate ? String(localized: "隱私專案") : selectedProject.name
+        }
+        return snapshot?.projects.filter { !$0.isPrivate }.max {
             $0.counts.blocked + $0.counts.proposed < $1.counts.blocked + $1.counts.proposed
         }?.name
     }
@@ -16,7 +30,7 @@ struct StewardWatchEntry: TimelineEntry {
 
 struct StewardWatchProvider: TimelineProvider {
     func placeholder(in context: Context) -> StewardWatchEntry {
-        StewardWatchEntry(date: .now, snapshot: nil)
+        StewardWatchEntry(date: .now, snapshot: nil, projectID: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StewardWatchEntry) -> Void) {
@@ -28,9 +42,11 @@ struct StewardWatchProvider: TimelineProvider {
     }
 
     private func entry() -> StewardWatchEntry {
-        let data = UserDefaults(suiteName: WatchWire.appGroup)?.data(forKey: WatchWire.cacheKey)
+        let defaults = UserDefaults(suiteName: WatchWire.appGroup)
+        let data = defaults?.data(forKey: WatchWire.cacheKey)
         let snapshot = data.flatMap { try? WatchWire.decode(WatchSnapshot.self, from: $0) }
-        return StewardWatchEntry(date: .now, snapshot: snapshot)
+        let projectID = defaults?.string(forKey: WatchWire.complicationProjectKey)
+        return StewardWatchEntry(date: .now, snapshot: snapshot, projectID: projectID)
     }
 }
 

@@ -78,16 +78,19 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             guard let data else { throw WatchProtocolError.invalidMessage }
             let request = try WatchWire.decode(WatchRequest.self, from: data)
             switch request.action {
-            case .suggestions(let project), .chat(let project), .ask(let project, _): delivery.project = project
-            case .refresh, .move: break
+            case .suggestions(let project), .chat(let project), .ask(let project, _), .draftCard(let project, _):
+                delivery.project = project
+            case .refresh, .move, .askCard, .assignCard, .agents: break
             }
-            if case .ask = request.action {
+            switch request.action {
+            case .ask, .askCard, .draftCard:
                 // 從收到問題起算，專案驗證的網路時間也不能拖過即時回覆期限。
                 delivery.timer = Task { @MainActor in
                     do { try await Task.sleep(for: .seconds(25)) }
                     catch { return }
                     delivery.sendPending()
                 }
+            default: break
             }
             delivery.operation = Task { await self.handle(request, delivery: delivery) }
         } catch {
@@ -137,6 +140,34 @@ final class WatchBridge: NSObject, WCSessionDelegate {
                 let snapshot = try WatchSnapshot.make(board: updated, demo: demo).limited()
                 publish(board: updated, demo: demo)
                 delivery.finish(WatchResponse(ok: true, snapshot: snapshot, project: card.projectId))
+            case .agents:
+                let agents = try await api.agents().map { WatchAgent(id: $0.id, name: $0.name) }
+                delivery.finish(WatchResponse(ok: true, agents: agents))
+            case .askCard(let cardID, let text):
+                guard let card = board.cards?.first(where: { $0.id == cardID }) else { throw WatchProtocolError.notFound }
+                delivery.project = card.projectId
+                try Self.requirePublicCard(card, board: board)
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw WatchProtocolError.invalidMessage }
+                delivery.askStarted = true
+                _ = try await api.askCard(cardID, text: text)
+                delivery.finish(WatchResponse(ok: true, project: card.projectId))
+            case .assignCard(let cardID, let agent):
+                guard let card = board.cards?.first(where: { $0.id == cardID }) else { throw WatchProtocolError.notFound }
+                delivery.project = card.projectId
+                try Self.requirePublicCard(card, board: board)
+                _ = try await api.updateCard(cardID, agent: agent)
+                try Task.checkCancellation()
+                let updated = try await api.board()
+                try Task.checkCancellation()
+                let snapshot = try WatchSnapshot.make(board: updated, demo: demo).limited()
+                publish(board: updated, demo: demo)
+                delivery.finish(WatchResponse(ok: true, snapshot: snapshot, project: card.projectId))
+            case .draftCard(let project, let text):
+                try Self.requirePublicProject(project, board: board)
+                let message = String(localized: "把這段整理成工作卡：\n\n", bundle: AppLanguage.bundle) + text
+                delivery.askStarted = true
+                _ = try await api.draftCard(project: project, message: message)
+                delivery.finish(WatchResponse(ok: true, project: project))
             case .ask(let project, let text):
                 try Self.requirePublicProject(project, board: board)
                 guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw WatchProtocolError.invalidMessage }
@@ -150,6 +181,10 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         } catch {
             delivery.finish(WatchResponse(ok: false, error: Self.errorCode(error), project: delivery.project))
         }
+    }
+
+    static func requirePublicCard(_ card: Card, board: Board) throws {
+        try requirePublicProject(card.projectId, board: board)
     }
 
     private static func requirePublicProject(_ id: String, board: Board) throws {

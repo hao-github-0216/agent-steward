@@ -23,6 +23,7 @@ enum WatchWire {
     static let snapshotKey = "snapshot"
     static let appGroup = "group.io.github.haogithub0216.agentsteward.watch"
     static let cacheKey = "watchSnapshot"
+    static let complicationProjectKey = "complicationProject"
     static let snapshotByteLimit = 60_000
 
     static func encode<T: WatchVersioned>(_ value: T) throws -> Data {
@@ -119,12 +120,21 @@ struct WatchRequest: WatchVersioned, Equatable {
         case ask(project: String, text: String)
         case chat(project: String)
         case move(card: String, column: String)
+        case askCard(card: String, text: String)
+        case assignCard(card: String, agent: String)
+        case agents
+        case draftCard(project: String, text: String)
     }
 
     var v = WatchWire.version
     var action: Action
 
     init(_ action: Action) { self.action = action }
+}
+
+struct WatchAgent: Codable, Equatable {
+    var id: String
+    var name: String?
 }
 
 struct WatchChatLine: Codable, Equatable {
@@ -143,4 +153,5 @@ struct WatchResponse: WatchVersioned, Equatable {
     var pending = false
     var chat: [WatchChatLine]?
     var project: String?
+    var agents: [WatchAgent]?
 }

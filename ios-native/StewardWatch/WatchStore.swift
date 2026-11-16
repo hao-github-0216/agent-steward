@@ -14,6 +14,16 @@ final class WatchStore: NSObject, ObservableObject {
     @Published private(set) var pendingProjects: Set<String> = []
     @Published private(set) var movingCards: Set<String> = []
     @Published private(set) var actionResults: [String: String] = [:]
+    @Published private(set) var agents: [WatchAgent] = []
+    @Published var complicationProjectID: String? {
+        didSet {
+            #if DEBUG
+            if fixture != nil { return }
+            #endif
+            defaults?.set(complicationProjectID, forKey: WatchWire.complicationProjectKey)
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
     @Published var errorMessage: String?
 
     private let session: WCSession?
@@ -36,6 +46,7 @@ final class WatchStore: NSObject, ObservableObject {
             return
         }
         #endif
+        complicationProjectID = defaults?.string(forKey: WatchWire.complicationProjectKey)
         readCache()
         session?.delegate = self
         session?.activate()
@@ -106,6 +117,56 @@ final class WatchStore: NSObject, ObservableObject {
         }
     }
 
+    func loadAgents() async {
+        guard isReachable, snapshot?.projects.contains(where: { canAccessContents($0.id) }) == true else { return }
+        do {
+            _ = try await request(.agents)
+        } catch { report(error) }
+    }
+
+    func askCard(_ cardID: String, text: String, projectID: String) async -> Bool {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, isReachable, canAccessContents(projectID), !movingCards.contains(cardID) else { return false }
+        movingCards.insert(cardID)
+        defer { movingCards.remove(cardID) }
+        do {
+            _ = try await request(.askCard(card: cardID, text: text))
+            actionResults[projectID] = String(localized: "已送出追問")
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
+    func assignCard(_ cardID: String, agent: String, projectID: String) async -> Bool {
+        guard isReachable, canAccessContents(projectID), !movingCards.contains(cardID) else { return false }
+        movingCards.insert(cardID)
+        defer { movingCards.remove(cardID) }
+        do {
+            _ = try await request(.assignCard(card: cardID, agent: agent))
+            let name = agents.first { $0.id == agent }?.name ?? agent
+            actionResults[projectID] = String(localized: "已換成 \(name)")
+            await refresh()
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
+    func draftCard(_ text: String, projectID: String) async -> Bool {
+        guard isReachable, canAccessContents(projectID) else { return false }
+        do {
+            _ = try await request(.draftCard(project: projectID, text: text))
+            actionResults[projectID] = String(localized: "草稿已送到 iPhone")
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
     private func request(_ action: WatchRequest.Action) async throws -> WatchResponse {
         guard isReachable else { throw WatchProtocolError.unavailable }
         let response: WatchResponse
@@ -151,10 +212,11 @@ final class WatchStore: NSObject, ObservableObject {
             throw ResponseFailure(message: Self.localizedError(response.error ?? WatchProtocolError.invalidMessage.rawValue))
         }
         if let snapshot = response.snapshot { accept(snapshot) }
+        if let agents = response.agents { self.agents = agents }
         let projectID: String?
         switch action {
-        case .suggestions(let id), .chat(let id), .ask(let id, _): projectID = id
-        default: projectID = response.project
+        case .suggestions(let id), .chat(let id), .ask(let id, _), .draftCard(let id, _): projectID = id
+        case .askCard, .assignCard, .move, .agents, .refresh, nil: projectID = response.project
         }
         guard let projectID, canAccessContents(projectID) else { return }
         if let values = response.suggestions { suggestions[projectID] = values }
@@ -165,7 +227,7 @@ final class WatchStore: NSObject, ObservableObject {
             trimChat(projectID)
         }
         if response.pending {
-            pendingProjects.insert(projectID)
+            if unansweredQuestions[projectID] != nil { pendingProjects.insert(projectID) }
         } else {
             let answeredInChat: Bool
             if let question = unansweredQuestions[projectID], let lines = response.chat,
@@ -188,6 +250,9 @@ final class WatchStore: NSObject, ObservableObject {
     private func accept(_ value: WatchSnapshot) {
         snapshot = value
         let visibleIDs = Set(value.projects.filter { !$0.isPrivate }.map(\.id))
+        if let selected = complicationProjectID, !visibleIDs.contains(selected) {
+            complicationProjectID = nil
+        }
         suggestions = suggestions.filter { (projectID, _) in visibleIDs.contains(projectID) }
         chats = chats.filter { (projectID, _) in visibleIDs.contains(projectID) }
         pendingProjects.formIntersection(visibleIDs)

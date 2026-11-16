@@ -86,6 +86,26 @@ final class WatchFixture {
                 : "下一步可以**加入一週預報**。\n\n```swift\nlet forecast = 7\n```"
             chat.append(WatchChatLine(role: "assistant", text: answer))
             response = WatchResponse(ok: true, answer: answer, chat: Array(chat.suffix(5)), project: project)
+        case .agents:
+            response = WatchResponse(ok: true, agents: [
+                WatchAgent(id: "claude-code", name: "Claude Code"),
+                WatchAgent(id: "codex", name: "Codex")
+            ])
+        case .askCard(let cardID, let text):
+            let (projectIndex, _) = try cardLocation(cardID)
+            let projectID = snapshot.projects[projectIndex].id
+            try validate(projectID)
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw WatchProtocolError.invalidMessage }
+            response = WatchResponse(ok: true, project: projectID)
+        case .assignCard(let cardID, let agent):
+            let (projectIndex, cardIndex) = try cardLocation(cardID)
+            let projectID = snapshot.projects[projectIndex].id
+            try validate(projectID)
+            snapshot.projects[projectIndex].cards[cardIndex].agent = agent
+            response = WatchResponse(ok: true, snapshot: snapshot, project: projectID)
+        case .draftCard(let project, _):
+            try validate(project)
+            response = WatchResponse(ok: true, project: project)
         case .move(let cardID, let column):
             guard let projectIndex = snapshot.projects.firstIndex(where: { project in project.cards.contains { $0.id == cardID } }),
                   let cardIndex = snapshot.projects[projectIndex].cards.firstIndex(where: { $0.id == cardID }) else {
@@ -108,6 +128,14 @@ final class WatchFixture {
             response = WatchResponse(ok: true, snapshot: snapshot)
         }
         return try WatchWire.decode(WatchResponse.self, from: WatchWire.encode(response))
+    }
+
+    private func cardLocation(_ cardID: String) throws -> (Int, Int) {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.cards.contains { $0.id == cardID } }),
+              let cardIndex = snapshot.projects[projectIndex].cards.firstIndex(where: { $0.id == cardID }) else {
+            throw WatchProtocolError.notFound
+        }
+        return (projectIndex, cardIndex)
     }
 
     private func validate(_ projectID: String) throws {

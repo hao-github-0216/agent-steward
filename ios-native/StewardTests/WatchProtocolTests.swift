@@ -140,14 +140,49 @@ final class WatchProtocolTests: XCTestCase {
 
     func testRequestAndResponseRoundTrips() throws {
         let actions: [WatchRequest.Action] = [.refresh, .suggestions(project: "weather"), .ask(project: "weather", text: "What next?"),
-                                               .chat(project: "weather"), .move(card: "forecast", column: "approved")]
+                                               .chat(project: "weather"), .move(card: "forecast", column: "approved"),
+                                               .askCard(card: "forecast", text: "What is blocked?"),
+                                               .assignCard(card: "forecast", agent: "codex"), .agents,
+                                               .draftCard(project: "weather", text: "Add a weekly forecast.")]
         for action in actions {
             let request = WatchRequest(action)
             XCTAssertEqual(try WatchWire.decode(WatchRequest.self, from: WatchWire.encode(request)), request)
         }
         let response = WatchResponse(ok: true, answer: "Ready", pending: true,
-                                     chat: [WatchChatLine(role: "bot", text: "Ready", at: "2026-11-16T00:00:00Z")], project: "weather")
+                                     chat: [WatchChatLine(role: "bot", text: "Ready", at: "2026-11-16T00:00:00Z")], project: "weather",
+                                     agents: [WatchAgent(id: "claude-code", name: "Claude Code"), WatchAgent(id: "codex", name: nil)])
         XCTAssertEqual(try WatchWire.decode(WatchResponse.self, from: WatchWire.encode(response)), response)
+    }
+
+    @MainActor
+    func testPrivateCardAskAndAssignAreRejected() throws {
+        let secret = card("secret-card", project: "private-project")
+        let board = Board(projects: [project("private-project", isPrivate: true)], cards: [secret])
+        let actions: [WatchRequest.Action] = [
+            .askCard(card: secret.id, text: "What is blocked?"),
+            .assignCard(card: secret.id, agent: "codex")
+        ]
+        for action in actions {
+            let request = try WatchWire.decode(WatchRequest.self, from: WatchWire.encode(WatchRequest(action)))
+            let cardID: String
+            switch request.action {
+            case .askCard(let id, _), .assignCard(let id, _): cardID = id
+            default: return XCTFail("Expected a card action")
+            }
+            let source = try XCTUnwrap(board.cards?.first { $0.id == cardID })
+            XCTAssertThrowsError(try WatchBridge.requirePublicCard(source, board: board)) {
+                XCTAssertEqual($0 as? WatchProtocolError, .privateProject)
+            }
+        }
+    }
+
+    @MainActor
+    func testPublicCardAuthorizationRequiresAnExistingProject() {
+        let source = card("forecast")
+        XCTAssertNoThrow(try WatchBridge.requirePublicCard(source, board: Board(projects: [project()], cards: [source])))
+        XCTAssertThrowsError(try WatchBridge.requirePublicCard(source, board: Board(projects: [], cards: [source]))) {
+            XCTAssertEqual($0 as? WatchProtocolError, .notFound)
+        }
     }
 
     func testDoesNotSendIrreducibleOversizeSnapshot() {

@@ -1,10 +1,17 @@
 import SwiftUI
 
+enum WatchRoute: Hashable {
+    case project(String), ask(String), cards(String)
+}
+
 struct WatchProjectsView: View {
     @EnvironmentObject private var store: WatchStore
+    @State private var path: [WatchRoute] = []
+    @State private var menuProject: WatchProject?
+    @StateObject private var handoff = WatchHandoff.Session()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
@@ -23,9 +30,7 @@ struct WatchProjectsView: View {
                 }
                 if let projects = store.snapshot?.projects, !projects.isEmpty {
                     ForEach(projects) { project in
-                        NavigationLink {
-                            WatchProjectView(projectID: project.id)
-                        } label: {
+                        NavigationLink(value: WatchRoute.project(project.id)) {
                             VStack(alignment: .leading, spacing: 6) {
                                 if project.isPrivate {
                                     Label("隱私專案", systemImage: "lock.fill")
@@ -36,6 +41,8 @@ struct WatchProjectsView: View {
                             }
                         }
                         .accessibilityIdentifier("watch-project-\(project.id)")
+                        .contentShape(Rectangle())
+                        .watchLongPress { menuProject = project }
                     }
                 } else {
                     Text("還沒有專案")
@@ -56,7 +63,23 @@ struct WatchProjectsView: View {
             .accessibilityIdentifier("watch-projects")
             .navigationTitle("專案")
             .refreshable { await store.refresh() }
+            .navigationDestination(for: WatchRoute.self) { route in
+                switch route {
+                case .project(let id): WatchProjectView(projectID: id)
+                case .ask(let id): WatchAskView(projectID: id)
+                case .cards(let id): WatchCardsView(projectID: id)
+                }
+            }
+            .sheet(item: $menuProject) { project in
+                WatchProjectMenu(projectID: project.id, handoff: handoff) { route in
+                    menuProject = nil
+                    path.append(route)
+                }
+                .onDisappear { handoff.menuClosed() }
+            }
+            .onDisappear { handoff.stop() }
         }
+        .onDisappear { handoff.stop() }
         .alert("錯誤", isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } }
@@ -72,6 +95,41 @@ struct WatchProjectsView: View {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let date = formatter.date(from: timestamp) ?? ISO8601DateFormatter().date(from: timestamp) ?? now
         return max(0, Int(now.timeIntervalSince(date) / 60))
+    }
+}
+
+struct WatchProjectMenu: View {
+    @EnvironmentObject private var store: WatchStore
+    let projectID: String
+    @ObservedObject var handoff: WatchHandoff.Session
+    let navigate: (WatchRoute) -> Void
+
+    var body: some View {
+        List {
+            if let project = store.project(projectID) {
+                Text(project.isPrivate ? String(localized: "隱私專案") : project.name).lineLimit(2)
+                WatchCountBadges(counts: project.counts)
+                Button("問管家") { navigate(.ask(projectID)) }
+                    .disabled(!store.isReachable || !store.canAccessContents(projectID))
+                    .accessibilityIdentifier("watch-project-menu-ask")
+                Button("工作卡（\(project.counts.total)）") { navigate(.cards(projectID)) }
+                    .accessibilityIdentifier("watch-project-menu-cards")
+                Button(store.complicationProjectID == projectID
+                       ? String(localized: "改回全部專案") : String(localized: "設成錶面專案")) {
+                    store.complicationProjectID = store.complicationProjectID == projectID ? nil : projectID
+                }
+                .accessibilityIdentifier("watch-project-menu-complication")
+                Button("在 iPhone 上打開") {
+                    handoff.open("agentsteward://project/\(projectID)/chat")
+                }
+                .accessibilityIdentifier("watch-project-menu-handoff")
+                if handoff.showsHint {
+                    Text("在 iPhone 的 App 切換器或 Dock 點專案管家")
+                        .font(.footnote)
+                }
+            }
+        }
+        .accessibilityIdentifier("watch-project-menu")
     }
 }
 

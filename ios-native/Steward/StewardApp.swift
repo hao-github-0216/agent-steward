@@ -29,6 +29,11 @@ struct StewardApp: App {
                     await model.connect()
                 }
                 .onOpenURL { model.open($0) }
+                .onContinueUserActivity("io.github.haogithub0216.agentsteward.native.open") { activity in
+                    if let value = activity.userInfo?["url"] as? String, let url = URL(string: value) {
+                        model.open(url)
+                    }
+                }
                 // 連上管家後:要推播權限、把 token 交給管家
                 .onChange(of: model.phase) { _, now in
                     // 啟動參數 -noPush(模擬器截圖用)時不問推播權限
