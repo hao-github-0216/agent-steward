@@ -3,6 +3,8 @@
 // 分頁可以拖拉:同一列換順序、拖到別的群組、拖到群組的上下左右邊緣就分割出新的群組。
 // 依賴主頁面的全域:$, esc, post, toast, state, sel, setMode, jumpTo, load, pref
 (() => {
+	let mdTools;
+	const mdToolsReady = import("/web/md-tools.js").then((tools) => { mdTools = tools; });
 	const MONACO = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min";
 	const MAX_COLS = 4, MAX_ROWS = 3;
 	const mobile = () => innerWidth <= 800;
@@ -111,7 +113,8 @@
 			s.onerror = () => reject(new Error(tr("載入編輯器失敗(需要能連上 cdn.jsdelivr.net)")));
 			s.onload = () => {
 				window.require.config({ paths: { vs: `${MONACO}/vs` } });
-				window.require(["vs/editor/editor.main"], () => {
+				window.require(["vs/editor/editor.main"], async () => {
+					try { await mdToolsReady; } catch (e) { reject(e); return; }
 					cm.monaco = window.monaco;
 					const dark = matchMedia("(prefers-color-scheme: dark)");
 					const theme = () => cm.monaco.editor.setTheme(document.documentElement.dataset.theme === "light" ? "vs" : document.documentElement.dataset.theme === "dark" || dark.matches ? "vs-dark" : "vs");
@@ -197,6 +200,20 @@
 			ed.onDidFocusEditorText(() => setActiveGroup(g));
 		}
 		g.editor.onDidChangeCursorPosition(() => saveSoon(3000));
+		g.editorEl.addEventListener("keydown", (e) => {
+			if (!mdEditable(g) || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+			const action = { b: "bold", i: "italic", k: "link" }[e.key.toLowerCase()];
+			if (!action) return;
+			e.preventDefault(); e.stopPropagation();
+			mdAction(g, action);
+		}, true);
+		g.stageEl.addEventListener("paste", (e) => {
+			if (!g.editorEl.contains(e.target) || !mdEditable(g)) return;
+			const images = [...(e.clipboardData?.items || [])].filter((item) => item.kind === "file" && item.type.startsWith("image/")).map((item) => item.getAsFile()).filter(Boolean);
+			if (!images.length) return;
+			e.preventDefault(); e.stopPropagation();
+			mdUploadImages(g, g.active, images, true);
+		}, true);
 		// 手機:點一下程式碼內容就把游標放進去(在點擊當下聚焦,iPhone 才會叫出鍵盤)
 		for (const [surf, getEd] of [[g.editorEl, () => g.editor], [g.diffEl, () => g.diff.getModifiedEditor()]]) {
 			let t0 = null;
@@ -1178,7 +1195,7 @@
 	function surface(g, which) {
 		for (const k of ["editorEl", "diffEl", "previewEl", "emptyEl"]) g[k].hidden = k !== which;
 	}
-	function bar(g, html) { g.barEl.hidden = !html; g.barEl.innerHTML = html || ""; }
+	function bar(g, html) { g.barEl.classList.remove("md-toolbar"); g.barEl.hidden = !html; g.barEl.innerHTML = html || ""; }
 	function activate(g, t) {
 		if (g.active && g.active !== t && g.active.kind === "file" && !g.active.conflict && g.editor) g.active.viewState = g.editor.saveViewState();
 		if (g.active && g.active !== t && g.active.kind === "diff" && g.diff) g.active.viewState = g.diff.saveViewState();
@@ -1199,7 +1216,14 @@
 				g.editor.setModel(t.model);
 				g.editor.updateOptions({ readOnly: !!t.readonly });
 				if (isTex(t.path) && !t.truncated && !t.readonly && cm.plugins.latex) texBar(g, t);
-				else bar(g, t.truncated ? `<span>${tr("大檔({size})唯讀:只顯示開頭和結尾各 {shown} 行,共 {total} 行", { size: fmtSize(t.size), shown: t.truncated.shown, total: t.truncated.total })}</span><span class="sp"></span><button class="small" data-bar="more">${tr("多載入 2000 行")}</button><button class="small" data-bar="term">${tr("在終端機開啟")}</button>` : t.readonly ? `<span>${tr("唯讀")}</span>` : isMd(t.path) ? `<span class="sp"></span><button class="small" data-bar="mdprev">${mobile() ? tr("預覽") : tr("在旁邊預覽")}</button>` : "");
+				else bar(g, t.truncated ? `<span>${tr("大檔({size})唯讀:只顯示開頭和結尾各 {shown} 行,共 {total} 行", { size: fmtSize(t.size), shown: t.truncated.shown, total: t.truncated.total })}</span><span class="sp"></span><button class="small" data-bar="more">${tr("多載入 2000 行")}</button><button class="small" data-bar="term">${tr("在終端機開啟")}</button>` : t.readonly ? `<span>${tr("唯讀")}</span>` : isMd(t.path) ? `${mdToolbar()}<span class="sp"></span><button class="small" data-bar="mdprev" title="${esc(tr("預覽 Markdown"))}" aria-label="${esc(tr("預覽 Markdown"))}">${mobile() ? tr("預覽") : tr("在旁邊預覽")}</button>` : "");
+				if (mdEditable(g)) {
+					g.barEl.classList.add("md-toolbar");
+					g.barEl.querySelectorAll("[data-md]").forEach((button) => {
+						button.onpointerdown = (e) => e.preventDefault();
+						button.onclick = () => mdAction(g, button.dataset.md, button);
+					});
+				}
 				if (t.viewState) g.editor.restoreViewState(t.viewState);
 				// 手機:切分頁不自動聚焦編輯器(會跳鍵盤、iOS 還會放大);要打字點一下內容就好
 				if (!mobile() && !matchMedia("(pointer: coarse)").matches) g.editor.focus();
@@ -1325,6 +1349,174 @@
 			activate(g, t);
 		} catch (e) { if (!quiet) fail(e); }
 	}
+	// ---------- Markdown 工具 ----------
+	function mdEditable(g, t = g.active) {
+		return t?.kind === "file" && isMd(t.path) && !t.readonly && !t.truncated && !t.conflict && g.editor?.getModel() === t.model;
+	}
+	function mdToolbar() {
+		return [
+			["bold", tr("粗體"), "B"], ["italic", tr("斜體"), "I"], ["strike", tr("刪除線"), "S̶"], ["inline", tr("行內程式碼"), "`"],
+			["heading", tr("標題"), "H ▾"], ["bullet", tr("項目清單"), "•"], ["number", tr("編號清單"), "1."], ["check", tr("核取清單"), "☑"], ["quote", tr("引用"), "❯"],
+			["fence", tr("程式碼區塊"), "```"], ["link", tr("連結"), "↗"], ["math", tr("數學公式"), "∑ ▾"], ["diagram", tr("圖表"), "◇ ▾"], ["table", tr("表格"), "▦"], ["image", tr("插入圖片"), "▧"],
+		].map(([action, title, label]) => `<button class="small" data-md="${action}" title="${esc(title)}" aria-label="${esc(title)}">${esc(label)}</button>`).join("");
+	}
+	function mdReplace(g, range, text, selStart = text.length, selEnd = selStart) {
+		const model = g.editor.getModel(), offset = model.getOffsetAt(range.getStartPosition());
+		g.editor.pushUndoStop();
+		g.editor.executeEdits("markdown-tools", [{ range, text }]);
+		const start = model.getPositionAt(offset + selStart), end = model.getPositionAt(offset + selEnd);
+		g.editor.setSelection(new cm.monaco.Selection(start.lineNumber, start.column, end.lineNumber, end.column));
+		g.editor.pushUndoStop();
+		g.editor.focus();
+	}
+	function mdWrap(g, marker) {
+		const model = g.editor.getModel(), selection = g.editor.getSelection(), before = model.getValue();
+		const result = mdTools.toggleWrap(before, model.getOffsetAt(selection.getStartPosition()), model.getOffsetAt(selection.getEndPosition()), marker);
+		let start = 0, oldEnd = before.length, newEnd = result.text.length;
+		while (start < oldEnd && start < newEnd && before[start] === result.text[start]) start++;
+		while (oldEnd > start && newEnd > start && before[oldEnd - 1] === result.text[newEnd - 1]) { oldEnd--; newEnd--; }
+		const from = model.getPositionAt(start), to = model.getPositionAt(oldEnd);
+		mdReplace(g, new cm.monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column), result.text.slice(start, newEnd), result.selStart - start, result.selEnd - start);
+	}
+	function mdPrefix(g, prefix) {
+		const model = g.editor.getModel(), selection = g.editor.getSelection();
+		const lastLine = selection.endLineNumber > selection.startLineNumber && selection.endColumn === 1 ? selection.endLineNumber - 1 : selection.endLineNumber;
+		const range = new cm.monaco.Range(selection.startLineNumber, 1, lastLine, model.getLineMaxColumn(lastLine));
+		const text = mdTools.toggleLinePrefix(model.getValueInRange(range).split("\n"), prefix).join("\n");
+		mdReplace(g, range, text, 0, text.length);
+	}
+	function mdDropdown(g, button, items) {
+		const t = g.active, rect = button.getBoundingClientRect();
+		menu(rect.left, rect.bottom, items.map(([label, run]) => ({ label, run: () => { if (g.active === t && mdEditable(g)) { run(); g.editor.focus(); } } })));
+		const dropdown = document.querySelector(".cv-menu");
+		dropdown.classList.add("md-tools-menu");
+		for (const item of dropdown.querySelectorAll("button")) { item.title = item.textContent; item.setAttribute("aria-label", item.textContent); }
+	}
+	function mdSnippet(g, key) {
+		const model = g.editor.getModel(), selection = g.editor.getSelection();
+		const inside = mdTools.isMathPosition(model.getValue(), model.getOffsetAt(selection.getStartPosition()));
+		let snippet = mdTools.MATH_TEMPLATES[key].replace(/\\/g, "\\\\");
+		if (!inside) snippet = "\\$" + snippet.replace(/\$0$/, "") + "\\$$0";
+		g.editor.focus();
+		g.editor.pushUndoStop();
+		g.editor.getContribution("snippetController2").insert(snippet);
+		g.editor.pushUndoStop();
+	}
+	function mdAction(g, action, button) {
+		if (!mdEditable(g)) return;
+		const editor = g.editor, model = editor.getModel(), range = editor.getSelection(), selected = model.getValueInRange(range);
+		const wrappers = { bold: "**", italic: "*", strike: "~~", inline: "`" };
+		if (wrappers[action]) return mdWrap(g, wrappers[action]);
+		const prefixes = { bullet: "- ", number: "1. ", check: "- [ ] ", quote: "> " };
+		if (prefixes[action]) return mdPrefix(g, prefixes[action]);
+		if (action === "heading") return mdDropdown(g, button, [1, 2, 3].map((level) => [tr("標題 {level}", { level }), () => mdPrefix(g, "#".repeat(level) + " ")]));
+		if (action === "fence") {
+			const ticks = "`".repeat(Math.max(3, ...[...selected.matchAll(/`+/g)].map((match) => match[0].length + 1)));
+			const before = (range.startColumn > 1 ? "\n" : "") + ticks + "\n";
+			return mdReplace(g, range, before + selected + "\n" + ticks + "\n", before.length, before.length + selected.length);
+		}
+		if (action === "link") {
+			const label = selected || tr("連結文字"), url = tr("網址");
+			return mdReplace(g, range, `[${label}](${url})`, label.length + 3, label.length + 3 + url.length);
+		}
+		if (action === "math") {
+			const labels = { fraction: tr("分數"), sqrt: tr("平方根"), power: tr("上標"), subscript: tr("下標"), sum: tr("加總"), integral: tr("積分"), limit: tr("極限"), matrix: tr("矩陣"), aligned: tr("多行對齊"), alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", theta: "θ", lambda: "λ", mu: "μ", pi: "π", sigma: "σ", phi: "φ", omega: "ω" };
+			return mdDropdown(g, button, [
+				[tr("行內公式"), () => mdWrap(g, "$")],
+				[tr("獨立公式"), () => mdReplace(g, range, `\n$$\n${selected}\n$$\n`, 4, 4 + selected.length)],
+				...Object.keys(mdTools.MATH_TEMPLATES).map((key) => [labels[key], () => mdSnippet(g, key)]),
+			]);
+		}
+		if (action === "diagram") return mdDropdown(g, button, Object.keys(mdTools.MERMAID_TEMPLATES).map((key) => {
+			const labels = { flowchart: tr("流程圖"), sequence: tr("循序圖"), gantt: tr("甘特圖"), pie: tr("圓餅圖"), class: tr("類別圖") };
+			return [labels[key], () => mdReplace(g, range, `\n\x60\x60\x60mermaid\n${mdTools.MERMAID_TEMPLATES[key]}\n\x60\x60\x60\n`)];
+		}));
+		if (action === "table") {
+			const t = g.active;
+			dialog({ title: tr("插入表格"), html: `<label class="field">${esc(tr("欄數"))}<input data-cols type="number" min="1" max="10" value="3"></label><label class="field">${esc(tr("列數（含標題）"))}<input data-rows type="number" min="1" max="30" value="3"></label>`, buttons: [{ label: tr("插入"), primary: true, onClick: (wrap) => {
+				if (g.active === t && mdEditable(g)) mdReplace(g, range, `\n${mdTools.makeTable(wrap.querySelector("[data-cols]").value, wrap.querySelector("[data-rows]").value)}\n`);
+			} }] });
+			return;
+		}
+		if (action === "image") {
+			const t = g.active, input = el("input");
+			input.type = "file"; input.accept = "image/*"; input.multiple = true;
+			input.onchange = () => { if (g.active === t && mdEditable(g)) mdUploadImages(g, t, [...input.files]); };
+			input.click();
+		}
+		editor.focus();
+	}
+	async function mdUploadImages(g, t, files, pasted = false) {
+		if (!mdEditable(g, t) || !files.length) return;
+		const model = t.model, project = cp();
+		const anchors = model.deltaDecorations([], [{ range: g.editor.getSelection(), options: { stickiness: cm.monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges } }]);
+		toast(tr("圖片上傳中…"));
+		try {
+			for (const file of files) {
+				if (!file.type.startsWith("image/")) continue;
+				const now = Date.now(), original = pasted ? `paste-${now}.png` : file.name;
+				const safe = mdTools.safeImageName(pasted ? "paste.png" : original, now);
+				const dot = safe.lastIndexOf("."), stem = dot < 0 ? safe : safe.slice(0, dot), ext = dot < 0 ? "" : safe.slice(dot);
+				let filename = safe, result;
+				for (let attempt = 1; ; attempt++) {
+					const path = `${dirOf(t.path) ? dirOf(t.path) + "/" : ""}images/${filename}`;
+					result = await uploadOne(file, path, false, () => {}, project);
+					if (result.status !== 409 || !result.data?.exists) break;
+					filename = `${stem}-${attempt + 1}${ext}`;
+				}
+				if (result.status < 200 || result.status >= 300) throw new Error(result.data?.error || tr("圖片上傳失敗"));
+				if (model.isDisposed() || t.readonly || t.conflict) break;
+				const range = model.getDecorationRange(anchors[0]);
+				if (!range) break;
+				const alt = original.replace(/\.[^.]+$/, "").replace(/[\\[\]<>`*_]/g, "\\$&").replace(/[\r\n]/g, " ");
+				const text = `![${alt}](images/${filename})\n`;
+				if (g.active === t && g.editor.getModel() === model) mdReplace(g, range, text);
+				else {
+					model.pushStackElement();
+					model.pushEditOperations(null, [{ range, text }], () => null);
+					model.pushStackElement();
+				}
+				const end = model.getPositionAt(model.getOffsetAt(range.getStartPosition()) + text.length);
+				model.deltaDecorations(anchors, [{ range: new cm.monaco.Range(end.lineNumber, end.column, end.lineNumber, end.column), options: { stickiness: cm.monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges } }]).forEach((id, i) => { anchors[i] = id; });
+			}
+			toast(tr("圖片上傳完成"));
+		} catch (e) { fail(e); }
+		finally { if (!model.isDisposed()) model.deltaDecorations(anchors, []); }
+	}
+	let mermaidLib = null, mermaidId = 0;
+	async function renderMermaid(article, current) {
+		const blocks = [...article.querySelectorAll("pre > code.language-mermaid")];
+		if (!blocks.length) return;
+		let mermaid;
+		try {
+			mermaidLib ||= import("https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs").catch((error) => { mermaidLib = null; throw error; });
+			mermaid = (await mermaidLib).default;
+		} catch (error) {
+			if (current()) for (const block of blocks) mermaidError(block, error);
+			return;
+		}
+		if (!current()) return;
+		const theme = document.documentElement.dataset.theme;
+		mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: theme === "dark" || theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
+		for (const block of blocks) {
+			if (!current()) return;
+			const id = `md-mermaid-${++mermaidId}`;
+			try {
+				const { svg } = await mermaid.render(id, block.textContent);
+				if (!current()) return;
+				const diagram = el("div", "md-diagram", cm.md.purify.sanitize(svg, { ADD_TAGS: ["foreignObject"] }));
+				block.parentNode.replaceWith(diagram);
+			} catch (error) {
+				document.getElementById(`d${id}`)?.remove();
+				if (current()) mermaidError(block, error);
+			}
+		}
+	}
+	function mermaidError(block, error) {
+		const message = el("div", "hint");
+		message.textContent = tr("圖表語法有誤:{error}", { error: error.message || String(error) });
+		block.parentNode.after(message);
+	}
 	// ---------- Markdown 預覽 ----------
 	/** 開預覽分頁:電腦放在右邊(沒有就分割出來),手機放在同一個群組 */
 	async function openPreview(rel, target = null, { quiet = false, pos = null } = {}) {
@@ -1362,10 +1554,17 @@
 		// 原始檔還開著就用最新內容(包含還沒存的修改)
 		const src = findTab(`file:${t.path}`);
 		if (src?.model && !src.model.isDisposed()) t.text = src.model.getValue();
-		const html = cm.md.purify.sanitize(cm.md.marked.parse(t.text || "", { gfm: true }));
+		const math = mdTools.protectMath(t.text || "");
+		const html = math.restore(cm.md.purify.sanitize(cm.md.marked.parse(math.text, { gfm: true })), true);
+		const version = t.mdRenderVersion = (t.mdRenderVersion || 0) + 1;
 		const box = t.pv && t.pv.parentNode === g.previewEl ? t.pv : pvNode(g, t);
 		const scroll = box.scrollTop;
 		box.innerHTML = `<article class="md-body">${html}</article>`;
+		const article = box.querySelector("article");
+		const current = () => t.mdRenderVersion === version && t.pv === box && article.parentNode === box && t.group.tabs.includes(t);
+		// 只排版已辨識的公式,避免將金額當成行內公式。
+		loadMath().then((math) => { if (current() && math) for (const formula of article.querySelectorAll(".md-math")) nbMath({ math }, formula); }).catch(() => {});
+		renderMermaid(article, current);
 		const restoreTo = t.pos?.top ?? scroll;
 		const base = dirOf(t.path);
 		const resolve = (href) => {
@@ -1387,7 +1586,7 @@
 		}
 		// 圖片載入會改變高度:先捲一次,圖片都載好再捲一次
 		t.restoring = true; box.scrollTop = restoreTo;
-		Promise.all([...box.querySelectorAll("img")].map((im) => (im.complete ? 0 : new Promise((ok) => { im.onload = im.onerror = ok; })))).then(() => { box.scrollTop = t.pos?.top ?? restoreTo; t.restoring = false; });
+		Promise.all([...box.querySelectorAll("img")].map((im) => (im.complete ? 0 : new Promise((ok) => { im.onload = im.onerror = ok; })))).then(() => { if (current()) { box.scrollTop = t.pos?.top ?? restoreTo; t.restoring = false; } });
 	}
 	// ---------- Jupyter Notebook(.ipynb):顯示、編輯、用 kernel 執行 ----------
 	async function openNotebook(rel, g = cm.activeGroup, { quiet = false, pos = null } = {}) {
@@ -2286,10 +2485,10 @@
 		for (const e of entries) await walk(e, "");
 		return out;
 	}
-	function uploadOne(file, path, overwrite, onProgress) {
+	function uploadOne(file, path, overwrite, onProgress, project = cp()) {
 		return new Promise((resolve) => {
 			const x = new XMLHttpRequest();
-			x.open("PUT", `/api/code/${cp()}/upload?path=${encodeURIComponent(path)}&overwrite=${overwrite ? 1 : 0}`);
+			x.open("PUT", `/api/code/${project}/upload?path=${encodeURIComponent(path)}&overwrite=${overwrite ? 1 : 0}`);
 			x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
 			x.onload = () => { let d = null; try { d = JSON.parse(x.responseText); } catch {} resolve({ status: x.status, data: d }); };
 			x.onerror = () => resolve({ status: 0, data: { error: tr("連線中斷") } });

@@ -569,6 +569,12 @@ textarea.nb-edit { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; m
 .cv-menu { position: fixed; z-index: 80; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 4px; min-width: 160px; }
 .cv-menu button { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; padding: 6px 10px; border: 0; background: none; color: var(--ink); border-radius: 6px; cursor: pointer; }
 .cv-menu button:hover { background: var(--chip); }
+.md-tools-menu { max-height: min(70vh, 480px); overflow-y: auto; }
+.md-diagram svg { max-width: 100%; height: auto; }
+@media (max-width: 800px) {
+	.cv-bar.md-toolbar { flex-wrap: nowrap; overflow-x: auto; }
+	.cv-bar.md-toolbar > * { flex-shrink: 0; white-space: nowrap; }
+}
 @media (max-width: 800px) {
 	/* 手機標題列:只留切換按鈕,不換行 */
 	body > header { gap: 6px; padding: 8px 10px; }
