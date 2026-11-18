@@ -1,6 +1,300 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "標題 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Heading %lld" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "標題 %lld" } }
+      }
+    },
+    "檔案超過 500 MB": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "File exceeds 500 MB" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "檔案超過 500 MB" } }
+      }
+    },
+    "粗體": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bold" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "粗體" } }
+      }
+    },
+    "斜體": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Italic" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "斜體" } }
+      }
+    },
+    "刪除線": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Strikeout" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "刪除線" } }
+      }
+    },
+    "行內程式碼": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Inline code" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "行內程式碼" } }
+      }
+    },
+    "項目清單": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bulleted list" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "項目清單" } }
+      }
+    },
+    "編號清單": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Numbered list" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "編號清單" } }
+      }
+    },
+    "核取清單": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Task list" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "核取清單" } }
+      }
+    },
+    "引用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Blockquote" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "引用" } }
+      }
+    },
+    "程式碼區塊": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Code block" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "程式碼區塊" } }
+      }
+    },
+    "連結": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Link" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "連結" } }
+      }
+    },
+    "數學公式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Math" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "數學公式" } }
+      }
+    },
+    "圖表": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Diagram" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圖表" } }
+      }
+    },
+    "表格": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Table" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "表格" } }
+      }
+    },
+    "插入圖片": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Insert images" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "插入圖片" } }
+      }
+    },
+    "連結文字": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Link text" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "連結文字" } }
+      }
+    },
+    "網址": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "URL" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "網址" } }
+      }
+    },
+    "分數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Fraction" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "分數" } }
+      }
+    },
+    "平方根": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Square root" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "平方根" } }
+      }
+    },
+    "上標": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Superscript" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "上標" } }
+      }
+    },
+    "下標": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Subscript" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "下標" } }
+      }
+    },
+    "加總": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sum" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "加總" } }
+      }
+    },
+    "積分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Integral" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "積分" } }
+      }
+    },
+    "極限": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Limit" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "極限" } }
+      }
+    },
+    "矩陣": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Matrix" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "矩陣" } }
+      }
+    },
+    "多行對齊": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Aligned equations" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "多行對齊" } }
+      }
+    },
+    "行內公式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Inline math" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "行內公式" } }
+      }
+    },
+    "獨立公式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Display math" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "獨立公式" } }
+      }
+    },
+    "流程圖": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Flowchart" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "流程圖" } }
+      }
+    },
+    "循序圖": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sequence diagram" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "循序圖" } }
+      }
+    },
+    "甘特圖": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Gantt chart" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "甘特圖" } }
+      }
+    },
+    "圓餅圖": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pie chart" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圓餅圖" } }
+      }
+    },
+    "類別圖": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Class diagram" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "類別圖" } }
+      }
+    },
+    "插入表格": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Insert table" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "插入表格" } }
+      }
+    },
+    "欄數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Columns" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "欄數" } }
+      }
+    },
+    "列數（含標題）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Rows (including header)" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "列數（含標題）" } }
+      }
+    },
+    "插入": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Insert" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "插入" } }
+      }
+    },
+    "圖片上傳中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Uploading images…" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圖片上傳中…" } }
+      }
+    },
+    "圖片上傳失敗": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Image upload failed" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圖片上傳失敗" } }
+      }
+    },
+    "圖片上傳完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Images uploaded" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圖片上傳完成" } }
+      }
+    },
+    "圖表語法有誤:{error}": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Invalid diagram syntax: {error}" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圖表語法有誤:{error}" } }
+      }
+    },
     "把這段整理成工作卡：\n\n": {
       "extractionState": "manual",
       "localizations": {

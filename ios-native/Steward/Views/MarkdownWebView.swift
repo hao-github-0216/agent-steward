@@ -220,6 +220,9 @@ extension MarkdownWebView {
         .md-body input[type=checkbox] { margin-right: 6px; }
         .md-body hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
         .md-body .math-display { display: block; overflow-x: auto; overflow-y: hidden; text-align: center; margin: .6em 0; }
+        .md-body .md-diagram { overflow-x: auto; margin: .6em 0; text-align: center; }
+        .md-body .md-diagram svg { max-width: 100%; height: auto; }
+        .md-body .md-diagram-error { color: var(--muted); }
         </style>
         <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
@@ -263,11 +266,59 @@ extension MarkdownWebView {
             renderer(t) { return mathSpan(t.text, t.display); } },
         ];
         const hasMath = (s) => /\\$|\\\\\\(|\\\\\\[/.test(s);
+        const mermaidErrorMessage = \(json(String(localized: "圖表語法有誤:{error}", bundle: AppLanguage.bundle)));
+        let mermaidLoad = null, renderVersion = 0;
+        function mermaidError(block, error) {
+          const message = document.createElement("div");
+          message.className = "md-diagram-error";
+          message.textContent = mermaidErrorMessage.replace("{error}", () => error.message || String(error));
+          block.parentNode.after(message);
+        }
+        // 只有 Mermaid 程式碼區塊才載入圖表程式;舊的非同步排版不能改動新內容。
+        async function renderMermaid(box, version, current) {
+          const blocks = [...box.querySelectorAll("pre > code.language-mermaid")];
+          if (!blocks.length) return;
+          let mermaid;
+          try {
+            mermaidLoad ||= import("https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs").catch((error) => { mermaidLoad = null; throw error; });
+            mermaid = (await mermaidLoad).default;
+            if (!current()) return;
+            mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
+          } catch (error) {
+            if (current()) for (const block of blocks) mermaidError(block, error);
+            return;
+          }
+          for (const [index, block] of blocks.entries()) {
+            if (!current()) return;
+            const id = `md-mermaid-${version}-${index}`;
+            try {
+              const { svg } = await mermaid.render(id, block.textContent);
+              if (!current()) return;
+              const diagram = document.createElement("div");
+              diagram.className = "md-diagram";
+              diagram.innerHTML = DOMPurify.sanitize(svg, { ADD_TAGS: ["foreignObject"] });
+              const image = diagram.querySelector("svg");
+              if (image) {
+                // 將節點文字設為圖表的無障礙標籤,供輔助功能讀取。
+                const labels = [...image.querySelectorAll("text, .nodeLabel, .edgeLabel")].map((el) => el.textContent.trim()).filter(Boolean);
+                image.setAttribute("role", "img");
+                if (labels.length) image.setAttribute("aria-label", [...new Set(labels)].join(" "));
+              }
+              block.parentNode.replaceWith(diagram);
+            } catch (error) {
+              document.getElementById(`d${id}`)?.remove();
+              if (current()) mermaidError(block, error);
+            }
+          }
+        }
         async function render(src, keepScroll) {
+          const version = ++renderVersion;
+          const current = () => renderVersion === version;
           if (!window.marked || !window.DOMPurify) { post({ type: "fallback" }); return; }
           try {
             const y = window.scrollY;
             const katex = hasMath(src) ? await loadKatex() : null;
+            if (!current()) return;
             const md = new marked.Marked({ gfm: true });
             if (hasMath(src)) md.use({ extensions: mathExt });
             const box = document.getElementById("md");
@@ -277,10 +328,11 @@ extension MarkdownWebView {
               if (katex) katex.render(tex, el, { displayMode: display, throwOnError: false, output: "html" });
               else el.textContent = display ? `$$${tex}$$` : `$${tex}$`;
             }
+            renderMermaid(box, version, current);
             // 外面的連結、圖片照常;捲回原本的位置
             if (keepScroll) window.scrollTo(0, y);
             post({ type: "ready" });
-          } catch (e) { post({ type: "fallback" }); }
+          } catch (e) { if (current()) post({ type: "fallback" }); }
         }
         // 點一下(不是點連結、勾選框、也沒有選字):切換全螢幕
         document.addEventListener("click", (e) => {

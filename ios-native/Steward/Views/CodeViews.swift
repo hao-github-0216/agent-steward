@@ -587,6 +587,7 @@ struct FileView: View {
     /// 是目前這一格(⌘S、⌘F 只給它)
     var isActive = true
     @StateObject private var markup = PDFMarkupSession()
+    @StateObject private var markdownEditor = MarkdownEditorController()
     @State private var pdfConflict: PdfConflict?
     @State private var pdfDocument: PDFDocument?
     @State private var file: CodeFile?
@@ -621,7 +622,7 @@ struct FileView: View {
     @State private var showHistory = false
 
     private var ext: String { (path as NSString).pathExtension.lowercased() }
-    private var isMarkdown: Bool { ["md", "markdown"].contains(ext) }
+    private var isMarkdown: Bool { ["md", "markdown", "mdx"].contains(ext) }
     private var isNotebook: Bool { ext == "ipynb" }
 
     var body: some View {
@@ -761,13 +762,20 @@ struct FileView: View {
         switch f.kind {
         case "text":
             if editing {
-                TextEditor(text: $draft)
-                    .font(.system(.footnote, design: .monospaced))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 8)
-                    .findNavigator(isPresented: $finding)
+                if isMarkdown {
+                    VStack(spacing: 0) {
+                        MarkdownToolbar(controller: markdownEditor, project: project.id, path: path) { saveError = $0 }
+                        MarkdownEditor(text: $draft, finding: $finding, controller: markdownEditor)
+                    }
+                } else {
+                    TextEditor(text: $draft)
+                        .font(.system(.footnote, design: .monospaced))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 8)
+                        .findNavigator(isPresented: $finding)
+                }
             } else if isNotebook && showPreview, let d = (f.content ?? "").data(using: .utf8) {
                 NotebookView(json: d).modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
             } else if isMarkdown && showPreview {
