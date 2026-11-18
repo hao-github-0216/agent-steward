@@ -14,10 +14,11 @@ final class PDFAnnotateTests: XCTestCase {
         _ = try request("pdf", method: "PUT", body: request(path: "hw.pdf"), hash: metadata["hash"] as? String)
     }
 
-    private func launch(_ path: String) -> XCUIApplication {
+    private func launch(_ path: String, testEdit: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES", "-serverURL", server,
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES", "-isDemo", "NO", "-serverURL", server,
                                "-resetCodeLayout", "YES", "-openURL", "agentsteward://project/\(project)/code?file=\(path)"]
+        if testEdit { app.launchArguments += ["-pdfMarkupTestEdit", "YES"] }
         app.launch()
         XCTAssertTrue(element(app, "pdf-view").waitForExistence(timeout: 30))
         return app
@@ -54,204 +55,86 @@ final class PDFAnnotateTests: XCTestCase {
         return try XCTUnwrap(result).get()
     }
 
-    private func count(_ app: XCUIApplication, equals value: Int) {
-        let count = element(app, "pdf-annotation-count")
-        let predicate = NSPredicate(format: "label == %@", "標註 \(value) 個")
-        XCTAssertTrue(expectation(for: predicate, evaluatedWith: count).expectationDescription.count > 0)
-        waitForExpectations(timeout: 30)
+    private func inkAnnotations(_ data: Data) throws -> [PDFAnnotation] {
+        let document = try XCTUnwrap(PDFDocument(data: data))
+        return try XCTUnwrap(document.page(at: 0)).annotations.filter { $0.type == "Ink" }
     }
 
-    private func reveal(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-        let target = element(app, identifier)
-        let toolbar = element(app, "pdf-tools")
-        for _ in 0..<4 {
-            if target.exists {
-                let frame = target.frame
-                let visible = toolbar.frame.intersection(app.frame)
-                if !frame.isEmpty, visible.contains(CGPoint(x: frame.midX, y: frame.midY)) { return target }
-            }
-            let origin = toolbar.coordinate(withNormalizedOffset: .zero)
-            origin.withOffset(CGVector(dx: toolbar.frame.width * 0.65, dy: 25))
-                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: toolbar.frame.width * 0.1, dy: 25)))
-        }
-        XCTAssertTrue(target.exists && toolbar.frame.intersects(target.frame))
-        return target
+    private func waitForSave(_ app: XCUIApplication) {
+        XCTAssertTrue(app.staticTexts["已儲存"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(element(app, "pdf-markup").isEnabled)
+        XCTAssertFalse(element(app, "pdf-markup-saving").exists)
+        XCTAssertTrue(element(app, "pdf-view").exists)
     }
 
-    private func draw(_ app: XCUIApplication) {
-        reveal(app, "pdf-tool-ink").tap()
-        let pdf = element(app, "pdf-view")
-        pdf.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3))
-            .press(forDuration: 0.05, thenDragTo: pdf.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.4)))
-    }
-
-    private func selectFirstLine(_ app: XCUIApplication) {
-        let pdf = element(app, "pdf-view")
-        // 測試 PDF 的第一行距頁面頂端 72pt，左右各留 48pt。
-        let scale = (pdf.frame.width - 16) / 612
-        let start = pdf.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 8 + 50 * scale, dy: 8 + 70 * scale))
-        start.press(forDuration: 1.1, thenDragTo: start.withOffset(CGVector(dx: 220 * scale, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
-    }
-
-    func testSelectionMenuAndUndo() throws {
-        let initial = try XCTUnwrap(PDFDocument(data: request())?.page(at: 0)?.annotations.count)
+    func testMarkupButtonOpensQuickLook() throws {
+        let before = try request()
         let app = launch("notes.pdf")
         defer { app.terminate() }
-        selectFirstLine(app)
-        let underline = app.menuItems["底線"].firstMatch
-        XCTAssertTrue(underline.waitForExistence(timeout: 5))
-        underline.tap()
-        count(app, equals: initial + 1)
-        shot(app, "pdf-07-selection-menu")
-        element(app, "pdf-annotate").tap()
-        reveal(app, "pdf-undo").tap()
-        count(app, equals: initial)
+        element(app, "pdf-markup").tap()
+        let done = app.navigationBars.buttons.matching(NSPredicate(format: "label IN %@", ["完成", "Done"])).firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 30))
+        let markup = element(app, "QLOverlayMarkupButtonAccessibilityIdentifier")
+        XCTAssertTrue(markup.waitForExistence(timeout: 30))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true AND enabled == true"), object: markup)
+        let result = XCTWaiter.wait(for: [ready], timeout: 30)
+        shot(app, "pdf-01-system-markup")
+        XCTAssertEqual(result, .completed, app.debugDescription)
+        done.tap()
+        let dismissed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: done)
+        wait(for: [dismissed], timeout: 15)
+        XCTAssertTrue(element(app, "pdf-view").exists)
+        XCTAssertTrue(element(app, "pdf-markup").isHittable)
+        XCTAssertEqual(try request(), before)
     }
 
-    func testConflictKeepsTabOpen() throws {
+    func testMarkupSaveWritesBack() throws {
         let before = try request()
+        let initial = try inkAnnotations(before).count
+        let app = launch("notes.pdf", testEdit: true)
+        defer { app.terminate() }
+        element(app, "pdf-markup").tap()
+        waitForSave(app)
+        let after = try request()
+        XCTAssertNotEqual(after, before)
+        let annotations = try inkAnnotations(after)
+        XCTAssertEqual(annotations.count, initial + 1)
+        XCTAssertEqual(annotations.last?.bounds, CGRect(x: 100, y: 100, width: 100, height: 50))
+        shot(app, "pdf-02-saved")
+    }
+
+    func testMarkupConflict() throws {
+        let before = try request()
+        let initial = try inkAnnotations(before).count
         let metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: request("file")) as? [String: Any])
         let hash = try XCTUnwrap(metadata["hash"] as? String)
-        let app = launch("notes.pdf")
+        let app = launch("notes.pdf", testEdit: true)
         defer { app.terminate() }
-        element(app, "pdf-annotate").tap()
-        draw(app)
+        let markup = element(app, "pdf-markup")
+        XCTAssertTrue(markup.isHittable)
         let diskDocument = try XCTUnwrap(PDFDocument(data: before))
         var attributes = diskDocument.documentAttributes ?? [:]
         attributes[PDFDocumentAttribute.subjectAttribute] = UUID().uuidString
         diskDocument.documentAttributes = attributes
         _ = try request("pdf", method: "PUT", body: XCTUnwrap(diskDocument.dataRepresentation()), hash: hash)
         let changedOnDisk = try request()
-        app.buttons["關閉 notes.pdf"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["存檔再關閉"].waitForExistence(timeout: 5))
-        app.buttons["存檔再關閉"].tap()
-        XCTAssertTrue(app.alerts["沒存成"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.alerts.staticTexts["檔案在你開啟之後被改過了"].exists)
-        app.alerts.buttons["好"].tap()
-        XCTAssertTrue(element(app, "tab-file:notes.pdf").exists)
+        markup.tap()
+        XCTAssertTrue(app.buttons["蓋過去"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertEqual(try request(), changedOnDisk)
-        reveal(app, "pdf-save").tap()
-        XCTAssertTrue(app.buttons["蓋過去"].waitForExistence(timeout: 10))
-        shot(app, "pdf-08-conflict")
-        app.buttons["蓋過去"].tap()
-        let saved = expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: element(app, "pdf-save"))
-        wait(for: [saved], timeout: 15)
-        XCTAssertNotEqual(try request(), changedOnDisk)
-    }
-
-    func testAnnotateAndSave() throws {
-        let before = try request()
-        let initial = try XCTUnwrap(PDFDocument(data: before)?.page(at: 0)?.annotations.count)
-        let app = launch("notes.pdf")
-        defer { app.terminate() }
-        element(app, "pdf-annotate").tap()
-        reveal(app, "pdf-tool-highlight").tap()
-        let pdf = element(app, "pdf-view")
-        selectFirstLine(app)
-        count(app, equals: initial + 1)
-        shot(app, "pdf-01-highlight")
-        draw(app)
-        count(app, equals: initial + 2)
-        shot(app, "pdf-02-ink")
-        reveal(app, "pdf-tool-freeText").tap()
-        pdf.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5)).tap()
-        let field = app.alerts.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.tap()
-        field.typeText("中文筆記")
-        app.alerts.buttons["加上"].tap()
-        let dismissed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.alerts["輸入標註文字"])
-        wait(for: [dismissed], timeout: 30)
-        count(app, equals: initial + 3)
-        shot(app, "pdf-03-chinese-text")
-        reveal(app, "pdf-save").tap()
-        XCTAssertTrue(expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: element(app, "pdf-save")).expectationDescription.count > 0)
-        waitForExpectations(timeout: 15)
+        shot(app, "pdf-03-conflict")
+        app.buttons["蓋過去"].firstMatch.tap()
+        waitForSave(app)
         let after = try request()
-        XCTAssertNotEqual(before, after)
-        let document = try XCTUnwrap(PDFDocument(data: after))
-        let annotations = try XCTUnwrap(document.page(at: 0)).annotations
-        XCTAssertEqual(annotations.count, initial + 3)
-        XCTAssertTrue(annotations.contains { $0.type == "Highlight" })
-        XCTAssertTrue(annotations.contains { $0.type == "Ink" })
-        XCTAssertTrue(annotations.contains { $0.type == "FreeText" && $0.contents == "中文筆記" })
-        XCTAssertTrue(annotations.filter { $0.userName == "Agent Steward" }.allSatisfy { $0.modificationDate != nil })
-        shot(app, "pdf-04-saved")
-    }
-
-    func testEraseUnderOldInk() throws {
-        let metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: request("file")) as? [String: Any])
-        let hash = try XCTUnwrap(metadata["hash"] as? String)
-        _ = try request("pdf", method: "PUT", body: request(path: "ink-old.pdf"), hash: hash)
-        let app = launch("notes.pdf")
-        defer { app.terminate() }
-        element(app, "pdf-annotate").tap()
-        count(app, equals: 2)
-        reveal(app, "pdf-tool-eraser").tap()
-        let pdf = element(app, "pdf-view")
-        let scale = (pdf.frame.width - 16) / 612
-        let firstLine = pdf.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: 8 + 160 * scale, dy: 8 + 70 * scale))
-        firstLine.tap()
-        count(app, equals: 1)
-        reveal(app, "pdf-undo").tap()
-        count(app, equals: 2)
-        firstLine.tap()
-        count(app, equals: 1)
-        reveal(app, "pdf-save").tap()
-        let saved = expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: element(app, "pdf-save"))
-        wait(for: [saved], timeout: 15)
-        let document = try XCTUnwrap(PDFDocument(data: request()))
-        let annotations = try XCTUnwrap(document.page(at: 0)).annotations
-        XCTAssertEqual(annotations.count, 1)
-        XCTAssertEqual(annotations.first?.type, "Ink")
-        count(app, equals: 1)
+        XCTAssertNotEqual(after, changedOnDisk)
+        XCTAssertEqual(try inkAnnotations(after).count, initial + 1)
     }
 
     func testLaTeXPDFIsReadOnly() {
         let app = launch("hw.pdf")
         defer { app.terminate() }
         XCTAssertTrue(element(app, "pdf-latex-notice").waitForExistence(timeout: 10))
-        XCTAssertFalse(element(app, "pdf-annotate").exists)
-        shot(app, "pdf-05-latex-readonly")
-    }
-
-    func testUnsavedSwitchAndClose() throws {
-        let before = try request()
-        let initial = try XCTUnwrap(PDFDocument(data: before)?.page(at: 0)?.annotations.count)
-        let app = launch("hw.pdf")
-        defer { app.terminate() }
-        let notes = element(app, "row-notes.pdf")
-        if !notes.isHittable { app.navigationBars.buttons["BackButton"].firstMatch.tap() }
-        XCTAssertTrue(notes.waitForExistence(timeout: 10))
-        notes.tap()
-        XCTAssertTrue(element(app, "pdf-annotate").waitForExistence(timeout: 10))
-        element(app, "pdf-annotate").tap()
-        draw(app)
-        count(app, equals: initial + 1)
-        element(app, "tab-file:hw.pdf").tap()
-        XCTAssertTrue(app.buttons["存檔再切換"].waitForExistence(timeout: 10))
-        if app.buttons["取消"].firstMatch.exists { app.buttons["取消"].firstMatch.tap() }
-        else { element(app, "PopoverDismissRegion").tap() }
-        XCTAssertTrue(element(app, "pdf-annotate").exists)
-        count(app, equals: initial + 1)
-        element(app, "tab-file:hw.pdf").tap()
-        XCTAssertTrue(app.buttons["不存,直接切換"].waitForExistence(timeout: 10))
-        app.buttons["不存,直接切換"].tap()
-        XCTAssertTrue(element(app, "pdf-latex-notice").waitForExistence(timeout: 10))
-        XCTAssertEqual(try request(), before)
-        element(app, "tab-file:notes.pdf").tap()
-        XCTAssertTrue(element(app, "pdf-annotate").waitForExistence(timeout: 10))
-        count(app, equals: initial)
-        element(app, "pdf-annotate").tap()
-        draw(app)
-        count(app, equals: initial + 1)
-        app.buttons["關閉 notes.pdf"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["存檔再關閉"].waitForExistence(timeout: 5))
-        app.buttons["存檔再關閉"].tap()
-        XCTAssertTrue(expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element(app, "tab-file:notes.pdf")).expectationDescription.count > 0)
-        waitForExpectations(timeout: 15)
-        XCTAssertNotEqual(try request(), before)
-        shot(app, "pdf-06-save-and-close")
+        XCTAssertTrue(app.staticTexts["這是 LaTeX 產生的 PDF,請改 .tex"].exists)
+        XCTAssertFalse(element(app, "pdf-markup").exists)
+        shot(app, "pdf-04-latex-readonly")
     }
 }

@@ -586,10 +586,9 @@ struct FileView: View {
     var embedded = false
     /// 是目前這一格(⌘S、⌘F 只給它)
     var isActive = true
-    @StateObject var annotator: PDFAnnotator
+    @StateObject private var markup = PDFMarkupSession()
     @State private var pdfConflict: PdfConflict?
-    @State private var pdfText = ""
-    @State private var showPDFText = false
+    @State private var pdfDocument: PDFDocument?
     @State private var file: CodeFile?
     /// 開始編輯時檔案的指紋(存檔時偵測別人改過)
     @State private var baseHash: String?
@@ -652,11 +651,6 @@ struct FileView: View {
                 .toolbar { toolbar }
                 .safeAreaInset(edge: .top, spacing: 0) { if !fullScreen { topBars } }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if file?.kind == "pdf", annotator.active {
-                PDFAnnotationToolbar(annotator: annotator) { Task { await savePDF() } }
-            }
-        }
         // 全螢幕:導覽列、底下的分頁列收起來(狀態列在 AppShell 收;其他的列和按鈕看 model.isReaderFullScreen 自己收)
         .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .tabBar)
         .background {
@@ -672,7 +666,7 @@ struct FileView: View {
     private var fullScreen: Bool { model.readerFullScreen == readerKey }
     /// 看(不是編輯)的時候才能全螢幕:編輯中、選行、尋找時點一下不切換
     private var canFullScreen: Bool {
-        guard let f = file, !editing, !annotator.active, lineSel == nil, !finding else { return false }
+        guard let f = file, !editing, !markup.blocksReload, lineSel == nil, !finding else { return false }
         return ["text", "image", "pdf"].contains(f.kind)
     }
 
@@ -705,17 +699,6 @@ struct FileView: View {
             if let c = file?.content { model.code.texts[tabId] = c }
         }
         .onChange(of: findText) { findIndex = 0 }
-        .onChange(of: annotator.textPrompt) { _, prompt in
-            if prompt { pdfText = ""; showPDFText = true }
-        }
-        .onChange(of: showPDFText) { _, shown in
-            if !shown { Task { @MainActor in annotator.textPrompt = false } }
-        }
-        .onChange(of: annotator.hash) { _, hash in
-            guard file?.kind == "pdf" else { return }
-            file?.hash = hash
-            stamp = hash
-        }
         .onDisappear {
             if let tabId { model.code.texts[tabId] = nil }
             if fullScreen { model.readerFullScreen = nil }
@@ -732,13 +715,18 @@ struct FileView: View {
     private func dialogs(_ v: some View) -> some View {
         v
         .quickLookPreview($quickLookURL)
-        .alert("輸入標註文字", isPresented: $showPDFText) {
-            TextField("輸入標註文字", text: $pdfText)
-            Button("加上") {
-                let text = pdfText
-                Task { @MainActor in annotator.text = text; annotator.addText() }
+        .fullScreenCover(isPresented: Binding(get: { markup.previewURL != nil }, set: { if !$0 { markup.previewURL = nil } }), onDismiss: {
+            Task { await savePDF() }
+        }) {
+            if let url = markup.previewURL {
+                PDFMarkupPreview(url: url) { editedURL in
+                    do { try markup.update(from: editedURL) }
+                    catch { saveError = error.localizedDescription }
+                } onDismiss: {
+                    markup.previewURL = nil
+                }
+                .ignoresSafeArea()
             }
-            Button("取消", role: .cancel) {}
         }
         .confirmationDialog("檔案在你開啟之後被改過了", isPresented: Binding(get: { pdfConflict != nil }, set: { if !$0 { pdfConflict = nil } }), titleVisibility: .visible) {
             Button("重新載入", role: .destructive) { Task { await reloadPDF() } }
@@ -809,8 +797,8 @@ struct FileView: View {
                     .accessibilityAction(named: fullScreen ? String(localized: "結束全螢幕", bundle: AppLanguage.bundle) : String(localized: "全螢幕", bundle: AppLanguage.bundle)) { toggleFullScreen() }
             } else { ProgressView() }
         case "pdf":
-            if data != nil {
-                PDFKitView(annotator: annotator) { toggleFullScreen() }
+            if let pdfDocument {
+                PDFKitView(document: pdfDocument) { toggleFullScreen() }
                     .ignoresSafeArea(edges: fullScreen ? .all : .bottom)
                     .accessibilityAction(named: fullScreen ? String(localized: "結束全螢幕", bundle: AppLanguage.bundle) : String(localized: "全螢幕", bundle: AppLanguage.bundle)) { toggleFullScreen() }
             } else { ProgressView() }
@@ -968,18 +956,11 @@ struct FileView: View {
             }
             if let o = model.codeOpenLines, o.path == path { model.codeOpenLines = nil; if f.kind == "text", f.truncated == nil { lineSel = o.lines; showPreview = false } }
             if let o = model.codeOpenFind, o.path == path { model.codeOpenFind = nil; if f.kind == "text" { findText = o.text; finding = true; showPreview = false } }
-            if f.kind == "pdf" {
-                annotator.configure(api: api, project: project.id, path: path)
-                if annotator.document == nil {
-                    let raw = try await api.rawFile(project: project.id, path: path)
-                    data = raw
-                    annotator.load(data: raw, hash: f.hash, editable: f.fromTex != true)
-                } else {
-                    data = Data()
-                    file?.hash = annotator.hash
-                    stamp = annotator.hash
-                }
-            } else if f.kind == "image" { data = try await api.rawFile(project: project.id, path: path) }
+            if f.kind == "pdf" || f.kind == "image" {
+                let raw = try await api.rawFile(project: project.id, path: path)
+                data = raw
+                if f.kind == "pdf" { pdfDocument = PDFDocument(data: raw) }
+            }
             // Office 檔第一次打開時自動用 Quick Look 預覽(只一次;之後用按鈕)
             if f.kind == "office", !quickLookedOnce, tabId.map({ !model.code.quickLooked.contains($0) }) ?? true {
                 quickLookedOnce = true
@@ -1009,8 +990,8 @@ struct FileView: View {
         guard !editing else { return }
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled, !editing, !annotator.dirty, !annotator.saving, model.mode == .code, let api = model.api, let f = file, ["text", "image", "pdf", "office"].contains(f.kind) else { continue }
-            guard let st = try? await api.stamps(project: project.id, paths: [path])[path], !editing, !annotator.dirty, !annotator.saving else { continue }
+            guard !Task.isCancelled, !editing, !markup.blocksReload, model.mode == .code, let api = model.api, let f = file, ["text", "image", "pdf", "office"].contains(f.kind) else { continue }
+            guard let st = try? await api.stamps(project: project.id, paths: [path])[path], !editing, !markup.blocksReload else { continue }
             if st.gone == true { gone = true; continue }
             gone = false
             guard let h = st.hash else { continue }
@@ -1022,12 +1003,12 @@ struct FileView: View {
         guard let api = model.api else { return }
         do {
             let f = try await api.readFile(project: project.id, path: path, more: more)
-            guard !editing, !annotator.dirty, !annotator.saving else { return }
+            guard !editing, !markup.blocksReload else { return }
             if f.kind == "image" || f.kind == "pdf" {
                 let raw = try await api.rawFile(project: project.id, path: path)
-                guard !editing, !annotator.dirty, !annotator.saving else { return }
+                guard !editing, !markup.blocksReload else { return }
                 data = raw
-                if f.kind == "pdf" { annotator.load(data: raw, hash: f.hash, editable: f.fromTex != true) }
+                if f.kind == "pdf" { pdfDocument = PDFDocument(data: raw) }
             }
             file = f
             if let h = f.hash { stamp = h } else if let h = try? await api.stamps(project: project.id, paths: [path])[path]?.hash { stamp = h }
@@ -1035,12 +1016,30 @@ struct FileView: View {
         } catch {}
     }
 
-    private func savePDF(force: Bool = false) async {
+    private func beginPDFMarkup() {
+        guard file?.fromTex != true, let data, !markup.saving else { return }
+        if markup.editedData != nil {
+            Task { await savePDF() }
+            return
+        }
         do {
-            try await annotator.save(force: force)
-            file?.hash = annotator.hash
-            stamp = annotator.hash
+            try markup.begin(data: data, path: path, hash: file?.hash)
+            if markup.previewURL == nil { Task { await savePDF() } }
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+
+    private func savePDF(force: Bool = false) async {
+        guard let api = model.api else { return }
+        do {
+            guard let saved = try await markup.save(api: api, project: project.id, path: path, force: force) else { return }
+            file?.hash = saved.hash
+            stamp = saved.hash
+            data = saved.data
+            pdfDocument = PDFDocument(data: saved.data)
             model.code.gitChanged += 1
+            flash(String(localized: "已儲存", bundle: AppLanguage.bundle))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch let conflict as PdfConflict {
             pdfConflict = conflict
@@ -1054,11 +1053,11 @@ struct FileView: View {
         do {
             let f = try await api.readFile(project: project.id, path: path)
             let raw = try await api.rawFile(project: project.id, path: path)
-            annotator.discard()
-            annotator.load(data: raw, hash: f.hash, editable: f.fromTex != true)
+            markup.discard()
             file = f
             stamp = f.hash
             data = raw
+            pdfDocument = PDFDocument(data: raw)
         } catch {
             saveError = error.localizedDescription
         }
@@ -1093,17 +1092,10 @@ struct FileView: View {
                         Text("這是 LaTeX 產生的 PDF,請改 .tex").font(.caption).foregroundStyle(.secondary)
                             .accessibilityIdentifier("pdf-latex-notice")
                     } else {
-                        Button {
-                            if fullScreen { model.readerFullScreen = nil }
-                            annotator.active.toggle()
-                        } label: { Label("標註", systemImage: "pencil.tip.crop.circle") }
-                        .accessibilityIdentifier("pdf-annotate")
-                        .disabled(annotator.document == nil || annotator.saving)
-                        Text("標註 \(annotator.annotationCount) 個").font(.caption).foregroundStyle(.secondary)
-                            .accessibilityIdentifier("pdf-annotation-count")
-                        if annotator.dirty && !annotator.active {
-                            Button("存檔") { Task { await savePDF() } }.disabled(annotator.saving)
-                        }
+                        Button(action: beginPDFMarkup) { Label("標示", systemImage: "pencil.tip.crop.circle") }
+                            .accessibilityIdentifier("pdf-markup")
+                            .disabled(pdfDocument == nil || markup.previewURL != nil || markup.saving)
+                        if markup.saving { ProgressView().accessibilityIdentifier("pdf-markup-saving") }
                     }
                     Spacer(minLength: 0)
                 }
@@ -1424,7 +1416,7 @@ final class ImageZoomView: UIScrollView, UIScrollViewDelegate {
 /// PDF:最小只能縮到最寬的那一頁剛好塞滿寬度(不會無限縮小);點一下切換全螢幕
 /// (等雙擊放大沒成立才算;點到連結、有選取文字時照 PDF 原本的行為)
 struct PDFKitView: UIViewRepresentable {
-    @ObservedObject var annotator: PDFAnnotator
+    let document: PDFDocument
     var onTap: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -1434,7 +1426,7 @@ struct PDFKitView: UIViewRepresentable {
         v.displayMode = .singlePageContinuous
         v.displayDirection = .vertical
         v.autoScales = false
-        annotator.attach(to: v)
+        v.document = document
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))
         tap.delegate = context.coordinator
         v.addGestureRecognizer(tap)
@@ -1445,13 +1437,13 @@ struct PDFKitView: UIViewRepresentable {
 
     func updateUIView(_ v: FitPDFView, context: Context) {
         context.coordinator.onTap = onTap
-        annotator.attach(to: v)
-        v.configureAnnotationGestures()
+        if v.document !== document {
+            let index = v.currentPage.flatMap { v.document?.index(for: $0) } ?? 0
+            v.document = document
+            v.layoutIfNeeded()
+            if let page = document.page(at: min(index, document.pageCount - 1)) { v.go(to: page) }
+        }
         context.coordinator.waitForDoubleTaps()
-    }
-
-    static func dismantleUIView(_ v: FitPDFView, coordinator: Coordinator) {
-        v.annotator?.cancelInk()
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
@@ -1460,11 +1452,7 @@ struct PDFKitView: UIViewRepresentable {
         var onTap: () -> Void = {}
         private var waited = Set<ObjectIdentifier>()
 
-        @objc func tapped(_ gesture: UITapGestureRecognizer) {
-            if let view = pdfView as? FitPDFView, let annotator = view.annotator, annotator.active {
-                annotator.tap(at: gesture.location(in: view))
-            } else { onTap() }
-        }
+        @objc func tapped() { onTap() }
 
         /// PDF 自己的雙擊(放大)要先失敗,單擊才算(PDF 內部的手勢是之後才建的,每次更新都補一次)
         func waitForDoubleTaps() {
@@ -1483,9 +1471,6 @@ struct PDFKitView: UIViewRepresentable {
         func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
             waitForDoubleTaps()
             guard let v = pdfView else { return true }
-            if let annotator = (v as? FitPDFView)?.annotator, annotator.active {
-                return !annotator.saving && (annotator.tool == .freeText || annotator.tool == .eraser)
-            }
             // 有選取的文字:這一下是取消選取
             if v.currentSelection != nil { return false }
             // 點到連結:照常開連結
@@ -1502,9 +1487,6 @@ struct PDFKitView: UIViewRepresentable {
 }
 
 final class FitPDFView: PDFView {
-    weak var annotator: PDFAnnotator?
-    private let inkOverlay = PDFInkOverlay()
-    private var inkPan: UIPanGestureRecognizer!
     /// 最寬的那一頁剛好塞滿寬度的縮放(最小只能縮到這裡)
     private var fitScale: CGFloat = 0
 
@@ -1512,64 +1494,19 @@ final class FitPDFView: PDFView {
         super.init(frame: frame)
         accessibilityIdentifier = "pdf-view"
         NotificationCenter.default.addObserver(self, selector: #selector(report), name: .PDFViewScaleChanged, object: self)
-        NotificationCenter.default.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: self)
-        inkOverlay.backgroundColor = .clear
-        inkOverlay.isAccessibilityElement = false
-        addSubview(inkOverlay)
-        inkPan = UIPanGestureRecognizer(target: inkOverlay, action: #selector(PDFInkOverlay.pan))
-        inkPan.maximumNumberOfTouches = 1
-        inkPan.delegate = inkOverlay
-        addGestureRecognizer(inkPan)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        inkOverlay.frame = bounds
-        bringSubviewToFront(inkOverlay)
-        configureAnnotationGestures()
         updateFit()
     }
 
-    @objc private func selectionChanged() { annotator?.selectionChanged() }
-
-    var hasActiveGesture: Bool {
-        func tracking(_ view: UIView) -> Bool {
-            (view.gestureRecognizers ?? []).contains { $0.state == .began || $0.state == .changed } || view.subviews.contains(where: tracking)
-        }
-        return tracking(self)
-    }
-
-    override func buildMenu(with builder: UIMenuBuilder) {
-        super.buildMenu(with: builder)
-        guard let annotator, annotator.editable, !annotator.saving else { return }
-        let actions = [PDFAnnotator.Tool.highlight, .underline, .strikeOut].map { tool in
-            UIAction(title: tool.title, image: UIImage(systemName: tool.symbol)) { [weak annotator] _ in
-                if let markup = tool.markup { annotator?.applySelection(markup) }
-            }
-        }
-        builder.insertSibling(UIMenu(options: .displayInline, children: actions), afterMenu: .standardEdit)
-    }
-
-    func configureAnnotationGestures() {
-        guard inkPan != nil else { return }
-        inkOverlay.annotator = annotator
-        let drawing = annotator?.active == true && annotator?.tool == .ink && annotator?.saving != true
-        inkPan.isEnabled = drawing
-        func walk(_ view: UIView) {
-            if let scroll = view as? UIScrollView { scroll.panGestureRecognizer.minimumNumberOfTouches = drawing ? 2 : 1 }
-            view.subviews.forEach(walk)
-        }
-        subviews.forEach(walk)
-    }
-
     /// 縮放(最寬的那頁塞滿寬度 = 100%):VoiceOver 和 UI 測試讀這個
-    @objc func report() {
+    @objc private func report() {
         guard fitScale > 0 else { return }
-        let zoom = String(localized: "縮放 \(Int((scaleFactor / fitScale * 100).rounded()))%", bundle: AppLanguage.bundle)
-        let count = String(localized: "標註 \(annotator?.annotationCount ?? 0) 個", bundle: AppLanguage.bundle)
-        accessibilityValue = "\(zoom), \(count)"
+        accessibilityValue = String(localized: "縮放 \(Int((scaleFactor / fitScale * 100).rounded()))%", bundle: AppLanguage.bundle)
     }
 
     private func updateFit() {

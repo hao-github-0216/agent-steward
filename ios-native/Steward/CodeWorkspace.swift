@@ -89,23 +89,6 @@ final class CodeWorkspace {
     /// Office 檔已經自動用 Quick Look 開過的分頁(切回來不要再自動開)
     @ObservationIgnored var quickLooked: Set<String> = []
     @ObservationIgnored private var draftSave: Task<Void, Never>?
-    @ObservationIgnored private var pdfAnnotators: [String: PDFAnnotator] = [:]
-    @ObservationIgnored var pendingTransition: (() -> Void)?
-
-    func pdfAnnotator(for tabId: String) -> PDFAnnotator {
-        if let annotator = pdfAnnotators[tabId] { return annotator }
-        let annotator = PDFAnnotator()
-        annotator.onDirtyChanged = { [weak self] isDirty in
-            if isDirty { self?.dirty.insert(tabId) } else { self?.dirty.remove(tabId) }
-        }
-        pdfAnnotators[tabId] = annotator
-        return annotator
-    }
-
-    func unsavedPDF(_ tabId: String) -> PDFAnnotator? {
-        guard let annotator = pdfAnnotators[tabId], annotator.dirty else { return nil }
-        return annotator
-    }
 
     // MARK: 換專案、存起來
 
@@ -114,9 +97,6 @@ final class CodeWorkspace {
         guard project != projectId else { return }
         draftSave?.cancel()
         persistDraftsNow()
-        pdfAnnotators = [:]
-        pendingClose = nil
-        pendingTransition = nil
         projectId = project
         // 啟動參數 -resetCodeLayout YES(UI 測試用):從空的版面開始
         let reset = UserDefaults.standard.bool(forKey: "resetCodeLayout")
@@ -193,7 +173,6 @@ final class CodeWorkspace {
             activate(tab.id, in: p)
             return
         }
-        if deferPDFTransition(to: tab.id, action: { [weak self] in self?.open(tab, in: paneId) }) { return }
         let target = paneId.flatMap { pane($0)?.id } ?? activePaneID
         mutatePane(target) {
             $0.tabs.append(tab)
@@ -204,17 +183,9 @@ final class CodeWorkspace {
     }
 
     func activate(_ tabId: String, in paneId: UUID) {
-        if deferPDFTransition(to: tabId, action: { [weak self] in self?.activate(tabId, in: paneId) }) { return }
         mutatePane(paneId) { $0.active = tabId }
         layout.activePane = paneId
         persist()
-    }
-
-    private func deferPDFTransition(to tabId: String, action: @escaping () -> Void) -> Bool {
-        guard let current = activeTab, current.id != tabId, unsavedPDF(current.id) != nil else { return false }
-        pendingTransition = action
-        pendingClose = current
-        return true
     }
 
     /// 點到某一格:那一格變成「目前這一格」(側欄點檔案會開在這裡)
@@ -231,8 +202,7 @@ final class CodeWorkspace {
 
     /// 關分頁:有沒存的修改先問,沒有就直接關
     func requestClose(_ tab: EditorTab) {
-        pendingTransition = nil
-        if dirty.contains(tab.id) || unsavedPDF(tab.id) != nil { pendingClose = tab } else { close(tab.id) }
+        if dirty.contains(tab.id) { pendingClose = tab } else { close(tab.id) }
     }
 
     /// 目前這一格的下一個/上一個分頁(⌃Tab / ⌃⇧Tab)
@@ -246,7 +216,6 @@ final class CodeWorkspace {
     func close(_ tabId: String) {
         guard let p = paneOf(tab: tabId) else { return }
         removeTab(tabId, from: p)
-        pdfAnnotators.removeValue(forKey: tabId)?.discard()
         setDraft(tabId, nil, dirty: false)
         texts[tabId] = nil
         normalize()

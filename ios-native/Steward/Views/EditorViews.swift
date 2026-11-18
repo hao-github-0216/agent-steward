@@ -245,7 +245,6 @@ struct DropHighlight: View {
 
 /// 分頁的內容:檔案或 Git 差異
 struct TabContent: View {
-    @Environment(AppModel.self) private var model
     let project: Project
     let tab: EditorTab
     var embedded: Bool
@@ -254,7 +253,7 @@ struct TabContent: View {
     var body: some View {
         switch tab.kind {
         case .file:
-            FileView(project: project, path: tab.path, tabId: tab.id, embedded: embedded, isActive: isActive, annotator: model.code.pdfAnnotator(for: tab.id))
+            FileView(project: project, path: tab.path, tabId: tab.id, embedded: embedded, isActive: isActive)
         case .diff:
             DiffView(project: project, path: tab.path, which: tab.which ?? "unstaged", commit: tab.commit, tabId: tab.id, embedded: embedded)
         }
@@ -378,15 +377,11 @@ struct CloseTabDialog: ViewModifier {
 
     func body(content: Content) -> some View {
         let ws = model.code
-        let transition = ws.pendingTransition
         content
             .confirmationDialog("「\(tab.name)」還沒存", isPresented: Binding(get: { ws.pendingClose?.id == tab.id }, set: { if !$0, ws.pendingClose?.id == tab.id { ws.pendingClose = nil } }), titleVisibility: .visible, presenting: ws.pendingClose) { tab in
-                Button(transition == nil ? String(localized: "存檔再關閉", bundle: AppLanguage.bundle) : String(localized: "存檔再切換", bundle: AppLanguage.bundle)) { Task { await saveAndClose(tab, transition: transition) } }
-                Button(transition == nil ? String(localized: "不存,直接關閉", bundle: AppLanguage.bundle) : String(localized: "不存,直接切換", bundle: AppLanguage.bundle), role: .destructive) {
-                    ws.unsavedPDF(tab.id)?.discard()
-                    finish(tab, transition: transition)
-                }
-                Button("取消", role: .cancel) { ws.pendingTransition = nil }
+                Button("存檔再關閉") { Task { await saveAndClose(tab) } }
+                Button("不存,直接關閉", role: .destructive) { ws.close(tab.id) }
+                Button("取消", role: .cancel) {}
             } message: { _ in
                 Text("不存的話,這次的修改會不見。")
             }
@@ -397,37 +392,20 @@ struct CloseTabDialog: ViewModifier {
             }
     }
 
-    private func saveAndClose(_ tab: EditorTab, transition: (() -> Void)?) async {
+    private func saveAndClose(_ tab: EditorTab) async {
         let ws = model.code
-        if let annotator = ws.unsavedPDF(tab.id) {
-            do {
-                try await annotator.save()
-                ws.gitChanged += 1
-                finish(tab, transition: transition)
-            } catch {
-                self.error = error.localizedDescription
-            }
-            return
-        }
         guard let api = model.api, let pid = model.currentProjectId, let d = ws.drafts[tab.id] else { ws.close(tab.id); return }
         do {
             _ = try await api.saveFile(project: pid, path: tab.path, content: d.text, baseHash: d.baseHash)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             ws.gitChanged += 1
-            finish(tab, transition: transition)
+            ws.close(tab.id)
         } catch is SaveConflict {
             if let p = ws.paneOf(tab: tab.id) { ws.activate(tab.id, in: p) }
             error = String(localized: "「\(tab.name)」在你開始改之後被別人改過了,先在分頁裡決定要覆蓋還是載入新版。", bundle: AppLanguage.bundle)
         } catch {
             self.error = error.localizedDescription
         }
-    }
-
-    private func finish(_ tab: EditorTab, transition: (() -> Void)?) {
-        let ws = model.code
-        ws.pendingTransition = nil
-        ws.pendingClose = nil
-        if let transition { transition() } else { ws.close(tab.id) }
     }
 }
 
