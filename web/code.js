@@ -804,74 +804,185 @@
 	const loadPdfjs = () => (pdfjsP ||= import(`${PDFJS}/pdf.min.mjs`).then((m) => { m.GlobalWorkerOptions.workerSrc = `${PDFJS}/pdf.worker.min.mjs`; return m; }).catch((e) => { pdfjsP = null; throw e; }));
 	let pdfLibP = null;
 	const loadPdfLib = () => (pdfLibP ||= import("https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js").catch((e) => { pdfLibP = null; throw e; }));
-	let hitAnnotation;
+	let hitAnnotation, pdfEdit;
 	const PDF_COLORS = [[1, 0.85, 0], [0.2, 0.8, 0.3], [0.2, 0.5, 1], [1, 0.4, 0.7]];
+	const PDF_FONT_SIZES = [8, 10, 12, 14, 16, 18, 24, 32, 48];
 	const PDF_FONT = '-apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 	const pdfTextTool = (t) => ["highlight", "underline", "strikeout"].includes(t.pdfTool);
-	const pdfDirectTool = (t) => t.pdfMode && !t.pdfSaving && ["freetext", "ink", "eraser"].includes(t.pdfTool);
+	const pdfDirectTool = (t) => t.pdfMode && !t.pdfSaving && ["select", "freetext", "ink", "eraser"].includes(t.pdfTool);
+	const pdfMovable = (item) => item && ["freetext", "ink"].includes(item.type);
+	const pdfRGB = (color) => `rgb(${color.map((c) => Math.round(c * 255)).join(",")})`;
 	function pdfAnnotState(t) {
-		t.pdfOps ||= [];
+		t.pdfOps ||= []; t.pdfHistory ||= [];
 		if (t.pdfColor == null) {
 			let color = 0;
 			try { color = Number(localStorage.getItem("steward.pdfAnnotColor")) || 0; } catch {}
 			t.pdfColor = Number.isInteger(color) && PDF_COLORS[color] ? color : 0;
 		}
+		if (t.pdfFontSize == null) {
+			let size = 12;
+			try { size = Number(localStorage.getItem("steward.pdfAnnotFontSize")) || 12; } catch {}
+			t.pdfFontSize = PDF_FONT_SIZES.includes(size) ? size : 12;
+		}
+	}
+	function pdfRect(item) {
+		if (item.rect) return item.rect;
+		const points = (item.paths || item.quads).flat(), xs = [], ys = [];
+		for (let i = 0; i < points.length; i += 2) { xs.push(points[i]); ys.push(points[i + 1]); }
+		const pad = 1 + (item.paths ? item.width ?? 1 : 0);
+		return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
+	}
+	function pdfPageItems(t, page) {
+		const ops = t.pdfOps.filter((op) => op.page === page);
+		const existing = (t.pdfPages?.[page]?.existing || []).filter((a) => !ops.some((op) => op.op === "remove" && op.ref === a.id)).map((a) => ({ ...a, ...ops.find((op) => op.op === "update" && op.ref === a.id), page }));
+		return [...ops.filter((op) => op.op === "add").reverse(), ...existing.reverse()];
+	}
+	function pdfSelected(t, selection = t.pdfSelected) {
+		return selection && pdfPageItems(t, selection.page).find((item) => item.id === selection.id);
+	}
+	function pdfSelect(t, item) {
+		if (t.pdfSelected?.id !== item?.id || t.pdfSelected?.page !== item?.page) t.pdfLastTap = null;
+		t.pdfSelected = item ? { page: item.page, id: item.id } : null;
+		t.pdfPreview = null; pdfDrawAnnots(t); pdfBar(t);
+	}
+	function pdfSnapshot(t) { t.pdfHistory.push(structuredClone(t.pdfOps)); }
+	function pdfUpdate(t, selection, changes) {
+		const item = pdfSelected(t, selection);
+		if (!item || !Object.entries(changes).some(([key, value]) => JSON.stringify(item[key]) !== JSON.stringify(value))) return false;
+		if (item.type === "freetext") {
+			const next = { ...item, ...changes };
+			changes = { ...changes, text: next.text, fontSize: next.fontSize, color: [...next.color], png: pdfTextPng(next) };
+		}
+		pdfSnapshot(t);
+		if (item.op === "add") Object.assign(t.pdfOps.find((op) => op.id === item.id), changes);
+		else {
+			let op = t.pdfOps.find((op) => op.op === "update" && op.page === item.page && op.ref === item.id);
+			if (!op) { op = { op: "update", page: item.page, ref: item.id }; t.pdfOps.push(op); }
+			Object.assign(op, changes);
+		}
+		pdfChanged(t); return true;
+	}
+	function pdfDelete(t, selection = t.pdfSelected) {
+		const item = pdfSelected(t, selection);
+		if (!item) return;
+		pdfSnapshot(t);
+		if (item.op === "add") t.pdfOps = t.pdfOps.filter((op) => op.id !== item.id);
+		else {
+			t.pdfOps = t.pdfOps.filter((op) => !(op.op === "update" && op.page === item.page && op.ref === item.id));
+			t.pdfOps.push({ op: "remove", page: item.page, ref: item.id });
+		}
+		t.pdfSelected = null; pdfChanged(t);
+	}
+	function pdfCancelDrag(t) { t.pdfDrag = null; t.pdfPreview = null; t.pdfDraft = null; t.pdfTap = null; }
+	let pdfMeasure;
+	function pdfTextLines(item) {
+		pdfMeasure ||= document.createElement("canvas").getContext("2d");
+		pdfMeasure.font = `${item.fontSize}px ${PDF_FONT}`;
+		return pdfEdit.wrapLines(item.text, Math.max(0, item.rect[2] - item.rect[0] - 4), (text) => pdfMeasure.measureText(text).width);
+	}
+	function pdfTextFit(item, p) {
+		const height = Math.min(p.h, Math.max(12, pdfTextLines(item).length * item.fontSize * 1.2 + 4));
+		const bottom = Math.max(0, item.rect[3] - height);
+		return [item.rect[0], bottom, item.rect[2], bottom + height];
+	}
+	function pdfTextPng(item) {
+		const r = item.rect, width = r[2] - r[0], height = r[3] - r[1];
+		const canvas = document.createElement("canvas");
+		canvas.width = Math.ceil(width * 4); canvas.height = Math.ceil(height * 4);
+		const ctx = canvas.getContext("2d"), color = pdfRGB(item.color);
+		ctx.scale(4, 4); ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(0, 0, width, height);
+		ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.strokeRect(0.25, 0.25, width - 0.5, height - 0.5);
+		ctx.font = `${item.fontSize}px ${PDF_FONT}`; ctx.fillStyle = color;
+		pdfTextLines(item).forEach((line, i) => ctx.fillText(line, 2, 2 + item.fontSize * (1 + i * 1.2)));
+		return canvas.toDataURL("image/png");
 	}
 	function pdfBar(t) {
 		if (t.group.active !== t) return;
 		pdfAnnotState(t);
-		const labels = { highlight: tr("螢光筆"), underline: tr("底線"), strikeout: tr("刪除線"), freetext: tr("文字框"), ink: tr("手繪"), eraser: tr("橡皮擦") };
+		const selected = pdfSelected(t), text = selected?.type === "freetext" ? selected : null;
+		const colorIndex = text ? PDF_COLORS.findIndex((c) => c.every((v, i) => Math.abs(v - text.color[i]) < 0.005)) : t.pdfColor;
+		const fontSize = text?.fontSize || t.pdfFontSize;
+		const labels = { select: tr("選取"), highlight: tr("螢光筆"), underline: tr("底線"), strikeout: tr("刪除線"), freetext: tr("文字框"), ink: tr("手繪"), eraser: tr("橡皮擦") };
 		const colors = [tr("黃色"), tr("綠色"), tr("藍色"), tr("粉紅色")];
 		const disabled = t.pdfSaving ? "disabled" : "";
-		const tools = t.fromTex ? `<span class="hint">${tr("這是 LaTeX 產生的 PDF,請改 .tex")}</span>` : !t.pdfMode ? `<button class="small" data-bar="pdfannot">${tr("標註")}</button>` : `<span class="pdf-annot-tools">${Object.entries(labels).map(([key, label]) => `<button class="small${t.pdfTool === key ? " on" : ""}" data-bar="pdftool:${key}" aria-pressed="${t.pdfTool === key}" ${disabled}>${label}</button>`).join("")}${PDF_COLORS.map((color, i) => `<button class="small pdf-color${t.pdfColor === i ? " on" : ""}" data-bar="pdfcolor:${i}" title="${esc(colors[i])}" aria-label="${esc(colors[i])}" aria-pressed="${t.pdfColor === i}" style="--annot-color:rgb(${color.map((x) => Math.round(x * 255)).join(",")})" ${disabled}></button>`).join("")}<button class="small" data-bar="pdfundo" ${!t.pdfOps.length || t.pdfSaving ? "disabled" : ""}>${tr("復原")}</button><button class="small${t.dirty ? " primary" : ""}" data-bar="pdfsave" ${!t.dirty || t.pdfSaving ? "disabled" : ""}>${t.pdfSaving ? tr("存檔中…") : t.dirty ? tr("● 存檔") : tr("存檔")}</button><button class="small" data-bar="pdfend" ${disabled}>${tr("結束標註")}</button></span>`;
+		const font = `<select class="pdf-font-size" data-bar="pdffont" aria-label="${esc(tr("字級"))}" ${disabled}>${!PDF_FONT_SIZES.includes(fontSize) ? `<option value="${fontSize}" selected hidden>${fontSize} pt</option>` : ""}${PDF_FONT_SIZES.map((size) => `<option value="${size}" ${size === fontSize ? "selected" : ""}>${size} pt</option>`).join("")}</select>`;
+		const tools = t.fromTex ? `<span class="hint">${tr("這是 LaTeX 產生的 PDF,請改 .tex")}</span>` : !t.pdfMode ? `<button class="small" data-bar="pdfannot">${tr("標註")}</button>` : `<span class="pdf-annot-tools">${Object.entries(labels).map(([key, label]) => `<button class="small${t.pdfTool === key ? " on" : ""}" data-bar="pdftool:${key}" aria-pressed="${t.pdfTool === key}" ${disabled}>${label}</button>`).join("")}${PDF_COLORS.map((color, i) => `<button class="small pdf-color${colorIndex === i ? " on" : ""}" data-bar="pdfcolor:${i}" title="${esc(colors[i])}" aria-label="${esc(colors[i])}" aria-pressed="${colorIndex === i}" style="--annot-color:${pdfRGB(color)}" ${disabled}></button>`).join("")}${text && colorIndex < 0 ? `<span class="pdf-current-color" title="${esc(tr("文字顏色"))}" style="--annot-color:${pdfRGB(text.color)}"></span>` : ""}${font}<button class="small" data-bar="pdfundo" ${!t.pdfHistory.length || t.pdfSaving ? "disabled" : ""}>${tr("復原")}</button><button class="small${t.dirty ? " primary" : ""}" data-bar="pdfsave" ${!t.dirty || t.pdfSaving ? "disabled" : ""}>${t.pdfSaving ? tr("存檔中…") : t.dirty ? tr("● 存檔") : tr("存檔")}</button><button class="small" data-bar="pdfend" ${disabled}>${tr("結束標註")}</button></span>`;
 		bar(t.group, `<span class="pdf-page">${t.pdfPages ? tr("第 {page} / {total} 頁", { page: t.page || 1, total: t.pdfPages.length }) : "PDF"}</span>${tools}<span class="sp"></span><button class="small" data-bar="zoomout" title="${esc(tr("縮小"))}">−</button><button class="small" data-bar="zoomin" title="${esc(tr("放大"))}">${tr("＋")}</button>${touch() ? `<button class="small" data-bar="fullview">${tr("全螢幕")}</button>` : ""}<button class="small" data-bar="openraw" title="${esc(tr("在瀏覽器的新分頁用內建檢視器打開(可以搜尋文字)"))}">${tr("用瀏覽器開啟")}</button>`);
-		t.group.barEl.querySelectorAll('[data-bar^="pdftool:"]').forEach((b) => b.addEventListener("pointerdown", (e) => e.preventDefault()));
+		t.group.barEl.querySelectorAll('[data-bar^="pdftool:"], [data-bar^="pdfcolor:"]').forEach((b) => b.addEventListener("pointerdown", (e) => e.preventDefault()));
+		const select = t.group.barEl.querySelector('[data-bar="pdffont"]');
+		if (select) {
+			select.addEventListener("click", (e) => e.stopPropagation());
+			select.addEventListener("change", () => barAction(t.group, `pdffont:${select.value}`));
+		}
 	}
 	function pdfSvg(tag, attrs = {}) {
 		const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
 		for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
 		return node;
 	}
+	function pdfDrawShape(p, item) {
+		const color = pdfRGB(item.color || [0, 0, 0]);
+		if (item.quads) for (const q of item.quads) {
+			if (item.type === "highlight") p.annots.append(pdfSvg("polygon", { points: `${q[0]},${q[1]} ${q[2]},${q[3]} ${q[6]},${q[7]} ${q[4]},${q[5]}`, fill: color, opacity: 0.4, style: "mix-blend-mode:multiply" }));
+			else {
+				const strike = item.type === "strikeout", y1 = strike ? (q[1] + q[5]) / 2 : q[5], y2 = strike ? (q[3] + q[7]) / 2 : q[7];
+				p.annots.append(pdfSvg("line", { x1: q[4], y1, x2: q[6], y2, stroke: color, "stroke-width": Math.max(0.5, Math.abs(q[1] - q[5]) / 14) }));
+			}
+		} else if (item.type === "ink") for (const path of item.paths) {
+			const points = [];
+			for (let i = 0; i < path.length; i += 2) points.push(`${path[i]},${path[i + 1]}`);
+			p.annots.append(pdfSvg("polyline", { points: points.join(" "), fill: "none", stroke: color, "stroke-width": item.width, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+		} else if (item.type === "freetext") {
+			const r = item.rect, clipId = `pdfclip-${++uid}`;
+			const clip = pdfSvg("clipPath", { id: clipId });
+			clip.append(pdfSvg("rect", { x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1] }));
+			const group = pdfSvg("g", { "clip-path": `url(#${clipId})` });
+			group.append(pdfSvg("rect", { x: r[0] + 0.25, y: r[1] + 0.25, width: r[2] - r[0] - 0.5, height: r[3] - r[1] - 0.5, fill: "white", "fill-opacity": 0.8, stroke: color, "stroke-width": 0.5 }));
+			const text = pdfSvg("text", { fill: color, "font-family": PDF_FONT, "font-size": item.fontSize, transform: "scale(1 -1)" });
+			pdfTextLines(item).forEach((line, i) => { const span = pdfSvg("tspan", { x: r[0] + 2, y: -r[3] + 2 + item.fontSize * (1 + i * 1.2) }); span.textContent = line; text.append(span); });
+			group.append(text); p.annots.append(clip, group);
+		}
+	}
 	function pdfDrawAnnots(t) {
 		for (const [index, p] of (t.pdfPages || []).entries()) {
 			p.annots.replaceChildren();
 			p.svg.style.pointerEvents = pdfDirectTool(t) ? "auto" : "none";
-			p.svg.style.touchAction = t.pdfMode && t.pdfTool === "ink" ? "none" : "";
+			p.svg.style.touchAction = t.pdfMode && ["ink", "select"].includes(t.pdfTool) ? "none" : "";
 			p.box.classList.toggle("pdf-direct", pdfDirectTool(t));
-			const ops = t.pdfDraft?.page === index ? [...t.pdfOps, t.pdfDraft] : t.pdfOps;
-			for (const op of ops) {
-				if (op.page !== index) continue;
-				if (op.op === "remove") {
-					const r = p.existing?.find((a) => a.id === op.ref)?.rect;
-					if (r) {
-						p.annots.append(pdfSvg("rect", { x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1], fill: "red", opacity: 0.12 }));
-						p.annots.append(pdfSvg("path", { d: `M ${r[0]} ${r[1]} L ${r[2]} ${r[3]} M ${r[0]} ${r[3]} L ${r[2]} ${r[1]}`, stroke: "red", "stroke-width": 1.5, opacity: 0.6 }));
-					}
-					continue;
-				}
-				const color = `rgb(${op.color.map((c) => Math.round(c * 255)).join(",")})`;
-				if (op.quads) for (const q of op.quads) {
-					if (op.type === "highlight") p.annots.append(pdfSvg("polygon", { points: `${q[0]},${q[1]} ${q[2]},${q[3]} ${q[6]},${q[7]} ${q[4]},${q[5]}`, fill: color, opacity: 0.4, style: "mix-blend-mode:multiply" }));
-					else {
-						const strike = op.type === "strikeout", y1 = strike ? (q[1] + q[5]) / 2 : q[5], y2 = strike ? (q[3] + q[7]) / 2 : q[7];
-						p.annots.append(pdfSvg("line", { x1: q[4], y1, x2: q[6], y2, stroke: color, "stroke-width": Math.max(0.5, Math.abs(q[1] - q[5]) / 14) }));
-					}
-				} else if (op.type === "ink") for (const path of op.paths) {
-					const points = [];
-					for (let i = 0; i < path.length; i += 2) points.push(`${path[i]},${path[i + 1]}`);
-					p.annots.append(pdfSvg("polyline", { points: points.join(" "), fill: "none", stroke: color, "stroke-width": op.width, "stroke-linecap": "round", "stroke-linejoin": "round" }));
-				} else if (op.type === "freetext") {
-					const r = op.rect;
-					p.annots.append(pdfSvg("rect", { x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1], fill: "white", "fill-opacity": 0.8, stroke: color, "stroke-width": 0.5 }));
-					const text = pdfSvg("text", { fill: color, "font-family": PDF_FONT, "font-size": op.fontSize, transform: "scale(1 -1)" });
-					op.text.split("\n").forEach((line, i) => { const span = pdfSvg("tspan", { x: r[0] + 2, y: -r[3] + 2 + op.fontSize * (1 + i * 1.2) }); span.textContent = line; text.append(span); });
-					p.annots.append(text);
-				}
+			const preview = t.pdfPreview?.page === index ? t.pdfPreview : null;
+			// 蓋住畫布上原本的標註，再在 SVG 層畫出編輯後的內容。
+			for (const original of p.existing || []) {
+				if (!t.pdfOps.some((op) => op.op === "update" && op.page === index && op.ref === original.id) && preview?.id !== original.id) continue;
+				const r = original.rect;
+				p.annots.append(pdfSvg("rect", { class: "pdf-annotation-mask", x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1], fill: "white", opacity: 1 }));
+			}
+			for (const op of t.pdfOps.filter((op) => op.page === index && op.op === "remove")) {
+				const r = p.existing?.find((a) => a.id === op.ref)?.rect;
+				if (!r) continue;
+				p.annots.append(pdfSvg("rect", { x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1], fill: "red", opacity: 0.12 }));
+				p.annots.append(pdfSvg("path", { d: `M ${r[0]} ${r[1]} L ${r[2]} ${r[3]} M ${r[0]} ${r[3]} L ${r[2]} ${r[1]}`, stroke: "red", "stroke-width": 1.5, opacity: 0.6 }));
+			}
+			for (let item of pdfPageItems(t, index).reverse()) {
+				if (preview?.id === item.id) item = { ...item, ...preview.changes };
+				if (item.op === "add" || item.op === "update" || preview?.id === item.id) pdfDrawShape(p, item);
+			}
+			if (t.pdfDraft?.page === index) pdfDrawShape(p, t.pdfDraft);
+			let selected = pdfSelected(t);
+			if (!t.pdfMode || t.pdfTool !== "select" || selected?.page !== index || t.pdfText) continue;
+			if (preview?.id === selected.id) selected = { ...selected, ...preview.changes };
+			const r = pdfRect(selected), movable = pdfMovable(selected), unit = p.w / (p.box.getBoundingClientRect().width || p.w);
+			p.annots.append(pdfSvg("rect", { class: `pdf-selection${movable ? " pdf-selection-movable" : ""}`, "data-pdf-selection": selected.id, x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1] }));
+			if (movable) for (const [handle, x, y] of [["nw", r[0], r[3]], ["ne", r[2], r[3]], ["sw", r[0], r[1]], ["se", r[2], r[1]]]) {
+				const control = pdfSvg("g", { class: `pdf-handle pdf-handle-${handle}`, "data-pdf-handle": handle });
+				control.append(pdfSvg("rect", { class: "pdf-handle-hit", x: x - 12 * unit, y: y - 12 * unit, width: 24 * unit, height: 24 * unit }));
+				control.append(pdfSvg("rect", { class: "pdf-handle-dot", x: x - 4.5 * unit, y: y - 4.5 * unit, width: 9 * unit, height: 9 * unit }));
+				p.annots.append(control);
 			}
 		}
 	}
 	function pdfChanged(t) {
 		t.dirty = !!t.pdfOps.length;
+		if (t.pdfSelected && !pdfSelected(t)) t.pdfSelected = null;
 		pdfDrawAnnots(t); renderTabs(t.group); renderProjSelect(); pdfBar(t);
 	}
 	function pdfPoint(p, e) {
@@ -900,37 +1011,40 @@
 				if (line) { line.left = Math.min(line.left, r.left); line.right = Math.max(line.right, r.right); line.top = Math.max(line.top, r.top); line.bottom = Math.min(line.bottom, r.bottom); }
 				else lines.push({ ...r });
 			}
-			if (lines.length) { t.pdfOps.push({ op: "add", page, type: t.pdfTool, color: [...PDF_COLORS[t.pdfColor]], quads: lines.map((r) => [r.left, r.top, r.right, r.top, r.left, r.bottom, r.right, r.bottom]) }); added = true; }
+			if (lines.length) {
+				if (!added) pdfSnapshot(t);
+				t.pdfOps.push({ op: "add", id: `new-${++uid}`, page, type: t.pdfTool, color: [...PDF_COLORS[t.pdfColor]], quads: lines.map((r) => [r.left, r.top, r.right, r.top, r.left, r.bottom, r.right, r.bottom]) }); added = true;
+			}
 		}
 		if (added) { selection.removeAllRanges(); pdfChanged(t); }
 	}
-	function pdfTextBox(t, p, page, point) {
+	function pdfTextBox(t, p, page, point, editing = null) {
 		t.pdfText?.finish();
-		const x = Math.min(point[0], Math.max(0, p.w - 36)), y = Math.max(18, point[1]);
+		const original = editing && structuredClone(editing);
+		const x = original ? original.rect[0] : Math.min(point[0], Math.max(0, p.w - 12));
+		const y = original ? original.rect[3] : Math.max(12, point[1]);
+		const fontSize = original?.fontSize || t.pdfFontSize, color = [...(original?.color || PDF_COLORS[t.pdfColor])];
+		const initialWidth = original ? original.rect[2] - x : Math.min(180, p.w - x);
+		const initialHeight = original ? y - original.rect[1] : Math.min(48, y);
 		const input = el("textarea", "pdf-textbox");
-		input.placeholder = tr("輸入標註文字"); input.setAttribute("aria-label", tr("文字框"));
-		Object.assign(input.style, { left: `${x / p.w * 100}%`, top: `${(p.h - y) / p.h * 100}%`, fontFamily: PDF_FONT, fontSize: `${12 * p.css}px`, width: `${Math.min(180, p.w - x) * p.css}px`, height: `${48 * p.css}px`, color: `rgb(${PDF_COLORS[t.pdfColor].map((c) => Math.round(c * 255)).join(",")})` });
-		const color = [...PDF_COLORS[t.pdfColor]];
+		input.placeholder = tr("輸入標註文字"); input.setAttribute("aria-label", tr("文字框")); input.value = original?.text || "";
+		Object.assign(input.style, { left: `${x / p.w * 100}%`, top: `${(p.h - y) / p.h * 100}%`, fontFamily: PDF_FONT, fontSize: `${fontSize * p.css}px`, width: `${initialWidth * p.css}px`, height: `${initialHeight * p.css}px`, minWidth: `${12 * p.css}px`, minHeight: `${12 * p.css}px`, maxWidth: `${(p.w - x) * p.css}px`, maxHeight: `${y * p.css}px`, padding: `${2 * p.css}px`, color: pdfRGB(color) });
 		const finish = (cancel = false) => {
 			if (t.pdfText?.input !== input) return;
-			t.pdfText = null;
-			const text = input.value.replace(/\r\n?/g, "\n");
-			input.remove();
-			if (cancel || !text.trim()) return;
-			const lines = text.split("\n"), canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
-			ctx.font = `48px ${PDF_FONT}`;
-			const width = Math.max(36, ...lines.map((line) => ctx.measureText(line).width / 4 + 4));
-			const rect = [x, Math.max(0, y - lines.length * 14.4 - 4), Math.min(p.w, x + width), y];
-			canvas.width = Math.ceil((rect[2] - rect[0]) * 4); canvas.height = Math.ceil((rect[3] - rect[1]) * 4);
-			ctx.font = `48px ${PDF_FONT}`; ctx.fillStyle = `rgb(${color.map((c) => Math.round(c * 255)).join(",")})`;
-			lines.forEach((line, i) => ctx.fillText(line, 8, (2 + 12 * (1 + i * 1.2)) * 4));
-			const op = { op: "add", page, type: "freetext", color, rect, text, fontSize: 12 };
-			op.pngReady = new Promise((resolve) => canvas.toBlob(resolve, "image/png")).then(async (blob) => {
-				if (!blob) throw new Error(tr("預覽失敗:{error}", { error: "PNG" }));
-				op.png = new Uint8Array(await blob.arrayBuffer());
-			});
-			op.pngReady.catch(fail);
-			t.pdfOps.push(op); pdfChanged(t);
+			const text = input.value.replace(/\r\n?/g, "\n"), box = p.box.getBoundingClientRect(), bounds = input.getBoundingClientRect();
+			let width = Math.max(12, Math.min(p.w - x, bounds.width / box.width * p.w));
+			let height = Math.max(12, Math.min(y, bounds.height / box.height * p.h));
+			if (Math.abs(width - initialWidth) < 0.5) width = initialWidth;
+			if (Math.abs(height - initialHeight) < 0.5) height = initialHeight;
+			t.pdfText = null; input.remove();
+			if (cancel || !text.trim()) { pdfDrawAnnots(t); return; }
+			const item = { type: "freetext", color, rect: [x, y - height, x + width, y], text, fontSize };
+			if (original) pdfUpdate(t, { page, id: original.id }, { text, rect: item.rect });
+			else {
+				item.rect = pdfTextFit(item, p); item.png = pdfTextPng(item);
+				pdfSnapshot(t); t.pdfOps.push({ op: "add", id: `new-${++uid}`, page, ...item }); pdfChanged(t);
+			}
+			pdfDrawAnnots(t);
 		};
 		t.pdfText = { input, finish };
 		input.onkeydown = (e) => {
@@ -940,53 +1054,107 @@
 			else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); finish(); savePdf(t); }
 		};
 		input.onblur = () => finish();
-		p.box.append(input); input.focus();
+		p.box.append(input); pdfDrawAnnots(t); input.focus();
 	}
 	function pdfErase(t, p, page, point) {
-		const added = t.pdfOps.filter((op) => op.op === "add" && op.page === page).reverse();
-		const existing = (p.existing || []).filter((a) => !t.pdfOps.some((op) => op.op === "remove" && op.page === page && op.ref === a.id)).reverse();
+		const ops = t.pdfOps.filter((op) => op.page === page);
+		const added = ops.filter((op) => op.op === "add").reverse();
+		const existing = (p.existing || []).filter((a) => !ops.some((op) => op.op === "remove" && op.ref === a.id)).map((a) => ({ ...a, ...ops.find((op) => op.op === "update" && op.ref === a.id) })).reverse();
 		const hit = hitAnnotation(point, [...added, ...existing]);
 		if (!hit) return;
+		(t.pdfHistory ||= []).push(structuredClone(t.pdfOps));
 		if (hit.op === "add") t.pdfOps.splice(t.pdfOps.indexOf(hit), 1);
-		else t.pdfOps.push({ op: "remove", page, ref: hit.id });
-		pdfChanged(t);
+		else {
+			t.pdfOps = t.pdfOps.filter((op) => !(op.op === "update" && op.page === page && op.ref === hit.id));
+			t.pdfOps.push({ op: "remove", page, ref: hit.id });
+		}
+		t.pdfSelected = null; pdfChanged(t);
 	}
 	function pdfWirePage(t, p, page, signal) {
+		const previewDrag = (e) => {
+			const drag = t.pdfDrag;
+			if (!drag || drag.pointer !== e.pointerId || drag.page !== page) return;
+			const point = pdfPoint(p, e), dx = point[0] - drag.point[0], dy = point[1] - drag.point[1], from = pdfRect(drag.item);
+			const rect = drag.handle ? pdfEdit.resizeRect(from, drag.handle, dx, dy, { keepAspect: drag.item.type === "ink", minSize: 12, bounds: [0, 0, p.w, p.h] }) : pdfEdit.moveRect(from, dx, dy, { bounds: [0, 0, p.w, p.h] });
+			const changes = { rect };
+			if (drag.item.paths) changes.paths = pdfEdit.transformPaths(drag.item.paths, from, rect);
+			if (drag.item.quads) changes.quads = pdfEdit.transformPaths(drag.item.quads, from, rect);
+			t.pdfPreview = { page, id: drag.item.id, changes };
+		};
 		p.svg.addEventListener("pointerdown", (e) => {
 			if (!pdfDirectTool(t) || e.button !== 0) return;
-			if (t.pdfPointers.size > 1) { t.pdfDraft = null; t.pdfTap = null; pdfDrawAnnots(t); return; }
+			if (t.pdfPointers.size > 1) { pdfCancelDrag(t); pdfDrawAnnots(t); return; }
 			e.stopPropagation();
+			if (t.pdfTool === "select") {
+				const point = pdfPoint(p, e), selected = pdfSelected(t);
+				let handle = e.target.closest("[data-pdf-handle]")?.getAttribute("data-pdf-handle");
+				if (!handle && selected?.page === page && pdfMovable(selected)) {
+					const r = pdfRect(selected), radius = (e.pointerType === "touch" ? 12 : 5) * p.w / p.box.getBoundingClientRect().width;
+					const corners = [["nw", r[0], r[3]], ["ne", r[2], r[3]], ["sw", r[0], r[1]], ["se", r[2], r[1]]];
+					handle = corners.filter(([, x, y]) => Math.abs(point[0] - x) <= radius && Math.abs(point[1] - y) <= radius).sort((a, b) => Math.hypot(point[0] - a[1], point[1] - a[2]) - Math.hypot(point[0] - b[1], point[1] - b[2]))[0]?.[0];
+				}
+				let hit = handle && selected?.page === page ? selected : hitAnnotation(point, pdfPageItems(t, page));
+				if (!hit && selected?.page === page && pdfMovable(selected)) {
+					const r = pdfRect(selected);
+					if (point[0] >= r[0] && point[0] <= r[2] && point[1] >= r[1] && point[1] <= r[3]) hit = selected;
+				}
+				pdfSelect(t, hit); p.svg.focus({ preventScroll: true });
+				if (pdfMovable(hit)) {
+					e.preventDefault(); p.svg.setPointerCapture(e.pointerId);
+					t.pdfDrag = { page, item: structuredClone(hit), handle, point, pointer: e.pointerId, x: e.clientX, y: e.clientY };
+				}
+				return;
+			}
 			p.svg.setPointerCapture(e.pointerId);
-			if (t.pdfTool === "ink") { e.preventDefault(); t.pdfDraft = { op: "add", page, type: "ink", color: [...PDF_COLORS[t.pdfColor]], width: 2, paths: [pdfPoint(p, e)], pointer: e.pointerId }; }
+			if (t.pdfTool === "ink") { e.preventDefault(); t.pdfDraft = { op: "add", id: `new-${++uid}`, page, type: "ink", color: [...PDF_COLORS[t.pdfColor]], width: 2, paths: [pdfPoint(p, e)], pointer: e.pointerId }; }
 			else t.pdfTap = { page, pointer: e.pointerId, x: e.clientX, y: e.clientY };
 		}, { signal });
 		p.svg.addEventListener("pointermove", (e) => {
-			if (t.pdfDraft?.pointer !== e.pointerId || t.pdfPointers.size > 1 || !pdfDirectTool(t)) return;
-			e.preventDefault(); e.stopPropagation();
-			t.pdfDraft.paths[0].push(...pdfPoint(p, e)); pdfDrawAnnots(t);
+			if (t.pdfPointers.size > 1 || !pdfDirectTool(t)) return;
+			if (t.pdfDrag?.pointer === e.pointerId) { e.preventDefault(); e.stopPropagation(); previewDrag(e); pdfDrawAnnots(t); }
+			else if (t.pdfDraft?.pointer === e.pointerId) { e.preventDefault(); e.stopPropagation(); t.pdfDraft.paths[0].push(...pdfPoint(p, e)); pdfDrawAnnots(t); }
 		}, { signal });
 		p.svg.addEventListener("pointerup", (e) => {
 			if (!pdfDirectTool(t)) return;
-			const draft = t.pdfDraft, tap = t.pdfTap;
-			if (draft?.pointer === e.pointerId) {
+			const drag = t.pdfDrag, draft = t.pdfDraft, tap = t.pdfTap;
+			if (drag?.pointer === e.pointerId) {
 				e.preventDefault(); e.stopPropagation();
-				draft.paths[0].push(...pdfPoint(p, e)); delete draft.pointer;
-				t.pdfOps.push(draft); t.pdfDraft = null; pdfChanged(t);
-			} else if (tap?.pointer === e.pointerId && tap.page === page && Math.hypot(tap.x - e.clientX, tap.y - e.clientY) < 6) {
-				e.stopPropagation(); t.pdfTap = null;
+				const moved = Math.hypot(drag.x - e.clientX, drag.y - e.clientY) >= 2;
+				if (moved) previewDrag(e);
+				const changes = t.pdfPreview?.changes;
+				t.pdfDrag = null; t.pdfPreview = null;
+				if (moved && changes) pdfUpdate(t, { page, id: drag.item.id }, changes);
+				pdfDrawAnnots(t);
+				if (!moved && !drag.handle) {
+					const last = t.pdfLastTap, now = Date.now();
+					if (last?.id === drag.item.id && last.page === page && now - last.time < 350 && drag.item.type === "freetext") { t.pdfLastTap = null; pdfTextBox(t, p, page, null, pdfSelected(t)); }
+					else t.pdfLastTap = { page, id: drag.item.id, time: now };
+				} else t.pdfLastTap = null;
+			} else if (draft?.pointer === e.pointerId) {
+				e.preventDefault(); e.stopPropagation(); draft.paths[0].push(...pdfPoint(p, e)); delete draft.pointer;
+				draft.rect = pdfRect(draft).map((value, i) => Math.max(0, Math.min(i % 2 ? p.h : p.w, value)));
+				pdfSnapshot(t); t.pdfOps.push(draft); t.pdfDraft = null; pdfChanged(t);
+			} else if (tap?.pointer === e.pointerId && tap.page === page) {
+				t.pdfTap = null;
+				if (Math.hypot(tap.x - e.clientX, tap.y - e.clientY) >= 6) return;
+				e.stopPropagation();
 				if (t.pdfTool === "freetext") pdfTextBox(t, p, page, pdfPoint(p, e));
 				else if (t.pdfTool === "eraser") pdfErase(t, p, page, pdfPoint(p, e));
 			}
 		}, { signal });
-		p.svg.addEventListener("pointercancel", () => { t.pdfDraft = null; t.pdfTap = null; pdfDrawAnnots(t); }, { signal });
+		p.svg.addEventListener("dblclick", (e) => {
+			if (!pdfDirectTool(t) || t.pdfTool !== "select" || t.pdfText) return;
+			const hit = hitAnnotation(pdfPoint(p, e), pdfPageItems(t, page));
+			if (hit?.type === "freetext") { e.preventDefault(); e.stopPropagation(); pdfSelect(t, hit); pdfTextBox(t, p, page, null, hit); }
+		}, { signal });
+		p.svg.addEventListener("pointercancel", () => { pdfCancelDrag(t); pdfDrawAnnots(t); }, { signal });
 		for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) p.svg.addEventListener(type, (e) => {
 			if (!pdfDirectTool(t)) return;
 			if (e.touches.length >= 2 || t.pdfPinching) {
-				t.pdfPinching = e.touches.length > 0; t.pdfDraft = null; t.pdfTap = null; pdfDrawAnnots(t);
-				return;
+				t.pdfPinching = e.touches.length > 0; pdfCancelDrag(t); pdfDrawAnnots(t); return;
 			}
 			e.stopPropagation();
-			if (type === "touchmove" && t.pdfTool === "ink") e.preventDefault();
+			if (type === "touchmove" && ["ink", "select"].includes(t.pdfTool)) e.preventDefault();
 		}, { passive: false, signal });
 	}
 	function pdfWireSelection(t, n, signal) {
@@ -996,7 +1164,7 @@
 		n.addEventListener("pointerdown", (e) => { t.pdfPointers.add(e.pointerId); t.pdfSelecting = true; }, { capture: true, signal });
 		for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, (e) => { t.pdfPointers.delete(e.pointerId); t.pdfSelecting = t.pdfPointers.size > 0; apply(); }, { capture: true, signal });
 		document.addEventListener("selectionchange", apply, { signal });
-		signal.addEventListener("abort", () => { clearTimeout(timer); t.pdfDraft = null; t.pdfTap = null; }, { once: true });
+		signal.addEventListener("abort", () => { clearTimeout(timer); pdfCancelDrag(t); t.pdfSelected = null; t.pdfText?.finish(true); }, { once: true });
 	}
 	async function savePdf(t) {
 		if (t.pdfSavePromise) return t.pdfSavePromise;
@@ -1007,7 +1175,6 @@
 		const task = (async () => {
 			try {
 				await t.pdfReady;
-				await Promise.all(t.pdfOps.map((op) => op.pngReady));
 				if (!t.pdfBytes) throw new Error(tr("PDF 尚未載入完成"));
 				const [lib, annot] = await Promise.all([loadPdfLib(), import("./pdf-annot.js")]);
 				const bytes = await annot.applyAnnotations(lib, t.pdfBytes, t.pdfOps.slice());
@@ -1027,7 +1194,7 @@
 						if (!r.ok) throw new Error(data.error || tr("錯誤 {status}", { status: r.status }));
 						t.hash = t.pdfHash = data.hash; t.size = data.size;
 					}
-					t.pdfOps = []; t.dirty = false; t.pdfExternalWarn = false;
+					t.pdfOps = []; t.pdfHistory = []; t.pdfSelected = null; t.dirty = false; t.pdfExternalWarn = false;
 					renderTabs(t.group); renderProjSelect();
 					texReloadPdf(t); await t.pdfReady;
 					if (r.ok) toast(tr("已儲存"));
@@ -1042,6 +1209,15 @@
 	addEventListener("keydown", (e) => {
 		const t = cm.activeGroup?.active;
 		if (!e.defaultPrevented && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && t?.kind === "pdf" && document.body.classList.contains("code") && ![...document.querySelectorAll(".modal")].some((m) => m.getClientRects().length)) { e.preventDefault(); savePdf(t); }
+		if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || t?.kind !== "pdf" || !document.body.classList.contains("code") || !t.pdfMode || t.pdfSaving || t.group.active !== t) return;
+		if ([...document.querySelectorAll(".modal")].some((m) => m.getClientRects().length)) return;
+		const el = e.target;
+		if (el?.closest?.("input,textarea,select") || el?.isContentEditable) return;
+		if (e.key === "Escape") { e.preventDefault(); pdfCancelDrag(t); pdfSelect(t, null); return; }
+		const selected = pdfSelected(t);
+		if (!selected) return;
+		if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); pdfDelete(t); }
+		else if (e.key === "Enter" && selected.type === "freetext") { e.preventDefault(); pdfTextBox(t, t.pdfPages[selected.page], selected.page, null, selected); }
 	});
 	async function buildPdfjs(t, n, src) {
 		t.pdfAbort?.abort(); t.pdfDoc?.destroy?.(); t.pdfDoc = null;
@@ -1051,9 +1227,9 @@
 		n.innerHTML = `<div class="zoomwrap pdfpages"><div class="empty" style="padding:20px">${tr("載入 PDF…")}</div></div>`;
 		const wrap = n.firstChild;
 		try {
-			const [lib, data, hit] = await Promise.all([loadPdfjs(), fetch(src, { signal }).then((r) => { if (!r.ok) throw new Error(tr("讀取失敗 {status}", { status: r.status })); return r.arrayBuffer(); }), import("./pdf-hit.js")]);
+			const [lib, data, hit, edit] = await Promise.all([loadPdfjs(), fetch(src, { signal }).then((r) => { if (!r.ok) throw new Error(tr("讀取失敗 {status}", { status: r.status })); return r.arrayBuffer(); }), import("./pdf-hit.js"), import("./pdf-edit.js")]);
 			if (signal.aborted) return;
-			hitAnnotation = hit.hitAnnotation;
+			hitAnnotation = hit.hitAnnotation; pdfEdit = edit;
 			t.pdfBytes = data.slice(0);
 			const doc = await lib.getDocument({ data }).promise;
 			if (signal.aborted) { doc.destroy(); return; }
@@ -1077,13 +1253,14 @@
 				const box = el("div", "pdfpage");
 				const c = document.createElement("canvas");
 				const tl = el("div", "textLayer");
-				const svg = pdfSvg("svg", { class: "annotLayer", viewBox: `0 0 ${vp.width} ${vp.height}` });
+				const svg = pdfSvg("svg", { class: "annotLayer", viewBox: `0 0 ${vp.width} ${vp.height}`, tabindex: "0", "aria-label": tr("標註") });
 				const annots = pdfSvg("g", { transform: `matrix(1 0 0 -1 0 ${vp.height})` });
 				svg.append(annots); box.append(c, tl, svg);
 				wrap.appendChild(box);
 				const p = { page, c, tl, box, svg, annots, w: vp.width, h: vp.height, css: 1, done: 0, visible: false, text: false };
 				p.existing = (await page.getAnnotations()).filter((a) => ["Highlight", "Underline", "StrikeOut", "FreeText", "Ink", "Square", "Circle", "Line"].includes(a.subtype) && /^\d+R(?:\d+)?$/.test(a.id) && a.rect?.length === 4).map((a) => {
-					const item = { id: a.id, rect: [Math.min(a.rect[0], a.rect[2]), Math.min(a.rect[1], a.rect[3]), Math.max(a.rect[0], a.rect[2]), Math.max(a.rect[1], a.rect[3])] };
+					const item = { id: a.id, type: a.subtype.toLowerCase(), color: a.color ? Array.from(a.color, (c) => c / 255) : [0, 0, 0], rect: [Math.min(a.rect[0], a.rect[2]), Math.min(a.rect[1], a.rect[3]), Math.max(a.rect[0], a.rect[2]), Math.max(a.rect[1], a.rect[3])] };
+					if (a.subtype === "FreeText") { item.text = a.contentsObj?.str || ""; item.fontSize = a.defaultAppearanceData?.fontSize > 0 ? a.defaultAppearanceData.fontSize : 12; }
 					if (["Highlight", "Underline", "StrikeOut"].includes(a.subtype) && a.quadPoints?.length) {
 						item.quads = [];
 						for (let j = 0; j < a.quadPoints.length; j += 8) item.quads.push(Array.from(a.quadPoints.slice(j, j + 8)));
@@ -1133,7 +1310,7 @@
 			t.pdfPages = pages;
 			pdfDrawAnnots(t); pdfBar(t);
 			signal.addEventListener("abort", () => io.disconnect(), { once: true });
-			t.zoomer = attachZoom(n, wrap, { min: minZoom, onEnd: (z) => { zoom = z; t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); for (const p of pages) if (p.visible) render(p); } });
+			t.zoomer = attachZoom(n, wrap, { min: minZoom, onEnd: (z) => { zoom = z; t.pos = { ...(t.pos || {}), zoom: z }; saveSoon(1500); for (const p of pages) if (p.visible) render(p); pdfDrawAnnots(t); } });
 			applyPos(t);
 			pdfPageLabel(t);
 			// 視窗大小變了:頁寬重新塞滿視窗,停在原本看的那一頁、頁內同一個位置
@@ -1148,7 +1325,7 @@
 					for (const p of pages) size(p, w);
 					for (const p of pages) if (p.visible) render(p);
 				}
-				t.zoomer.refit();
+				t.zoomer.refit(); pdfDrawAnnots(t);
 				const r = at && pdfPageRect(t, at.page);
 				if (r) n.scrollTop = r.top + r.height * at.frac;
 				requestAnimationFrame(() => { t.restoring = false; });
@@ -1280,11 +1457,23 @@
 			pdfAnnotState(t);
 			if (a === "pdfsave") return savePdf(t);
 			t.pdfText?.finish();
-			if (a === "pdfannot") t.pdfMode = true;
-			else if (a === "pdfend") { t.pdfMode = false; t.pdfTool = null; }
-			else if (a === "pdfundo") t.pdfOps.pop();
-			else if (a.startsWith("pdftool:")) { t.pdfTool = a.slice(8); pdfApplySelection(t); }
-			else if (a.startsWith("pdfcolor:")) { t.pdfColor = Number(a.slice(9)); try { localStorage.setItem("steward.pdfAnnotColor", t.pdfColor); } catch {} }
+			pdfCancelDrag(t);
+			if (a === "pdfannot") { t.pdfMode = true; t.pdfTool = "select"; t.pdfSelected = null; }
+			else if (a === "pdfend") { t.pdfMode = false; t.pdfTool = null; t.pdfSelected = null; }
+			else if (a === "pdfundo") { if (t.pdfHistory.length) t.pdfOps = t.pdfHistory.pop(); }
+			else if (a.startsWith("pdftool:")) { t.pdfTool = a.slice(8); t.pdfSelected = null; pdfApplySelection(t); }
+			else if (a.startsWith("pdfcolor:")) {
+				const color = Number(a.slice(9));
+				if (!PDF_COLORS[color]) return;
+				t.pdfColor = color; try { localStorage.setItem("steward.pdfAnnotColor", color); } catch {}
+				if (pdfSelected(t)?.type === "freetext") pdfUpdate(t, t.pdfSelected, { color: [...PDF_COLORS[color]] });
+			} else if (a.startsWith("pdffont:")) {
+				const fontSize = Number(a.slice(8));
+				if (!PDF_FONT_SIZES.includes(fontSize)) return;
+				t.pdfFontSize = fontSize; try { localStorage.setItem("steward.pdfAnnotFontSize", fontSize); } catch {}
+				const selected = pdfSelected(t);
+				if (selected?.type === "freetext") pdfUpdate(t, t.pdfSelected, { fontSize, rect: pdfTextFit({ ...selected, fontSize }, t.pdfPages[selected.page]) });
+			}
 			pdfChanged(t); return;
 		}
 		if (a === "mine") return save(g, true);
