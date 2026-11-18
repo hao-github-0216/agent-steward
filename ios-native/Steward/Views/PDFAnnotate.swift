@@ -206,12 +206,48 @@ final class PDFAnnotator: ObservableObject {
             text = ""
             textPrompt = true
         case .eraser:
-            guard let annotation = page.annotation(at: point),
-                  ["Highlight", "Underline", "StrikeOut", "FreeText", "Ink", "Square", "Circle", "Line", "Stamp"].contains(annotation.type ?? "") else { return }
+            let annotation = page.annotations.filter {
+                ["Highlight", "Underline", "StrikeOut", "FreeText", "Ink", "Square", "Circle", "Line", "Stamp"].contains($0.type ?? "") &&
+                    contains(point, in: $0)
+            }.min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
+            guard let annotation else { return }
             page.removeAnnotation(annotation)
             record { page.addAnnotation(annotation) }
         default: break
         }
+    }
+
+    private func contains(_ point: CGPoint, in annotation: PDFAnnotation) -> Bool {
+        let origin = annotation.bounds.origin
+        switch annotation.type {
+        case "Highlight", "Underline", "StrikeOut":
+            if let points = annotation.quadrilateralPoints, points.count >= 4 {
+                for index in stride(from: 0, through: points.count - 4, by: 4) {
+                    let path = CGMutablePath()
+                    // 四邊形的點依左上、右上、左下、右下排列，轉回頁面座標後沿外緣連接。
+                    for (offset, corner) in [0, 1, 3, 2].enumerated() {
+                        let value = points[index + corner].cgPointValue
+                        let vertex = CGPoint(x: value.x + origin.x, y: value.y + origin.y)
+                        if offset == 0 { path.move(to: vertex) }
+                        else { path.addLine(to: vertex) }
+                    }
+                    path.closeSubpath()
+                    if path.contains(point) || path.copy(strokingWithWidth: 4, lineCap: .round, lineJoin: .round, miterLimit: 0).contains(point) {
+                        return true
+                    }
+                }
+                return false
+            }
+        case "Ink":
+            let tolerance = (annotation.border?.lineWidth ?? 1) / 2 + 6
+            var transform = CGAffineTransform(translationX: origin.x, y: origin.y)
+            return (annotation.paths ?? []).contains { path in
+                guard let pagePath = path.cgPath.copy(using: &transform) else { return false }
+                return pagePath.copy(strokingWithWidth: tolerance * 2, lineCap: .round, lineJoin: .round, miterLimit: 0).contains(point)
+            }
+        default: break
+        }
+        return annotation.bounds.insetBy(dx: -2, dy: -2).contains(point)
     }
 
     func addText() {
@@ -241,14 +277,21 @@ final class PDFAnnotator: ObservableObject {
             guard let page = inkPage else { return }
             inkPoints.append(view.convert(location, to: page))
             if let inkAnnotation { page.removeAnnotation(inkAnnotation) }
-            let annotation = PDFAnnotation(bounds: page.bounds(for: .mediaBox), forType: .ink, withProperties: nil)
+            let lineWidth: CGFloat = 2
+            let xs = inkPoints.map(\.x)
+            let ys = inkPoints.map(\.y)
+            guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return }
+            let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+                .insetBy(dx: -lineWidth - 2, dy: -lineWidth - 2)
+            let annotation = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
             annotation.color = selectedColor
             let border = PDFBorder()
-            border.lineWidth = 2
+            border.lineWidth = lineWidth
             annotation.border = border
             let path = UIBezierPath()
-            if let first = inkPoints.first { path.move(to: first) }
-            for point in inkPoints.dropFirst() { path.addLine(to: point) }
+            // 筆畫點轉成相對於標註外框的座標。
+            if let first = inkPoints.first { path.move(to: CGPoint(x: first.x - bounds.origin.x, y: first.y - bounds.origin.y)) }
+            for point in inkPoints.dropFirst() { path.addLine(to: CGPoint(x: point.x - bounds.origin.x, y: point.y - bounds.origin.y)) }
             annotation.add(path)
             prepare(annotation)
             page.addAnnotation(annotation)

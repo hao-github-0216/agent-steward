@@ -787,6 +787,7 @@
 	const loadPdfjs = () => (pdfjsP ||= import(`${PDFJS}/pdf.min.mjs`).then((m) => { m.GlobalWorkerOptions.workerSrc = `${PDFJS}/pdf.worker.min.mjs`; return m; }).catch((e) => { pdfjsP = null; throw e; }));
 	let pdfLibP = null;
 	const loadPdfLib = () => (pdfLibP ||= import("https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js").catch((e) => { pdfLibP = null; throw e; }));
+	let hitAnnotation;
 	const PDF_COLORS = [[1, 0.85, 0], [0.2, 0.8, 0.3], [0.2, 0.5, 1], [1, 0.4, 0.7]];
 	const PDF_FONT = '-apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 	const pdfTextTool = (t) => ["highlight", "underline", "strikeout"].includes(t.pdfTool);
@@ -813,13 +814,6 @@
 		const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
 		for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
 		return node;
-	}
-	function pdfOpRect(op) {
-		if (op.rect) return op.rect;
-		const points = (op.quads || op.paths).flat(), xs = [], ys = [];
-		for (let i = 0; i < points.length; i += 2) { xs.push(points[i]); ys.push(points[i + 1]); }
-		const pad = op.type === "ink" ? op.width + 1 : 1;
-		return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
 	}
 	function pdfDrawAnnots(t) {
 		for (const [index, p] of (t.pdfPages || []).entries()) {
@@ -932,13 +926,13 @@
 		p.box.append(input); input.focus();
 	}
 	function pdfErase(t, p, page, point) {
-		const hit = (r) => point[0] >= r[0] && point[0] <= r[2] && point[1] >= r[1] && point[1] <= r[3];
-		for (let i = t.pdfOps.length - 1; i >= 0; i--) {
-			const op = t.pdfOps[i];
-			if (op.op === "add" && op.page === page && hit(pdfOpRect(op))) { t.pdfOps.splice(i, 1); pdfChanged(t); return; }
-		}
-		const old = [...(p.existing || [])].reverse().find((a) => hit(a.rect) && !t.pdfOps.some((op) => op.op === "remove" && op.page === page && op.ref === a.id));
-		if (old) { t.pdfOps.push({ op: "remove", page, ref: old.id }); pdfChanged(t); }
+		const added = t.pdfOps.filter((op) => op.op === "add" && op.page === page).reverse();
+		const existing = (p.existing || []).filter((a) => !t.pdfOps.some((op) => op.op === "remove" && op.page === page && op.ref === a.id)).reverse();
+		const hit = hitAnnotation(point, [...added, ...existing]);
+		if (!hit) return;
+		if (hit.op === "add") t.pdfOps.splice(t.pdfOps.indexOf(hit), 1);
+		else t.pdfOps.push({ op: "remove", page, ref: hit.id });
+		pdfChanged(t);
 	}
 	function pdfWirePage(t, p, page, signal) {
 		p.svg.addEventListener("pointerdown", (e) => {
@@ -1040,8 +1034,9 @@
 		n.innerHTML = `<div class="zoomwrap pdfpages"><div class="empty" style="padding:20px">${tr("載入 PDF…")}</div></div>`;
 		const wrap = n.firstChild;
 		try {
-			const [lib, data] = await Promise.all([loadPdfjs(), fetch(src, { signal }).then((r) => { if (!r.ok) throw new Error(tr("讀取失敗 {status}", { status: r.status })); return r.arrayBuffer(); })]);
+			const [lib, data, hit] = await Promise.all([loadPdfjs(), fetch(src, { signal }).then((r) => { if (!r.ok) throw new Error(tr("讀取失敗 {status}", { status: r.status })); return r.arrayBuffer(); }), import("./pdf-hit.js")]);
 			if (signal.aborted) return;
+			hitAnnotation = hit.hitAnnotation;
 			t.pdfBytes = data.slice(0);
 			const doc = await lib.getDocument({ data }).promise;
 			if (signal.aborted) { doc.destroy(); return; }
@@ -1070,7 +1065,17 @@
 				svg.append(annots); box.append(c, tl, svg);
 				wrap.appendChild(box);
 				const p = { page, c, tl, box, svg, annots, w: vp.width, h: vp.height, css: 1, done: 0, visible: false, text: false };
-				p.existing = (await page.getAnnotations()).filter((a) => ["Highlight", "Underline", "StrikeOut", "FreeText", "Ink", "Square", "Circle", "Line"].includes(a.subtype) && /^\d+R(?:\d+)?$/.test(a.id) && a.rect?.length === 4).map((a) => ({ id: a.id, rect: [Math.min(a.rect[0], a.rect[2]), Math.min(a.rect[1], a.rect[3]), Math.max(a.rect[0], a.rect[2]), Math.max(a.rect[1], a.rect[3])] }));
+				p.existing = (await page.getAnnotations()).filter((a) => ["Highlight", "Underline", "StrikeOut", "FreeText", "Ink", "Square", "Circle", "Line"].includes(a.subtype) && /^\d+R(?:\d+)?$/.test(a.id) && a.rect?.length === 4).map((a) => {
+					const item = { id: a.id, rect: [Math.min(a.rect[0], a.rect[2]), Math.min(a.rect[1], a.rect[3]), Math.max(a.rect[0], a.rect[2]), Math.max(a.rect[1], a.rect[3])] };
+					if (["Highlight", "Underline", "StrikeOut"].includes(a.subtype) && a.quadPoints?.length) {
+						item.quads = [];
+						for (let j = 0; j < a.quadPoints.length; j += 8) item.quads.push(Array.from(a.quadPoints.slice(j, j + 8)));
+					} else if (a.subtype === "Ink") {
+						item.paths = (a.inkLists || []).map((path) => Array.from(path));
+						item.width = a.borderStyle?.width ?? 1;
+					}
+					return item;
+				});
 				if (signal.aborted) return;
 				pdfWirePage(t, p, i - 1, signal); size(p, width);
 				pages.push(p);

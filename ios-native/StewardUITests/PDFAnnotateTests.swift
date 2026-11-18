@@ -179,6 +179,35 @@ final class PDFAnnotateTests: XCTestCase {
         shot(app, "pdf-04-saved")
     }
 
+    func testEraseUnderOldInk() throws {
+        let metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: request("file")) as? [String: Any])
+        let hash = try XCTUnwrap(metadata["hash"] as? String)
+        _ = try request("pdf", method: "PUT", body: request(path: "ink-old.pdf"), hash: hash)
+        let app = launch("notes.pdf")
+        defer { app.terminate() }
+        element(app, "pdf-annotate").tap()
+        count(app, equals: 2)
+        reveal(app, "pdf-tool-eraser").tap()
+        let pdf = element(app, "pdf-view")
+        let scale = (pdf.frame.width - 16) / 612
+        let firstLine = pdf.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 8 + 160 * scale, dy: 8 + 70 * scale))
+        firstLine.tap()
+        count(app, equals: 1)
+        reveal(app, "pdf-undo").tap()
+        count(app, equals: 2)
+        firstLine.tap()
+        count(app, equals: 1)
+        reveal(app, "pdf-save").tap()
+        let saved = expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: element(app, "pdf-save"))
+        wait(for: [saved], timeout: 15)
+        let document = try XCTUnwrap(PDFDocument(data: request()))
+        let annotations = try XCTUnwrap(document.page(at: 0)).annotations
+        XCTAssertEqual(annotations.count, 1)
+        XCTAssertEqual(annotations.first?.type, "Ink")
+        count(app, equals: 1)
+    }
+
     func testLaTeXPDFIsReadOnly() {
         let app = launch("hw.pdf")
         defer { app.terminate() }
