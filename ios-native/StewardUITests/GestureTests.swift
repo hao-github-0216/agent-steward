@@ -435,8 +435,11 @@ final class GestureTests: XCTestCase {
         let ball = app.descendants(matching: .any)["steward-ball"]
         if on {
             XCTAssertEqual(app.navigationBars.count, 0, "\(step):導覽列還在")
-            for tab in tabs {
-                XCTAssertFalse(tab.exists && tab.isHittable, "\(step):模式切換列還在")
+            // iPad 上方的切換列全螢幕時留著(收起再放回來，導覽列會被它蓋住);iPhone 底下的分頁列要收起來
+            if UIDevice.current.userInterfaceIdiom != .pad {
+                for tab in tabs {
+                    XCTAssertFalse(tab.exists && tab.isHittable, "\(step):模式切換列還在")
+                }
             }
             XCTAssertFalse(ball.exists, "\(step):浮動球還在")
         } else {

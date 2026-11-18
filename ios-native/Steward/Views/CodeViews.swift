@@ -288,9 +288,10 @@ struct RegularCodeLayout: View {
                 }
                 CodeToolbarItems(notice: $notice)
             }
-            // 全螢幕時才送出「收起導覽列和切換列」;平常什麼都不送。
-            // 一直送「自動」的話，開關管家側欄後點專案標題會沒反應
-            .background { if model.isReaderFullScreen { Color.clear.toolbar(.hidden, for: .navigationBar, .tabBar) } }
+            // 全螢幕時才送出「收起導覽列」;平常什麼都不送。
+            // 一直送「自動」的話，開關管家側欄後點專案標題會沒反應。
+            // 上方的切換列不收：系統把它收起再放回來後，導覽列不再讓位，會被它蓋住
+            .background { if model.isReaderFullScreen { Color.clear.toolbar(.hidden, for: .navigationBar) } }
         }
         .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("好") {} }
     }

@@ -58,6 +58,7 @@ final class IPadChromeTests: XCTestCase {
     }
 
     private func checkChrome(_ app: XCUIApplication, _ state: String, sidebar: Bool, drawer: Bool,
+                             title: String = "天氣小幫手",
                              file: StaticString = #filePath, line: UInt = #line) {
         XCTContext.runActivity(named: state) { _ in
             let bounds = app.frame
@@ -85,7 +86,7 @@ final class IPadChromeTests: XCTestCase {
                 XCTAssertTrue(captured.contains { $0.1 == label } || hasOverflow,
                               "\(state)：缺少 \(label)", file: file, line: line)
             }
-            XCTAssertTrue(captured.contains { $0.1.contains("天氣小幫手") }, "\(state)：專案標題選單不見了", file: file, line: line)
+            XCTAssertTrue(captured.contains { $0.1.contains(title) }, "\(state)：專案標題選單不見了", file: file, line: line)
             if drawer {
                 for label in ["問管家", "完成"] {
                     XCTAssertTrue(captured.contains { $0.1 == label }, "\(state)：缺少 \(label)", file: file, line: line)
@@ -136,6 +137,42 @@ final class IPadChromeTests: XCTestCase {
         setDrawer(app, open: false)
         checkChrome(app, "\(name)-drawer-restored", sidebar: true, drawer: false)
     }
+
+    /// 看 PDF:打開、點一下全螢幕、再點一下回來，每一步切換列都不能擋住導覽列上的按鈕(要接 18799 的隔離管家)
+    private func pdfRoundTrip(_ orientation: UIDeviceOrientation, name: String) throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let project = env["STEWARD_PDF_PROJECT"],
+              let title = env["STEWARD_PDF_PROJECT_NAME"], let pdfPath = env["STEWARD_PDF_FILE"],
+              let url = URL(string: server), url.host == "127.0.0.1", url.port == 18799 else {
+            throw XCTSkip("PDF 全螢幕測試需要 18799 的隔離管家")
+        }
+        XCUIDevice.shared.orientation = orientation
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES",
+                               "-isDemo", "NO", "-serverURL", server, "-resetCodeLayout", "YES", "-codeSidebar", "YES",
+                               "-openURL", "agentsteward://project/\(project)/code?file=\(pdfPath)"]
+        app.launch()
+        let pdf = element(app, "pdf-view")
+        XCTAssertTrue(pdf.waitForExistence(timeout: 20), "沒有打開 PDF")
+        sleep(2)
+        checkChrome(app, "\(name)-pdf-open", sidebar: true, drawer: false, title: title)
+        pdf.tap()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element(app, "steward-ball"))
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, "點 PDF 沒有進入全螢幕")
+        sleep(1)
+        let frames = ["PDF: \(pdf.frame)"] + modeButtons(app).filter { $0.exists }.map { "\($0.label): \($0.frame)" }
+        attach(app, "\(name)-pdf-fullscreen", frames: frames)
+        // 全螢幕時切換列留著(收起再放回來會讓導覽列不再讓位),導覽列收起來
+        XCTAssertEqual(modeButtons(app).filter { visible($0, in: app) }.count, 3, "\(name):全螢幕時切換列應該留著")
+        XCTAssertEqual(app.navigationBars.count, 0, "\(name):全螢幕仍有導覽列")
+        pdf.tap()
+        XCTAssertTrue(element(app, "steward-ball").waitForExistence(timeout: 5), "再點一下沒有離開全螢幕")
+        sleep(2)
+        checkChrome(app, "\(name)-pdf-after-fullscreen", sidebar: true, drawer: false, title: title)
+    }
+
+    func testPDFFullScreenRoundTripPortrait() throws { try pdfRoundTrip(.portrait, name: "portrait") }
+    func testPDFFullScreenRoundTripLandscape() throws { try pdfRoundTrip(.landscapeLeft, name: "landscape") }
 
     /// 找檔名平常是按鈕，點了才變成輸入框;取消後變回按鈕
     func testFileSearchOpensOnTap() {
@@ -295,8 +332,12 @@ final class IPadChromeTests: XCTestCase {
         let tabs = modeButtons(app)
         let frames = ["內容: \(preview.frame)"] + tabs.filter { $0.exists }.map { "\($0.label): \($0.frame)" }
         attach(app, "\(name)-fullscreen-\(split ? "split" : "single")", frames: frames)
+        // 全螢幕時切換列留著、浮在內容上;一開始的標題和第一段文字不能被它蓋住
+        let heading = preview.staticTexts["天氣小幫手"].firstMatch
         for tab in tabs where visible(tab, in: app) {
-            XCTAssertFalse(tab.frame.intersects(preview.frame), "全螢幕切換列仍擋住檔案內容")
+            for text in [heading, content] where text.exists {
+                XCTAssertFalse(tab.frame.intersects(text.frame), "全螢幕切換列蓋住「\(text.label)」\(text.frame)")
+            }
         }
         XCTAssertEqual(app.navigationBars.count, 0, "全螢幕仍有導覽列")
         XCTAssertFalse(element(app, "tab-file:weather.py").isHittable, "全螢幕仍顯示其他格的分頁")
@@ -304,6 +345,8 @@ final class IPadChromeTests: XCTestCase {
         XCTAssertTrue(ball.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["chevron.left.forwardslash.chevron.right"].firstMatch.exists)
         if split { XCTAssertTrue(element(app, "pane-1-0").exists) }
+        sleep(1)
+        checkChrome(app, "\(name)-after-fullscreen-\(split ? "split" : "single")", sidebar: !split, drawer: false)
     }
 
     func testPortraitFullScreen() {
