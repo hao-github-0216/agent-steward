@@ -2,11 +2,13 @@
 // 安全:所有路徑都限制在專案資料夾內(含 symlink 跳脫檢查);呼叫端必須先通過 Tailscale 身分檢查。
 import { tr } from "./i18n.ts";
 import { documentText } from "./doc-text.ts";
+import { backupVersion } from "./office-dav.ts";
 import { execFile } from "node:child_process";
 import { trash as osTrash } from "./platform.ts";
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import type { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { Project } from "./store.ts";
 import { settings, onSettingsChange } from "./settings.ts";
@@ -444,6 +446,53 @@ export async function uploadFile(p: Project, rel: string, body: Readable, overwr
 	return { rel: relOf(p, abs), size, replaced: exists };
 }
 
+/** 以同目錄的同名 .tex 判斷 PDF 來源。 */
+export function pdfFromTex(abs: string): boolean {
+	return existsSync(abs.slice(0, -extname(abs).length) + ".tex");
+}
+
+/** 串流寫入同目錄暫存檔,驗證 PDF 標頭後備份舊版並直接換上。 */
+export async function writePdf(p: Project, rel: string, body: Readable, baseHash: string | undefined, force: boolean, declared = 0): Promise<{ hash: string; size: number; mtime: number }> {
+	const abs = inProject(p, rel);
+	if (extname(abs).toLowerCase() !== ".pdf") throw new CodeError(400, tr("不是 PDF 檔"));
+	if (!existsSync(abs)) throw new CodeError(404, tr("檔案不存在"));
+	const st = statSync(abs);
+	if (st.isDirectory()) throw new CodeError(400, tr("這是資料夾"));
+	if (pdfFromTex(abs)) throw new CodeError(403, tr("這是 LaTeX 產生的 PDF,請改 .tex"));
+	const stamp = officeStamp(st);
+	if (!force && baseHash !== undefined && baseHash !== stamp) {
+		throw Object.assign(new CodeError(409, tr("檔案在你開啟之後被改過了")), { disk: { hash: stamp } });
+	}
+	if (declared > UPLOAD_LIMIT) throw new CodeError(413, tr("檔案太大(上限 {mb} MB)", { mb: UPLOAD_LIMIT / 1024 / 1024 }));
+	const tmp = join(dirname(abs), `.${basename(abs)}.pdfsave-${process.pid}-${Date.now()}`);
+	let size = 0;
+	const count = (chunk: Buffer) => {
+		size += chunk.length;
+		if (size > UPLOAD_LIMIT) body.destroy(new CodeError(413, tr("檔案太大(上限 {mb} MB)", { mb: UPLOAD_LIMIT / 1024 / 1024 })));
+	};
+	const aborted = () => body.destroy(new CodeError(400, tr("上傳中斷")));
+	try {
+		body.on("data", count);
+		body.on("aborted", aborted);
+		await pipeline(body, createWriteStream(tmp));
+		const fd = openSync(tmp, "r");
+		try {
+			const header = Buffer.alloc(5);
+			if (readSync(fd, header, 0, 5, 0) !== 5 || !header.equals(Buffer.from("%PDF-"))) throw new CodeError(400, tr("不是 PDF 檔"));
+		} finally { closeSync(fd); }
+		backupVersion(p, rel, abs);
+		renameSync(tmp, abs);
+	} catch (e) {
+		try { unlinkSync(tmp); } catch {}
+		throw e;
+	} finally {
+		body.off("data", count);
+		body.off("aborted", aborted);
+	}
+	const saved = statSync(abs);
+	return { hash: officeStamp(saved), size, mtime: saved.mtimeMs };
+}
+
 /** 列出資料夾:檔案/資料夾、大小、是否被 .gitignore 忽略、git 狀態 */
 export async function listDir(p: Project, rel: string, showHidden: boolean) {
 	const abs = inProject(p, rel);
@@ -505,7 +554,7 @@ export function readFile(p: Project, rel: string, opts: { more?: number } = {}) 
 	const ext = extname(abs).toLowerCase();
 	const base = { path: rel, name: basename(abs), size: st.size, mtime: st.mtimeMs };
 	if (IMAGE.has(ext)) return { ...base, kind: "image" as const };
-	if (ext === ".pdf") return { ...base, kind: "pdf" as const, hash: officeStamp(st) };
+	if (ext === ".pdf") return { ...base, kind: "pdf" as const, hash: officeStamp(st), fromTex: pdfFromTex(abs) };
 	if (OFFICE[ext]) return { ...base, kind: "office" as const, app: OFFICE[ext], hash: officeStamp(st) };
 	if (st.size > VIEW_LIMIT) return { ...base, kind: "toolarge" as const };
 	const buf = readFileSync(abs);

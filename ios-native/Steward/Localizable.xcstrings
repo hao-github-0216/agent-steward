@@ -1,6 +1,422 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "存檔中…": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Saving…" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "存檔中…" } }
+      },
+      "extractionState": "manual"
+    },
+    "螢光筆": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Highlight"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "螢光筆"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "底線": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Underline"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "底線"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "刪除線": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Strikeout"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刪除線"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "文字框": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text box"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字框"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "手繪": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draw"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手繪"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "橡皮擦": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eraser"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "橡皮擦"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "標註": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annotate"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "標註"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "結束標註": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finish annotating"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "結束標註"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "復原": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "復原"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "黃色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yellow"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "黃色"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "綠色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Green"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "綠色"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "藍色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blue"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "藍色"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "粉紅色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pink"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粉紅色"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "輸入標註文字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter annotation text"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "輸入標註文字"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "加上": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加上"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "存檔": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存檔"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "PDF 尚未載入完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PDF has not finished loading"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF 尚未載入完成"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "標註 %lld 個": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld annotations"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "標註 %lld 個"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "存檔再切換": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and switch"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存檔再切換"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "不存,直接切換": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch without saving"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不存,直接切換"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "這是 LaTeX 產生的 PDF,請改 .tex": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This PDF was generated by LaTeX. Edit the .tex file instead"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這是 LaTeX 產生的 PDF,請改 .tex"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "重新載入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新載入"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "蓋過去": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overwrite"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "蓋過去"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "重新載入會捨棄還沒存的標註。蓋過去會用目前的 PDF 和標註取代電腦上的版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reloading discards unsaved annotations. Overwriting replaces the file on disk with your current PDF and annotations."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新載入會捨棄還沒存的標註。蓋過去會用目前的 PDF 和標註取代電腦上的版本。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+
     "最近在這些資料夾工作過": {
       "localizations": {
         "en": {

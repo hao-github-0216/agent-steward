@@ -28,7 +28,7 @@ import { publicProjectView } from "./privacy.ts";
 import { embedTexts } from "./recall.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
-import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile } from "./code.ts";
+import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile, writePdf } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -371,6 +371,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			}
 			// 上傳:請求本文就是檔案內容(串流寫入,不經 JSON)
 			if (req.method === "PUT" && sub === "upload") return send(res, 200, await uploadFile(p, q("path"), req, q("overwrite") === "1", Number(req.headers["content-length"]) || 0));
+			if (req.method === "PUT" && sub === "pdf") return send(res, 200, await writePdf(p, q("path"), req, q("baseHash") || undefined, q("force") === "1", Number(req.headers["content-length"]) || 0));
 			// ---------- Notebook 執行(Jupyter kernel) ----------
 			if (sub.startsWith("nb/")) {
 				const op = sub.slice(3);

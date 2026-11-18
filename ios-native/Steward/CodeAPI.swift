@@ -9,6 +9,7 @@ struct CodeFile: Decodable {
     var content: String?
     var hash: String?
     var readonly: Bool?
+    var fromTex: Bool?
     var truncated: Truncated?
     struct Truncated: Decodable { var total: Int; var shown: Int }
 }
@@ -104,6 +105,12 @@ struct SaveConflict: Error {
     let message: String
     let diskContent: String
     let diskHash: String
+}
+
+struct PdfConflict: LocalizedError {
+    let message: String
+    let diskHash: String
+    var errorDescription: String? { message }
 }
 
 extension API {
@@ -211,6 +218,26 @@ extension API {
             throw SaveConflict(message: json?["error"] as? String ?? String(localized: "檔案在你開啟之後被改過了", bundle: AppLanguage.bundle), diskContent: disk["content"] as? String ?? "", diskHash: disk["hash"] as? String ?? "")
         }
         guard (200..<300).contains(code) else { throw APIError.server(code, json?["error"] as? String ?? String(localized: "存檔失敗", bundle: AppLanguage.bundle)) }
+        return json?["hash"] as? String
+    }
+
+    /// 完整 PDF 寫回原檔;指紋不同時由使用者決定是否覆蓋。
+    func savePdf(project: String, path: String, data: Data, baseHash: String?, force: Bool = false) async throws -> String? {
+        var q = [URLQueryItem(name: "path", value: path)]
+        if let baseHash { q.append(URLQueryItem(name: "baseHash", value: baseHash)) }
+        if force { q.append(URLQueryItem(name: "force", value: "1")) }
+        var r = try request(codePath(project, "pdf", q), method: "PUT")
+        r.setValue("application/pdf", forHTTPHeaderField: "content-type")
+        let (body, response) = try await API.uploadSession.upload(for: r, from: data)
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        if code == 409 {
+            let disk = json?["disk"] as? [String: Any]
+            throw PdfConflict(message: String(localized: "檔案在你開啟之後被改過了", bundle: AppLanguage.bundle), diskHash: disk?["hash"] as? String ?? "")
+        }
+        guard (200..<300).contains(code) else {
+            throw APIError.server(code, String(localized: "存檔失敗", bundle: AppLanguage.bundle))
+        }
         return json?["hash"] as? String
     }
 

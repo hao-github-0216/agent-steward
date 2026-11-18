@@ -49,7 +49,7 @@ export function officeEditing(p: Project, rel: string): { editing: boolean; owne
 
 // ---------- 舊版本 ----------
 const histDir = (p: Project, rel: string) => join(HISTORY, p.id.replace(/[^A-Za-z0-9_-]/g, "_"), createHash("sha1").update(rel).digest("hex").slice(0, 16));
-function backupVersion(p: Project, rel: string, abs: string) {
+export function backupVersion(p: Project, rel: string, abs: string) {
 	if (!existsSync(abs)) return;
 	const dir = histDir(p, rel);
 	mkdirSync(dir, { recursive: true });

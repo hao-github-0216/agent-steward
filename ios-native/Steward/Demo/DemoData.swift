@@ -329,6 +329,7 @@ enum DemoData {
             if let content = files[filePath] { return json(["path": filePath, "name": (filePath as NSString).lastPathComponent, "kind": "text", "content": content, "size": content.utf8.count, "hash": "demo-\(filePath)", "readonly": false]) }
         case ("PUT", "file"):
             return json(["ok": true, "hash": "demo-\(payload["path"] as? String ?? "")"], write: true)
+        case ("PUT", "pdf"): return json(success, write: true)
         case ("GET", "raw"):
             if filePath == "docs/weather.svg" { return Response(contentType: "image/svg+xml", data: Data(weatherImage.utf8)) }
             if let content = files[filePath] { return Response(contentType: "text/plain; charset=utf-8", data: Data(content.utf8)) }

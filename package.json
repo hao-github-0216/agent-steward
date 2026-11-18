@@ -20,5 +20,8 @@
   },
   "engines": {
     "node": ">=22.6"
+  },
+  "devDependencies": {
+    "pdf-lib": "1.17.1"
   }
 }
