@@ -42,6 +42,10 @@
 	<string>拍照附在問管家的問題裡</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>連到你電腦上的專案管家</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>io.github.haogithub0216.agentsteward.native.open</string>
+	</array>
 	<key>StewardKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)io.github.haogithub0216.agentsteward.shared</string>
 	<key>UIBackgroundModes</key>

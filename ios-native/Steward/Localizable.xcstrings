@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "把這段整理成工作卡：\n\n": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把這段整理成工作卡：\n\n"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn this into a work card:\n\n"
+          }
+        }
+      }
+    },
     "存檔中…": {
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "Saving…" } },

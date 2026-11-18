@@ -178,6 +178,7 @@ final class AppModel {
         web = WebStore(model: self)
         snap.terminalText = { [weak self] rect in await self?.web.terminalText(in: rect) }
         code.use(project: currentProjectId)
+        WatchBridge.shared.start()
     }
 
     /// 在程式碼頁打開分頁(檔案或差異):開在目前這一格;iPhone 和窄視窗再推進編輯畫面
@@ -417,6 +418,7 @@ final class AppModel {
             cards = b.cards ?? []
             spaces = b.spaceInfo ?? [:]
             missingRoutes = b.setup?.missing ?? []
+            WatchBridge.shared.publish(board: b, demo: isDemo)
             if let counts { worktreeCounts = counts }
             if lastError != DemoData.writeNotice { lastError = nil }
             // 目前專案被停止追蹤或收起來了:換到最近活動的專案

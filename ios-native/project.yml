@@ -17,7 +17,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5"
     SWIFT_EMIT_LOC_STRINGS: YES
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   Steward:
@@ -32,9 +32,12 @@ targets:
         buildPhase: resources
       - path: Steward/PrivacyInfo.xcprivacy
         buildPhase: resources
+      - path: Shared/WatchProtocol.swift
     dependencies:
       - package: SwiftMath
       - target: StewardNotify
+        embed: true
+      - target: StewardWatch
         embed: true
     settings:
       base:
@@ -65,6 +68,7 @@ targets:
         NSCameraUsageDescription: 拍照附在問管家的問題裡
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: [remote-notification]
+        NSUserActivityTypes: [io.github.haogithub0216.agentsteward.native.open]
         # 程式碼頁的分頁拖曳(只在這個 app 裡面用)
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: io.github.haogithub0216.agentsteward.native.tab
@@ -96,10 +100,89 @@ targets:
       path: StewardNotify/Info.plist
       properties:
         CFBundleDisplayName: StewardNotify
+        # 版本號跟主 App 一致(Info.plist 由 xcodegen 產生,直接改 plist 會被蓋掉)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         StewardKeychainGroup: $(AppIdentifierPrefix)io.github.haogithub0216.agentsteward.shared
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+  StewardWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: StewardWatch
+        excludes: [Localizable.xcstrings, InfoPlist.xcstrings]
+      - path: Shared/WatchProtocol.swift
+      - path: StewardWatch/Localizable.xcstrings
+        buildPhase: resources
+      - path: StewardWatch/InfoPlist.xcstrings
+        buildPhase: resources
+    dependencies:
+      - target: StewardWatchWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native.watchkitapp
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: StewardWatch/StewardWatch.entitlements
+        SKIP_INSTALL: YES
+    scheme:
+      testTargets:
+        - StewardWatchUITests
+    info:
+      path: StewardWatch/Info.plist
+      properties:
+        CFBundleDisplayName: 專案管家
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: io.github.haogithub0216.agentsteward.native
+        WKRunsIndependentlyOfCompanionApp: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown]
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.haogithub0216.agentsteward.native.watchkitapp
+            CFBundleURLSchemes: [agentsteward-watch]
+  StewardWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - StewardWatchWidgets
+      - path: Shared/WatchProtocol.swift
+      - path: StewardWatch/Localizable.xcstrings
+        buildPhase: resources
+      - path: StewardWatch/InfoPlist.xcstrings
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native.watchkitapp.widgets
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: StewardWatchWidgets/StewardWatchWidgets.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: StewardWatchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: 專案管家
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  StewardWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - StewardWatchUITests
+    dependencies:
+      - target: StewardWatch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.haogithub0216.agentsteward.native.watchkitapp.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: StewardWatch
   StewardTests:
     type: bundle.unit-test
     platform: iOS
