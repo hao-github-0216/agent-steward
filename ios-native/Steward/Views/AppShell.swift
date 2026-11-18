@@ -398,6 +398,7 @@ struct DrawerInspector: ViewModifier {
 /// iPhone 上點工作卡在側欄上面再疊一層;iPad 上照常打開工作卡視窗
 struct StewardDrawer: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationStack {
@@ -412,10 +413,17 @@ struct StewardDrawer: View {
             .navigationTitle(model.current?.name ?? String(localized: "管家", bundle: AppLanguage.bundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { model.present(.chat) } label: { Label("問管家", systemImage: "bubble.left.and.bubble.right") }
+                if sizeClass == .regular {
+                    ToolbarItemGroup(placement: .confirmationAction) {
+                        askButton
+                        Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
+                    }
+                } else {
+                    ToolbarItem(placement: .topBarLeading) { askButton }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
+                    }
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("完成") { model.drawerCardId = nil; model.drawerOpen = false } }
             }
         }
         // 收好了:排隊的視窗(問管家、換專案…)接著打開
@@ -425,6 +433,10 @@ struct StewardDrawer: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private var askButton: some View {
+        Button { model.present(.chat) } label: { Label("問管家", systemImage: "bubble.left.and.bubble.right") }
     }
 
     @ViewBuilder

@@ -164,6 +164,11 @@ final class DemoTests: XCTestCase {
         app.buttons["關閉"].firstMatch.tap()
 
         app.buttons["程式碼"].firstMatch.tap()
+        let openSidebar = app.buttons["打開側欄"].firstMatch
+        if openSidebar.exists {
+            shot(app, "05-code-sidebar-closed")
+            openSidebar.tap()
+        }
         let readme = element(app, "row-README.md")
         XCTAssertTrue(readme.waitForExistence(timeout: 10))
         assertBannerDoesNotCoverNavigation(app)

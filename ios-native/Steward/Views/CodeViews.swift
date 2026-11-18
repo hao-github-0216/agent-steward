@@ -16,6 +16,131 @@ enum CodeRoute: Hashable {
     case commit(String)
 }
 
+private struct CodeSidebarColumnKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct CodeSidebarDepthKey: EnvironmentKey {
+    static let defaultValue = 0
+}
+
+extension EnvironmentValues {
+    /// 側欄裡的第幾層(0 是最上層的檔案清單)
+    var codeSidebarDepth: Int {
+        get { self[CodeSidebarDepthKey.self] }
+        set { self[CodeSidebarDepthKey.self] = newValue }
+    }
+    var codeSidebarColumn: Bool {
+        get { self[CodeSidebarColumnKey.self] }
+        set { self[CodeSidebarColumnKey.self] = newValue }
+    }
+}
+
+/// 側欄自己記錄導覽路徑，窄畫面仍使用系統的導覽連結。
+struct CodeRouteLink<RowLabel: View>: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarColumn) private var sidebarColumn
+    let route: CodeRoute
+    @ViewBuilder let label: () -> RowLabel
+
+    var body: some View {
+        if sidebarColumn {
+            Button { withAnimation(.snappy) { model.codePath.append(route) } } label: {
+                HStack {
+                    label()
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: route) { label() }
+        }
+    }
+}
+
+/// 側欄的標題和返回鍵不使用整頁的導覽列。
+struct CodeSidebarHeader<Actions: View>: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarDepth) private var depth
+    @ViewBuilder var actions: () -> Actions
+
+    /// 這一層和上一層的路徑;每一層都留著，只有最上面那層有返回鍵
+    private func route(at level: Int) -> CodeRoute? {
+        level >= 1 && level <= model.codePath.count ? model.codePath[level - 1] : nil
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if depth > 0 && depth == model.codePath.count {
+                Button { withAnimation(.snappy) { model.codePath.removeLast() } } label: {
+                    Label(title(for: route(at: depth - 1)), systemImage: "chevron.left")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 32, minHeight: 44)
+                }
+                .accessibilityIdentifier("code-sidebar-back")
+            }
+            Text(title(for: route(at: depth)))
+                .font(.headline)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            actions()
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func title(for route: CodeRoute?) -> String {
+        switch route {
+        case .folder(let dir): (dir as NSString).lastPathComponent
+        case .history: String(localized: "最近的提交", bundle: AppLanguage.bundle)
+        case .commit(let hash): String(hash.prefix(7))
+        case .editor, nil: String(localized: "程式碼", bundle: AppLanguage.bundle)
+        }
+    }
+}
+
+extension CodeSidebarHeader where Actions == EmptyView {
+    init() { actions = { EmptyView() } }
+}
+
+/// 每一層都保留自己的清單與捲動位置，只讓最上層接受操作。
+private struct CodeSidebarNavigation: View {
+    @Environment(AppModel.self) private var model
+    let project: Project
+
+    var body: some View {
+        let path = model.codePath
+        ZStack {
+            CodeHome(project: project)
+                .opacity(path.isEmpty ? 1 : 0)
+                .offset(x: path.isEmpty ? 0 : -24)
+                .allowsHitTesting(path.isEmpty)
+                .accessibilityHidden(!path.isEmpty)
+            ForEach(Array(path.enumerated()), id: \.element) { index, route in
+                let visible = index == path.count - 1
+                CodeDestination(route: route)
+                    .opacity(visible ? 1 : 0)
+                    .offset(x: visible ? 0 : -24)
+                    .allowsHitTesting(visible)
+                    .accessibilityHidden(!visible)
+                    .environment(\.codeSidebarDepth, index + 1)
+                    .zIndex(Double(index + 1))
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .animation(.snappy, value: path)
+    }
+}
+
 struct CodeTab: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -29,8 +154,8 @@ struct CodeTab: View {
         .onChange(of: sizeClass, initial: true) { _, c in if c == .regular { model.codePath.removeAll { $0 == .editor } } }
         // 上傳進度(在浮動球下面一層,球不會被蓋住)
         .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
-        // 浮動球和圈選鈕掛在整個程式碼分頁上:點進檔案、差異、提交紀錄也都在
-        .overlay { if !model.isReaderFullScreen { BallLayer().padding(.top, 50) } }
+        // 窄畫面的浮動球跟著整個分頁，點進檔案後也能使用。
+        .overlay { if sizeClass != .regular && !model.isReaderFullScreen { BallLayer().padding(.top, 50) } }
         .modifier(UploadConflictDialog())
         // 管家側欄掛在最外層:iPad 是右邊獨立一欄(有自己的標題列),iPhone 是從底下升起的視窗
         .modifier(DrawerInspector(mode: .code))
@@ -40,13 +165,16 @@ struct CodeTab: View {
 /// 程式碼頁共用的導覽目的地(資料夾、提交紀錄;iPhone 還有編輯畫面)
 struct CodeDestination: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarColumn) private var sidebarColumn
     let route: CodeRoute
 
     var body: some View {
         if let p = model.current {
             Group {
             switch route {
-            case .folder(let dir): FolderView(project: p, dir: dir).navigationTitle((dir as NSString).lastPathComponent)
+            case .folder(let dir):
+                FolderView(project: p, dir: dir)
+                    .if(!sidebarColumn) { $0.navigationTitle((dir as NSString).lastPathComponent) }
             case .editor: CompactEditor(project: p)
             case .history: HistoryView(project: p)
             case .commit(let hash): CommitView(project: p, hash: hash)
@@ -126,27 +254,23 @@ struct RegularCodeLayout: View {
     @State private var notice: String?
 
     var body: some View {
-        @Bindable var model = model
-        HStack(spacing: 0) {
-            // 看檔案全螢幕時側欄先收起來(記著的開關不動)
-            if showSidebar && !model.isReaderFullScreen {
-                NavigationStack(path: $model.codePath) {
-                    Group {
-                        if let p = model.current {
-                            CodeHome(project: p).id(p.id)
-                        } else {
-                            ContentUnavailableView("還沒有專案", systemImage: "tray")
-                        }
+        NavigationStack {
+            let sidebarVisible = showSidebar && !model.isReaderFullScreen
+            HStack(spacing: 0) {
+                Group {
+                    if let p = model.current {
+                        CodeSidebarNavigation(project: p).id(p.id)
+                    } else {
+                        ContentUnavailableView("還沒有專案", systemImage: "tray")
                     }
-                    .navigationTitle("程式碼")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .navigationDestination(for: CodeRoute.self) { CodeDestination(route: $0) }
                 }
-                .frame(width: 320)
-                .transition(.move(edge: .leading))
-                Divider().ignoresSafeArea()
-            }
-            NavigationStack {
+                .environment(\.codeSidebarColumn, true)
+                .frame(width: sidebarVisible ? 320 : 0)
+                .clipped()
+                .opacity(sidebarVisible ? 1 : 0)
+                .allowsHitTesting(sidebarVisible)
+                .accessibilityHidden(!sidebarVisible)
+                if sidebarVisible { Divider() }
                 Group {
                     if let p = model.current {
                         EditorArea(project: p).id(p.id)
@@ -154,15 +278,19 @@ struct RegularCodeLayout: View {
                         ContentUnavailableView("還沒有專案", systemImage: "tray")
                     }
                 }
-                .modifier(ProjectChrome())
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { withAnimation(.snappy) { showSidebar.toggle() } } label: { Image(systemName: "sidebar.left") }
-                            .accessibilityLabel(showSidebar ? String(localized: "收起側欄", bundle: AppLanguage.bundle) : String(localized: "打開側欄", bundle: AppLanguage.bundle))
-                    }
-                    CodeToolbarItems(notice: $notice)
-                }
             }
+            .overlay { if !model.isReaderFullScreen { BallLayer() } }
+            .modifier(ProjectChrome())
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { withAnimation(.snappy) { showSidebar.toggle() } } label: { Image(systemName: "sidebar.left") }
+                        .accessibilityLabel(showSidebar ? String(localized: "收起側欄", bundle: AppLanguage.bundle) : String(localized: "打開側欄", bundle: AppLanguage.bundle))
+                }
+                CodeToolbarItems(notice: $notice)
+            }
+            // 全螢幕時才送出「收起導覽列和切換列」;平常什麼都不送。
+            // 一直送「自動」的話，開關管家側欄後點專案標題會沒反應
+            .background { if model.isReaderFullScreen { Color.clear.toolbar(.hidden, for: .navigationBar, .tabBar) } }
         }
         .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("好") {} }
     }
@@ -171,25 +299,24 @@ struct RegularCodeLayout: View {
 /// 程式碼頁的第一層:檔案 | 版本控制(跟網頁程式碼頁左邊的兩個按鈕一樣)
 struct CodeHome: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarColumn) private var sidebarColumn
     let project: Project
     @State private var query = ""
 
     var body: some View {
-        @Bindable var model = model
-        VStack(spacing: 0) {
-            Picker("檢視", selection: $model.codeSection) {
-                Text("檔案").tag("files")
-                Text("版本控制").tag("git")
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal).padding(.vertical, 8)
-            if model.codeSection == "git" {
-                GitView(project: project)
-            } else {
-                // 找檔名(搜整個專案)放在「檔案|版本控制」下面
-                SearchField(prompt: String(localized: "找檔名", bundle: AppLanguage.bundle), text: $query)
-                    .padding(.horizontal).padding(.bottom, 6)
+        Group {
+            if sidebarColumn && model.codeSection != "git" {
                 FolderView(project: project, dir: "", rootQuery: $query)
+            } else {
+                VStack(spacing: 0) {
+                    if sidebarColumn { CodeSidebarHeader() }
+                    CodeHomeControls(query: $query)
+                    if model.codeSection == "git" {
+                        GitView(project: project)
+                    } else {
+                        FolderView(project: project, dir: "", rootQuery: $query)
+                    }
+                }
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -198,10 +325,30 @@ struct CodeHome: View {
     }
 }
 
+private struct CodeHomeControls: View {
+    @Environment(AppModel.self) private var model
+    @Binding var query: String
+
+    var body: some View {
+        @Bindable var model = model
+        Picker("檢視", selection: $model.codeSection) {
+            Text("檔案").tag("files")
+            Text("版本控制").tag("git")
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal).padding(.vertical, 8)
+        if model.codeSection != "git" {
+            SearchField(prompt: String(localized: "找檔名", bundle: AppLanguage.bundle), text: $query)
+                .padding(.horizontal).padding(.bottom, 6)
+        }
+    }
+}
+
 // MARK: - 檔案清單
 
 struct FolderView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarColumn) private var sidebarColumn
     let project: Project
     let dir: String
     @State private var entries: [FileEntry]?
@@ -235,35 +382,13 @@ struct FolderView: View {
     }
 
     var body: some View {
-        List {
-            if let error { Text(error).font(.footnote).foregroundStyle(.red) }
-            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                Section("搜尋結果") {
-                    if results.isEmpty { Text("找不到").foregroundStyle(.secondary) }
-                    ForEach(results, id: \.self) { rel in
-                        FileOpenRow(rel: rel) {
-                            Label {
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text((rel as NSString).lastPathComponent)
-                                    Text(rel).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            } icon: { Image(systemName: fileIcon(rel)) }
-                        }
-                        .contextMenu { openMenu(rel) }
-                    }
-                }
-            } else {
-                ForEach(entries ?? []) { e in
-                    row(e)
-                        .contextMenu { menu(e) }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) { trashing = e } label: { Label("移到垃圾桶", systemImage: "trash") }
-                            Button { newName = e.name; naming = .rename(e) } label: { Label("重新命名", systemImage: "pencil") }.tint(.gray)
-                        }
-                }
+        VStack(spacing: 0) {
+            if sidebarColumn {
+                CodeSidebarHeader { addMenu }
+                if let rootQuery { CodeHomeControls(query: rootQuery) }
             }
+            fileList
         }
-        .listStyle(.insetGrouped)
         .overlay { if entries == nil && error == nil { ProgressView() } }
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
@@ -275,24 +400,8 @@ struct FolderView: View {
         .refreshable { await load() }
         .onChange(of: model.uploads.refresh) { Task { await load() } }
         .onChange(of: model.code.gitChanged) { Task { await load() } }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Section {
-                        Button { newName = ""; naming = .newFile(dir) } label: { Label("新檔案", systemImage: "doc.badge.plus") }
-                        Button { newName = ""; naming = .newFolder(dir) } label: { Label("新資料夾", systemImage: "folder.badge.plus") }
-                    }
-                    Section(dir.isEmpty ? String(localized: "上傳到專案最上層", bundle: AppLanguage.bundle) : String(localized: "上傳到「\((dir as NSString).lastPathComponent)」", bundle: AppLanguage.bundle)) { uploadButtons(to: dir) }
-                    Section {
-                        Toggle(isOn: Binding(get: { model.showHiddenFiles }, set: { model.showHiddenFiles = $0 })) {
-                            Label("顯示 . 開頭的檔案", systemImage: "eye")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("新增、上傳檔案")
-            }
+        .if(!sidebarColumn) {
+            $0.toolbar { ToolbarItem(placement: .topBarTrailing) { addMenu } }
         }
         // 上傳:從「檔案」挑(檔案或整個資料夾)、從照片挑、拍照、iPad 拖進來
         .fileImporter(isPresented: $importing, allowedContentTypes: importFolder ? [.folder] : [.item], allowsMultipleSelection: true) { result in
@@ -335,6 +444,57 @@ struct FolderView: View {
         } message: {
             Text("會移到電腦的垃圾桶,救得回來。")
         }
+    }
+
+    private var fileList: some View {
+        List {
+            if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                Section("搜尋結果") {
+                    if results.isEmpty { Text("找不到").foregroundStyle(.secondary) }
+                    ForEach(results, id: \.self) { rel in
+                        FileOpenRow(rel: rel) {
+                            Label {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text((rel as NSString).lastPathComponent)
+                                    Text(rel).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            } icon: { Image(systemName: fileIcon(rel)) }
+                        }
+                        .contextMenu { openMenu(rel) }
+                    }
+                }
+            } else {
+                ForEach(entries ?? []) { e in
+                    row(e)
+                        .contextMenu { menu(e) }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) { trashing = e } label: { Label("移到垃圾桶", systemImage: "trash") }
+                            Button { newName = e.name; naming = .rename(e) } label: { Label("重新命名", systemImage: "pencil") }.tint(.gray)
+                        }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private var addMenu: some View {
+        Menu {
+            Section {
+                Button { newName = ""; naming = .newFile(dir) } label: { Label("新檔案", systemImage: "doc.badge.plus") }
+                Button { newName = ""; naming = .newFolder(dir) } label: { Label("新資料夾", systemImage: "folder.badge.plus") }
+            }
+            Section(dir.isEmpty ? String(localized: "上傳到專案最上層", bundle: AppLanguage.bundle) : String(localized: "上傳到「\((dir as NSString).lastPathComponent)」", bundle: AppLanguage.bundle)) { uploadButtons(to: dir) }
+            Section {
+                Toggle(isOn: Binding(get: { model.showHiddenFiles }, set: { model.showHiddenFiles = $0 })) {
+                    Label("顯示 . 開頭的檔案", systemImage: "eye")
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .frame(minWidth: 32, minHeight: 36)
+        }
+        .accessibilityLabel("新增、上傳檔案")
     }
 
     private var alertTitle: String {
@@ -382,7 +542,8 @@ struct FolderView: View {
         }
         .opacity(e.ignored == true ? 0.5 : 1)
         if e.isDir {
-            NavigationLink(value: CodeRoute.folder(e.rel)) { label }
+            CodeRouteLink(route: .folder(e.rel)) { label }
+                .accessibilityIdentifier("row-\(e.rel)")
         } else {
             FileOpenRow(rel: e.rel) { label }
         }
@@ -492,34 +653,50 @@ struct UploadDropDelegate: DropDelegate {
     }
 }
 
+/// 找檔名。沒在找的時候只是長得像搜尋框的按鈕，點了才換成輸入框。
+/// iPad 的檔案側欄跟專案標題在同一個導覽區塊裡，輸入框一直在的話，開關管家側欄後點標題會叫不出選單
 struct SearchField: View {
     let prompt: String
     @Binding var text: String
     @FocusState private var focused: Bool
+    @State private var editing = false
 
     var body: some View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(prompt, text: $text)
-                    .focused($focused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                if !text.isEmpty {
-                    Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("清除")
+                if editing || !text.isEmpty {
+                    TextField(prompt, text: $text)
+                        .focused($focused)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onAppear { if editing { focused = true } }
+                    if !text.isEmpty {
+                        Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("清除")
+                    }
+                } else {
+                    Text(prompt)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(Color(.tertiarySystemFill), in: Capsule())
+            .contentShape(Capsule())
+            .onTapGesture { if !editing { editing = true } }
+            .accessibilityElement(children: editing || !text.isEmpty ? .contain : .combine)
+            .accessibilityAddTraits(editing || !text.isEmpty ? [] : .isButton)
             if focused {
-                Button("取消") { text = ""; focused = false }
+                Button("取消") { text = ""; focused = false; editing = false }
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .animation(.snappy, value: focused)
+        // 離開輸入框又沒有字，就變回按鈕
+        .onChange(of: focused) { _, f in if !f && text.isEmpty { editing = false } }
     }
 }
 
@@ -651,9 +828,9 @@ struct FileView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
                 .safeAreaInset(edge: .top, spacing: 0) { if !fullScreen { topBars } }
+                .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .tabBar)
         }
-        // 全螢幕:導覽列、底下的分頁列收起來(狀態列在 AppShell 收;其他的列和按鈕看 model.isReaderFullScreen 自己收)
-        .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .tabBar)
+        // iPad 的導覽列由外層統一控制，縮成零的格子不改工具列的顯示狀態。
         .background {
             // 外接鍵盤 Esc 也能結束全螢幕
             if fullScreen { Button("結束全螢幕") { toggleFullScreen() }.keyboardShortcut(.escape, modifiers: []).hidden() }

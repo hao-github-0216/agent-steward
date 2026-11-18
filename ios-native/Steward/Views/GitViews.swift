@@ -30,7 +30,7 @@ struct GitView: View {
                 files(String(localized: "新檔案", bundle: AppLanguage.bundle), s.untracked, which: "untracked")
                 WorktreeSection(project: project, ctl: worktrees)
                 Section {
-                    NavigationLink(value: CodeRoute.history) { Label("最近的提交", systemImage: "clock.arrow.circlepath") }
+                    CodeRouteLink(route: .history) { Label("最近的提交", systemImage: "clock.arrow.circlepath") }
                 }
             }
         }
@@ -519,6 +519,7 @@ struct DiffLine: View {
 
 struct HistoryView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarColumn) private var sidebarColumn
     let project: Project
     @State private var commits: [GitCommit]?
     @State private var error: String?
@@ -527,7 +528,7 @@ struct HistoryView: View {
         List {
             if let error { Text(error).foregroundStyle(.red) }
             ForEach(commits ?? []) { c in
-                NavigationLink(value: CodeRoute.commit(c.hash)) {
+                CodeRouteLink(route: .commit(c.hash)) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(c.subject ?? "").lineLimit(2)
                         Text("\(c.short ?? String(c.hash.prefix(7))) · \(c.author ?? "") · \(Fmt.ago(Fmt.date(c.date)))")
@@ -538,8 +539,8 @@ struct HistoryView: View {
         }
         .listStyle(.insetGrouped)
         .overlay { if commits == nil && error == nil { ProgressView() } }
-        .navigationTitle("最近的提交")
-        .navigationBarTitleDisplayMode(.inline)
+        .if(!sidebarColumn) { $0.navigationTitle("最近的提交").navigationBarTitleDisplayMode(.inline) }
+        .safeAreaInset(edge: .top, spacing: 0) { if sidebarColumn { CodeSidebarHeader() } }
         .task {
             do { commits = try await model.api?.gitLog(project: project.id) } catch { self.error = error.localizedDescription }
         }
@@ -548,6 +549,7 @@ struct HistoryView: View {
 
 struct CommitView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.codeSidebarColumn) private var sidebarColumn
     let project: Project
     let hash: String
     @State private var detail: GitCommitDetail?
@@ -574,8 +576,8 @@ struct CommitView: View {
         }
         .listStyle(.insetGrouped)
         .overlay { if detail == nil && error == nil { ProgressView() } }
-        .navigationTitle(String(hash.prefix(7)))
-        .navigationBarTitleDisplayMode(.inline)
+        .if(!sidebarColumn) { $0.navigationTitle(String(hash.prefix(7))).navigationBarTitleDisplayMode(.inline) }
+        .safeAreaInset(edge: .top, spacing: 0) { if sidebarColumn { CodeSidebarHeader() } }
         .task {
             do { detail = try await model.api?.gitShow(project: project.id, commit: hash) } catch { self.error = error.localizedDescription }
         }

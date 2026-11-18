@@ -8,7 +8,7 @@ final class GestureTests: XCTestCase {
     private var project: String { ProcessInfo.processInfo.environment["STEWARD_PROJECT"] ?? "" }
     /// 有給隔離的管家(TEST_RUNNER_STEWARD_TEST_SERVER)就接它:用連結打開專案會把它記成「目前專案」,
     /// 接真的管家會把你其他裝置的專案也換掉
-    private var serverArgs: [String] { ProcessInfo.processInfo.environment["STEWARD_TEST_SERVER"].map { ["-serverURL", $0] } ?? [] }
+    private var serverArgs: [String] { ProcessInfo.processInfo.environment["STEWARD_TEST_SERVER"].map { ["-serverURL", $0, "-isDemo", "NO"] } ?? [] }
 
     override func setUp() { continueAfterFailure = true }
 
@@ -368,7 +368,7 @@ final class GestureTests: XCTestCase {
         guard let server = env["STEWARD_TEST_SERVER"], let proj = env["STEWARD_TITLE_PROJECT"],
               let name = env["STEWARD_TITLE_NAME"], let other = env["STEWARD_TITLE_OTHER"] else { throw XCTSkip("要接隔離的管家才跑") }
         let app = XCUIApplication()
-        app.launchArguments = ["-noPush", "YES", "-serverURL", server, "-openURL", "agentsteward://project/\(proj)/code"]
+        app.launchArguments = ["-noPush", "YES", "-isDemo", "NO", "-serverURL", server, "-openURL", "agentsteward://project/\(proj)/code"]
         app.launch()
         sleep(8)
         // 標題在哪一條導覽列(iPad 有側欄、編輯區、管家側欄好幾條;只有專案標題是按鈕)
@@ -431,11 +431,13 @@ final class GestureTests: XCTestCase {
 
     /// 全螢幕:導覽列、底下的分頁列、浮動球都收起來
     private func assertFullScreen(_ app: XCUIApplication, _ on: Bool, _ step: String) {
-        let tab = app.tabBars.buttons["看板"]
+        let tabs = ["rectangle.split.3x1", "chevron.left.forwardslash.chevron.right", "terminal"].map { app.buttons[$0].firstMatch }
         let ball = app.descendants(matching: .any)["steward-ball"]
         if on {
             XCTAssertEqual(app.navigationBars.count, 0, "\(step):導覽列還在")
-            XCTAssertFalse(tab.exists && tab.isHittable, "\(step):底下的分頁列還在")
+            for tab in tabs {
+                XCTAssertFalse(tab.exists && tab.isHittable, "\(step):模式切換列還在")
+            }
             XCTAssertFalse(ball.exists, "\(step):浮動球還在")
         } else {
             XCTAssertGreaterThan(app.navigationBars.count, 0, "\(step):導覽列沒回來")
@@ -529,17 +531,17 @@ final class GestureTests: XCTestCase {
         XCTAssertTrue(pdf.waitForExistence(timeout: 5), "沒有 PDF")
         pdf.tap()
         sleep(2)
-        XCTAssertTrue(app.navigationBars["程式碼"].exists, "點別格的 PDF 就全螢幕了")
+        XCTAssertTrue(el("row-LICENSE").isHittable, "點別格的 PDF 就全螢幕了")
         pdf.tap()
         sleep(2)
         shot(app, "ipad-reader-fullscreen")
-        XCTAssertFalse(app.navigationBars["程式碼"].exists, "全螢幕時側欄還在")
+        XCTAssertFalse(el("row-LICENSE").exists, "全螢幕時側欄還在")
         XCTAssertFalse(el("tab-file:LICENSE").exists, "全螢幕時別格的分頁還在")
         XCTAssertFalse(app.descendants(matching: .any)["steward-ball"].exists, "全螢幕時浮動球還在")
         XCTAssertEqual(pdf.value as? String, "縮放 100%", "全螢幕變寬後 PDF 沒有跟著塞滿寬度")
         pdf.tap()
         sleep(2)
-        XCTAssertTrue(app.navigationBars["程式碼"].exists, "側欄沒回來")
+        XCTAssertTrue(el("row-LICENSE").isHittable, "側欄沒回來")
         XCTAssertTrue(el("tab-file:LICENSE").exists, "別格沒回來")
     }
 

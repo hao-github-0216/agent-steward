@@ -117,6 +117,11 @@ final class EnglishTests: XCTestCase {
         app.buttons["Close"].firstMatch.tap()
 
         app.buttons["Code"].firstMatch.tap()
+        let openSidebar = app.buttons["Open sidebar"].firstMatch
+        if openSidebar.exists {
+            shot(app, "en-05-code-sidebar-closed")
+            openSidebar.tap()
+        }
         let readme = element(app, "row-README.md")
         XCTAssertTrue(readme.waitForExistence(timeout: 10))
         readme.tap()
