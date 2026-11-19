@@ -73,20 +73,31 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        switch model.phase {
-        case .setup:
-            SetupView()
-        case .checking:
-            VStack(spacing: 14) {
-                CatLogo().frame(width: 72, height: 72)
-                ProgressView("連線到管家…")
-            }
-        case .needPassword(let why):
-            LoginView(reason: why)
-        case .offline(let why):
-            OfflineView(reason: why)
-        case .ready:
+        ZStack {
+            // 分頁容器從啟動就建立，其他畫面蓋在上面
             AppShell()
+            if model.phase != .ready {
+                Group {
+                    switch model.phase {
+                    case .setup:
+                        SetupView()
+                    case .checking:
+                        VStack(spacing: 14) {
+                            CatLogo().frame(width: 72, height: 72)
+                            ProgressView("連線到管家…")
+                        }
+                    case .needPassword(let why):
+                        LoginView(reason: why)
+                    case .offline(let why):
+                        OfflineView(reason: why)
+                    case .ready:
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemBackground).ignoresSafeArea())
+                .accessibilityAddTraits(.isModal)
+            }
         }
     }
 }

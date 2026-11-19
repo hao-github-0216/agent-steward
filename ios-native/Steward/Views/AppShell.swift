@@ -2,12 +2,15 @@
 //   底部系統分頁列:看板 · 程式碼 · 終端機(跟網頁的三個模式同順序)
 //   每一頁頂端的系統導覽列:標題是目前專案,點一下打開選單換專案(或打開完整的專案清單)
 //   右下角:貓咪浮動球(問管家)和它旁邊的圈選鈕(全 app 只有這一個圈選入口)
+//   分頁容器從啟動就建立;還沒連上管家時，由 RootView 的設定、登入等畫面蓋在上面
 import SwiftUI
 
 struct AppShell: View {
     @Environment(AppModel.self) private var model
     @State private var chatDetent: PresentationDetent = .large
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var ready: Bool { model.phase == .ready }
 
     var body: some View {
         @Bindable var model = model
@@ -32,6 +35,8 @@ struct AppShell: View {
             .tabItem { Label("終端機", systemImage: "terminal") }
             .tag(Mode.terminal)
         }
+        .accessibilityHidden(!ready)
+        .allowsHitTesting(ready)
         // 看檔案全螢幕:狀態列、Home 列也收起來(要掛在最外層,掛在分頁裡面系統不理)
         .statusBarHidden(model.isReaderFullScreen)
         .persistentSystemOverlays(model.isReaderFullScreen ? .hidden : .automatic)
@@ -234,7 +239,7 @@ struct WebModeTab: View {
                 if model.isDemo {
                     DemoWebUnavailableView()
                         .overlay { BallLayer() }
-                } else if model.current != nil {
+                } else if model.current != nil && model.phase == .ready {
                     WebContainer(token: attachToken)
                         .overlay { BallLayer() }
                 } else {
@@ -383,7 +388,7 @@ struct DrawerInspector: ViewModifier {
 
     func body(content: Content) -> some View {
         // 看檔案全螢幕時先收起來(結束全螢幕再出來)
-        content.inspector(isPresented: Binding(get: { model.drawerOpen && model.mode == mode && !model.isReaderFullScreen }, set: { if !$0 && !model.isReaderFullScreen { model.drawerCardId = nil; model.drawerOpen = false } })) {
+        content.inspector(isPresented: Binding(get: { model.drawerOpen && model.mode == mode && !model.isReaderFullScreen && model.phase == .ready }, set: { if !$0 && !model.isReaderFullScreen { model.drawerCardId = nil; model.drawerOpen = false } })) {
             StewardDrawer()
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationDragIndicator(.visible)

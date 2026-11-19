@@ -169,7 +169,7 @@ struct CodeDestination: View {
     let route: CodeRoute
 
     var body: some View {
-        if let p = model.current {
+        if model.phase == .ready, let p = model.current {
             Group {
             switch route {
             case .folder(let dir):
@@ -232,7 +232,7 @@ struct CompactCodeLayout: View {
         @Bindable var model = model
         NavigationStack(path: $model.codePath) {
             Group {
-                if let p = model.current {
+                if model.phase == .ready, let p = model.current {
                     CodeHome(project: p).id(p.id)
                 } else {
                     ContentUnavailableView("還沒有專案", systemImage: "tray")
@@ -258,7 +258,7 @@ struct RegularCodeLayout: View {
             let sidebarVisible = showSidebar && !model.isReaderFullScreen
             HStack(spacing: 0) {
                 Group {
-                    if let p = model.current {
+                    if model.phase == .ready, let p = model.current {
                         CodeSidebarNavigation(project: p).id(p.id)
                     } else {
                         ContentUnavailableView("還沒有專案", systemImage: "tray")
@@ -272,7 +272,7 @@ struct RegularCodeLayout: View {
                 .accessibilityHidden(!sidebarVisible)
                 if sidebarVisible { Divider() }
                 Group {
-                    if let p = model.current {
+                    if model.phase == .ready, let p = model.current {
                         EditorArea(project: p).id(p.id)
                     } else {
                         ContentUnavailableView("還沒有專案", systemImage: "tray")
