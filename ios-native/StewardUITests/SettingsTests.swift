@@ -9,8 +9,11 @@ final class SettingsTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-settingsFixture", "YES", "-noPush", "YES", "-mode", "board", "-settingsFixtureFailure", failingWrites ? "YES" : "NO"]
         app.launch()
-        let settings = app.buttons["設定"].firstMatch
-        XCTAssertTrue(settings.waitForExistence(timeout: 20), "未經 fixture 登入進入 App")
+        let title = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "選專案")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 20), "未經 fixture 登入進入 App")
+        title.tap()
+        let settings = app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "menu-settings", "設定…")).firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         XCTAssertTrue(element(app, "settings-general").waitForExistence(timeout: 10))
         return app

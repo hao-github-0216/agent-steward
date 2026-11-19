@@ -7,9 +7,9 @@ final class EnglishTests: XCTestCase {
 
     private func launch(languages: String = "(en)", locale: String = "en_US") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", languages, "-AppleLocale", locale, "-demo", "YES", "-resetCodeLayout", "YES"]
+        app.launchArguments += ["-AppleLanguages", languages, "-AppleLocale", locale, "-demo", "YES", "-resetCodeLayout", "YES", "-ballCorner", "br"]
         app.launch()
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons[languages.hasPrefix("(zh") ? "看板" : "Board"].firstMatch.waitForExistence(timeout: 20))
         return app
     }
 
@@ -50,9 +50,20 @@ final class EnglishTests: XCTestCase {
         XCTAssertTrue(target.exists && target.isHittable, "無法顯示 \(target.identifier)")
     }
 
+    private func openProjectMenu(_ app: XCUIApplication, title: String = "Weather Helper") {
+        let button = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        button.tap()
+    }
+
+    private func menuButton(_ app: XCUIApplication, _ identifier: String, label: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", identifier, label)).firstMatch
+    }
+
     private func walkSettings(_ app: XCUIApplication) {
         app.buttons["Board"].firstMatch.tap()
-        let settings = app.navigationBars.buttons["Settings"]
+        openProjectMenu(app)
+        let settings = menuButton(app, "menu-settings", label: "Settings…")
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         XCTAssertTrue(element(app, "settings-general").waitForExistence(timeout: 10))
@@ -96,8 +107,9 @@ final class EnglishTests: XCTestCase {
         shot(app, "en-01-board")
 
         card.tap()
-        XCTAssertTrue(app.navigationBars["Card"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, "card-title").waitForExistence(timeout: 5))
         let instructions = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Add forecast cards for the next seven days")).firstMatch
+        reveal(instructions, in: app)
         XCTAssertTrue(instructions.waitForExistence(timeout: 5))
         shot(app, "en-02-card")
         app.buttons["Close"].firstMatch.tap()
@@ -153,7 +165,8 @@ final class EnglishTests: XCTestCase {
         shot(app, "en-06-git-log")
 
         walkSettings(app)
-        app.buttons["demo-exit"].tap()
+        openProjectMenu(app)
+        menuButton(app, "demo-exit", label: "Leave demo mode").tap()
         XCTAssertTrue(element(app, "server-url").waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["demo-enter"].exists)
         shot(app, "en-09-setup")
@@ -172,6 +185,7 @@ final class EnglishTests: XCTestCase {
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "加入一週天氣預報")).firstMatch.exists)
-        XCTAssertTrue(app.navigationBars.buttons["設定"].exists)
+        openProjectMenu(app, title: "天氣小幫手")
+        XCTAssertTrue(menuButton(app, "menu-settings", label: "設定…").waitForExistence(timeout: 5))
     }
 }

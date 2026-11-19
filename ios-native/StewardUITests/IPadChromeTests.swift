@@ -23,7 +23,7 @@ final class IPadChromeTests: XCTestCase {
                                "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES",
                                "-codeSection", "files", "-ballCorner", "br"]
         app.launch()
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 20))
         app.buttons["程式碼"].firstMatch.tap()
         setSidebar(app, open: true)
         let readme = element(app, "row-README.md")
@@ -82,14 +82,17 @@ final class IPadChromeTests: XCTestCase {
                 return (control.identifier, label, frame)
             }
             let hasOverflow = captured.contains { $0.0 == "TopOverflowBarButtonItem" }
-            for label in [sidebar ? "收起側欄" : "打開側欄", drawer ? "收起管家" : "管家", "設定", "程式碼頁選項"] {
+            for label in [sidebar ? "收起側欄" : "打開側欄", "程式碼頁選項"] {
                 XCTAssertTrue(captured.contains { $0.1 == label } || hasOverflow,
                               "\(state)：缺少 \(label)", file: file, line: line)
             }
+            XCTAssertTrue(captured.contains { $0.0 == "drawer-toggle" } || hasOverflow,
+                          "\(state)：缺少 drawer-toggle", file: file, line: line)
             XCTAssertTrue(captured.contains { $0.1.contains(title) }, "\(state)：專案標題選單不見了", file: file, line: line)
             if drawer {
+                let panel = element(app, "drawer-panel")
                 for label in ["問管家", "完成"] {
-                    XCTAssertTrue(captured.contains { $0.1 == label }, "\(state)：缺少 \(label)", file: file, line: line)
+                    XCTAssertTrue(panel.buttons[label].firstMatch.exists, "\(state)：缺少 \(label)", file: file, line: line)
                 }
             }
             var frames = tabs.map { "切換列 \($0.0): \($0.1)" }
@@ -113,14 +116,17 @@ final class IPadChromeTests: XCTestCase {
     }
 
     private func setDrawer(_ app: XCUIApplication, open: Bool) {
+        let panel = element(app, "drawer-panel")
         if open {
-            let button = app.buttons["管家"].firstMatch
+            let button = app.buttons["drawer-toggle"].firstMatch
             XCTAssertTrue(button.waitForExistence(timeout: 5))
             button.tap()
-            XCTAssertTrue(app.navigationBars.buttons["完成"].firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(panel.waitForExistence(timeout: 5))
+            XCTAssertTrue(panel.buttons["完成"].firstMatch.exists)
         } else {
-            app.navigationBars.buttons["完成"].firstMatch.tap()
-            XCTAssertTrue(app.buttons["管家"].firstMatch.waitForExistence(timeout: 5))
+            panel.buttons["完成"].firstMatch.tap()
+            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: panel)
+            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
         }
     }
 
@@ -531,7 +537,7 @@ final class IPhoneChromeTests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES"]
         app.launch()
         defer { app.terminate() }
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 20))
         app.tabBars.buttons["程式碼"].tap()
         let readme = app.descendants(matching: .any)["row-README.md"].firstMatch
         XCTAssertTrue(readme.waitForExistence(timeout: 10))
@@ -540,19 +546,85 @@ final class IPhoneChromeTests: XCTestCase {
         let paragraph = preview.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "一個用 Python 練習的天氣網頁 App。")).firstMatch
         XCTAssertTrue(paragraph.waitForExistence(timeout: 20))
         let board = app.tabBars.buttons["看板"]
-        XCTAssertTrue(board.exists && board.isHittable, "進入全螢幕前應有底部分頁列")
+        let ask = app.buttons["file-ask"].firstMatch
+        XCTAssertFalse(board.exists && board.isHittable, "打開檔案後應隱藏底部分頁列")
+        XCTAssertTrue(ask.waitForExistence(timeout: 5) && ask.isHittable)
         paragraph.tap()
-        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false OR hittable == false"), object: board)
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false OR hittable == false"), object: ask)
         XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
-        XCTAssertTrue(app.tabBars.count == 0 || !board.exists || !board.isHittable)
+        XCTAssertFalse(board.exists && board.isHittable)
         XCTAssertEqual(app.navigationBars.count, 0)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "iphone-reader-fullscreen"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         paragraph.tap()
-        XCTAssertTrue(board.waitForExistence(timeout: 5))
-        XCTAssertTrue(board.isHittable, "結束全螢幕後應恢復底部分頁列")
+        XCTAssertTrue(ask.waitForExistence(timeout: 5) && ask.isHittable)
+        XCTAssertFalse(board.exists && board.isHittable, "結束全螢幕後分頁列仍應隱藏")
+        let back = app.navigationBars.buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+        XCTAssertTrue(board.waitForExistence(timeout: 5) && board.isHittable, "返回清單後應恢復底部分頁列")
+    }
+
+    func testDemoFileBottomToolbar() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES", "-ballCorner", "br"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 20))
+        app.tabBars.buttons["程式碼"].tap()
+        let readme = app.descendants(matching: .any)["row-README.md"].firstMatch
+        XCTAssertTrue(readme.waitForExistence(timeout: 10))
+        readme.tap()
+        let preview = app.webViews["markdown-view"].firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.navigationBars.buttons["編輯"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars.segmentedControls.buttons["原文"].exists)
+        XCTAssertFalse(app.navigationBars.segmentedControls.buttons["預覽"].exists)
+        XCTAssertFalse(app.navigationBars.buttons["更多"].exists)
+
+        let identifiers = ["file-find", "file-select-lines", "file-ask", "file-preview-toggle", "file-more"]
+        let controls = identifiers.map { app.buttons[$0].firstMatch }
+        let cat = app.descendants(matching: .any)["steward-ball"].firstMatch
+        XCTAssertTrue(cat.waitForExistence(timeout: 5))
+        for (index, control) in controls.enumerated() {
+            XCTAssertTrue(control.waitForExistence(timeout: 5) && control.isHittable, identifiers[index])
+            XCTAssertGreaterThanOrEqual(control.frame.minY, app.frame.midY, identifiers[index])
+            XCTAssertFalse(cat.frame.intersects(control.frame), "貓咪擋住 \(identifiers[index])")
+            for other in controls.dropFirst(index + 1) {
+                XCTAssertFalse(control.frame.intersects(other.frame), "\(identifiers[index]) 和 \(other.identifier) 重疊")
+            }
+        }
+        let toggle = app.buttons["file-preview-toggle"].firstMatch
+        XCTAssertEqual(toggle.label, "原文")
+        toggle.tap()
+        XCTAssertEqual(toggle.label, "預覽")
+        app.buttons["file-select-lines"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["複製"].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["file-ask"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars.buttons["關閉"].firstMatch.waitForExistence(timeout: 5))
+        app.navigationBars.buttons["關閉"].firstMatch.tap()
+
+        let drawer = app.descendants(matching: .any)["drawer-panel"].firstMatch
+        for _ in 0..<3 {
+            cat.press(forDuration: 0.7)
+            XCTAssertTrue(drawer.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.navigationBars.buttons["關閉"].firstMatch.exists, "長按只能打開側欄，不能同時打開問管家")
+            drawer.buttons["完成"].firstMatch.tap()
+            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: drawer)
+            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+        }
+        cat.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)))
+        XCTAssertLessThan(cat.frame.midY, app.frame.midY, "貓咪應能拖到上方角落")
+        cat.tap()
+        XCTAssertTrue(app.navigationBars.buttons["關閉"].firstMatch.waitForExistence(timeout: 5), "單擊貓咪應打開問管家")
+        // 貓咪的位置會被記住：放回右下角，後面的測試和截圖才不會被擋住
+        app.navigationBars.buttons["關閉"].firstMatch.tap()
+        cat.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.75)))
+        XCTAssertGreaterThan(cat.frame.midY, app.frame.midY, "貓咪應放回下方角落")
     }
 
     func testDemoDrawerKeepsAskOnLeadingEdge() {
@@ -560,9 +632,10 @@ final class IPhoneChromeTests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES"]
         app.launch()
         defer { app.terminate() }
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 20))
         app.tabBars.buttons["程式碼"].tap()
-        let drawer = app.navigationBars.buttons["管家"].firstMatch
+        app.buttons["程式碼頁選項"].firstMatch.tap()
+        let drawer = app.buttons["drawer-toggle"].firstMatch
         XCTAssertTrue(drawer.waitForExistence(timeout: 5))
         drawer.tap()
         let ask = app.navigationBars.buttons["問管家"].firstMatch

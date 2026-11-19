@@ -35,6 +35,7 @@ struct GitView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .if(model.compact) { $0.contentMargins(.bottom, 88, for: .scrollContent) }
         .overlay { if status == nil && error == nil { ProgressView() } }
         .task { await load() }
         .refreshable { await load() }

@@ -31,16 +31,18 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("管家網址", value: model.server?.absoluteString ?? "—")
                     if model.isDemo {
-                        Button("離開示範模式") { dismiss(); model.leaveDemo() }
+                        Button("離開示範模式", role: .destructive) { dismiss(); model.leaveDemo() }
                     } else {
                         Button("更換管家網址", role: .destructive) { confirmForget = true }
                     }
                 } header: {
                     Text("這支 iPhone")
+                } footer: {
+                    if model.isDemo {
+                        Text("示範模式不會要求通知權限，也不會註冊或傳送推播。")
+                    }
                 }
-                if model.isDemo {
-                    Section("推播通知") { Text("示範模式不會要求通知權限，也不會註冊或傳送推播。") }
-                } else {
+                if !model.isDemo {
                     PushSettingsSection()
                 }
                 Section {

@@ -1,5 +1,5 @@
 // 問管家(點貓咪浮動球打開,跟網頁的浮動球面板一樣):
-//   標題「問管家 · 專案」[清除紀錄][關閉] / 對話 / 建議問題 / 引用 / 附件(＋ 檔案、＋ 圖片、目前檔案)/ 輸入框 [送出][開工作卡]
+//   標題「問管家 · 專案」[更多:依目前的對話開工作卡、清除紀錄][關閉] / 對話(管家回覆下可開工作卡) / 建議問題 / 引用 / 附件(＋ 檔案、＋ 圖片、目前檔案)/ 輸入框 [送出]
 // 跟網頁浮動球是同一份紀錄
 import PhotosUI
 import SwiftUI
@@ -70,7 +70,9 @@ private struct ChatContent: View {
                             .padding(.top, 40)
                     }
                     ForEach(items) { e in
-                        MessageBubble(entry: e, project: project, onUpdate: replace, onRetry: { retry(e) })
+                        MessageBubble(entry: e, project: project, onUpdate: replace, onRetry: { retry(e) }, onDraft: { text in
+                            startDraft(String(localized: "依照這則管家回覆開工作卡:\n\(String(text.prefix(3000)))", bundle: AppLanguage.bundle))
+                        })
                             .id(e.id)
                     }
                     if sending {
@@ -101,11 +103,13 @@ private struct ChatContent: View {
                 }
             }
             ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("開工作卡") { startDraft(draft) }
-                    .disabled(sending)
-                    .accessibilityHint("根據目前的對話、加入的檔案和輸入框的話,擬一張工作卡")
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { startDraft(draft) } label: {
+                        Label("依目前的對話開工作卡", systemImage: "square.and.pencil")
+                    }
+                    .disabled(sending)
+                    .accessibilityIdentifier("chat-draft-from-conversation")
                     Button(role: .destructive) { confirmClear = true } label: { Label("清除紀錄", systemImage: "trash") }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -525,6 +529,7 @@ struct MessageBubble: View {
     var project: Project? = nil
     var onUpdate: (ChatEntry) -> Void = { _ in }
     var onRetry: () -> Void = {}
+    var onDraft: ((String) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top) {
@@ -570,6 +575,14 @@ struct MessageBubble: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .foregroundStyle(entry.isMine ? Color.white : (entry.error == true ? Color.red : Color.primary))
                     .background(bubbleColor, in: RoundedRectangle(cornerRadius: 18))
+                }
+                if !entry.isMine, entry.error != true, entry.draft == nil, !entry.text.isEmpty, let onDraft {
+                    Button { onDraft(entry.text) } label: {
+                        Label("開工作卡", systemImage: "square.and.pencil")
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("chat-reply-draft")
                 }
                 if let meta = metaLine {
                     Text(meta).font(.caption2).foregroundStyle(.tertiary)
