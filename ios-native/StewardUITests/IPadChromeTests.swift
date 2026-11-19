@@ -356,6 +356,86 @@ final class IPadChromeTests: XCTestCase {
     func testLandscapeSplitFullScreen() {
         reader(.landscapeLeft, name: "landscape", split: true)
     }
+
+    // MARK: 主畫面晚建立時，切換列和導覽列之間不能多出空白
+
+    /// 切換列底到導覽列頂的距離。正常約 14pt;主畫面在啟動後才建立時會變成 34pt(設定畫面進示範)或 88pt(登入後)
+    private func chromeGap(_ app: XCUIApplication, _ name: String) -> CGFloat {
+        let tabs = modeButtons(app).filter { $0.exists }
+        let bar = app.navigationBars.firstMatch
+        guard tabs.count == 3, bar.exists else {
+            XCTFail("\(name)：找不到切換列或導覽列")
+            return .infinity
+        }
+        let gap = bar.frame.minY - tabs.map(\.frame.maxY).max()!
+        attach(app, name, frames: ["gap: \(gap)", "nav: \(bar.frame)"] + tabs.map { "\($0.label): \($0.frame)" })
+        return gap
+    }
+
+    /// 全新安裝:設定畫面 →「先看示範」→ 程式碼頁(不用管家，跟 App Store 審查的路徑一樣)
+    func testDemoFromSetupHasNoChromeGap() {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES",
+                               "-isDemo", "NO", "-serverURL", "", "-resetCodeLayout", "YES", "-codeSection", "files"]
+        app.launch()
+        let demo = app.buttons["demo-enter"].firstMatch
+        XCTAssertTrue(demo.waitForExistence(timeout: 20), "沒有出現設定畫面")
+        sleep(2) // 停在設定畫面一下，主畫面才會是啟動後才建立的
+        demo.tap()
+        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        app.buttons["程式碼"].firstMatch.tap()
+        sleep(2)
+        let initial = chromeGap(app, "setup-demo-code-initial")
+        XCTAssertLessThanOrEqual(initial, 24, "從設定畫面進示範後，切換列和導覽列之間有 \(initial)pt 空白")
+        // 轉一次方向系統會重新排版;排版前後應該一樣
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        let rotated = chromeGap(app, "setup-demo-code-rotated")
+        XCTAssertEqual(initial, rotated, accuracy: 1, "轉向前後切換列和導覽列的距離不一樣")
+    }
+
+    /// 登入後直接打開 PDF:初始、換分頁、進出全螢幕，切換列和導覽列的距離都一樣。
+    /// 要接 18799 的隔離管家(有設密碼):測試會把同一個密碼再設一次，讓所有登入失效
+    func testLoginThenPDFHasNoChromeGap() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let project = env["STEWARD_PDF_PROJECT"],
+              let pdfPath = env["STEWARD_PDF_FILE"], let other = env["STEWARD_PDF_FILE_2"], let password = env["STEWARD_TEST_PASSWORD"],
+              let url = URL(string: server), url.host == "127.0.0.1", url.port == 18799 else {
+            throw XCTSkip("登入後的版面測試需要 18799 的隔離管家和它的密碼")
+        }
+        resetStewardLogins(url, password)
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES",
+                               "-isDemo", "NO", "-serverURL", server, "-resetCodeLayout", "YES", "-codeSidebar", "YES",
+                               "-openURL", "agentsteward://project/\(project)/code?file=\(pdfPath)"]
+        app.launch()
+        let field = app.secureTextFields["管理密碼"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "沒有出現登入畫面")
+        field.tap()
+        field.typeText(password + "\n")
+        let pdf = element(app, "pdf-view")
+        XCTAssertTrue(pdf.waitForExistence(timeout: 20), "登入後沒有打開 PDF")
+        sleep(2)
+        let initial = chromeGap(app, "login-pdf-initial")
+        XCTAssertLessThanOrEqual(initial, 24, "登入後切換列和導覽列之間有 \(initial)pt 空白")
+        let row = element(app, "row-\(other)")
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(element(app, "tab-file:\(other)").waitForExistence(timeout: 10))
+        sleep(2)
+        XCTAssertEqual(chromeGap(app, "login-pdf-second-tab"), initial, accuracy: 1, "換分頁後距離變了")
+        pdf.tap()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element(app, "steward-ball"))
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, "點 PDF 沒有進入全螢幕")
+        pdf.tap()
+        XCTAssertTrue(element(app, "steward-ball").waitForExistence(timeout: 5), "再點一下沒有離開全螢幕")
+        sleep(2)
+        XCTAssertEqual(chromeGap(app, "login-pdf-after-fullscreen"), initial, accuracy: 1, "進出全螢幕後距離變了")
+    }
 }
 
 final class IPhoneChromeTests: XCTestCase {
@@ -416,5 +496,57 @@ final class IPhoneChromeTests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
         done.tap()
+    }
+
+    /// iPhone:登入後直接打開 PDF,導覽列、檔案分頁列、PDF 之間不能有空白(要接 18799 的隔離管家)
+    func testLoginThenPDFHasNoGap() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let project = env["STEWARD_PDF_PROJECT"],
+              let pdfPath = env["STEWARD_PDF_FILE"], let password = env["STEWARD_TEST_PASSWORD"],
+              let url = URL(string: server), url.host == "127.0.0.1", url.port == 18799 else {
+            throw XCTSkip("登入後的版面測試需要 18799 的隔離管家和它的密碼")
+        }
+        resetStewardLogins(url, password)
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES", "-isDemo", "NO",
+                               "-serverURL", server, "-resetCodeLayout", "YES",
+                               "-openURL", "agentsteward://project/\(project)/code?file=\(pdfPath)"]
+        app.launch()
+        defer { app.terminate() }
+        let field = app.secureTextFields["管理密碼"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "沒有出現登入畫面")
+        field.tap()
+        field.typeText(password + "\n")
+        let pdf = app.descendants(matching: .any)["pdf-view"].firstMatch
+        XCTAssertTrue(pdf.waitForExistence(timeout: 20), "登入後沒有打開 PDF")
+        sleep(2)
+        let bar = app.navigationBars.firstMatch
+        let strip = app.scrollViews.matching(identifier: "分頁").firstMatch
+        XCTAssertTrue(bar.exists && strip.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "iphone-login-pdf"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        XCTAssertLessThanOrEqual(strip.frame.minY - bar.frame.maxY, 10, "導覽列和檔案分頁列之間有空白")
+        XCTAssertLessThanOrEqual(pdf.frame.minY - strip.frame.maxY, 48, "檔案分頁列和 PDF 之間有空白(中間只有「標示」那一列)")
+    }
+}
+
+extension XCTestCase {
+    /// 把同一個密碼再設一次:隔離管家會清掉所有登入，App 下次啟動要重新登入
+    func resetStewardLogins(_ server: URL, _ password: String) {
+        let session = URLSession(configuration: .ephemeral)
+        for (path, body) in [("api/auth/login", ["password": password]), ("api/auth/password", ["current": password, "next": password])] {
+            var request = URLRequest(url: server.appendingPathComponent(path))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "content-type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            let done = expectation(description: path)
+            session.dataTask(with: request) { _, response, _ in
+                XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200, "\(path) 失敗")
+                done.fulfill()
+            }.resume()
+            wait(for: [done], timeout: 10)
+        }
     }
 }

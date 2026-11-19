@@ -107,6 +107,7 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Release-
 - 手勢(手指拖動、往上拉視窗)用 UI 測試:`TEST_RUNNER_STEWARD_PROJECT=<專案 id> xcodebuild test -project Steward.xcodeproj -scheme Steward -destination 'id=<模擬器 UDID>'`,截圖用 `xcrun xcresulttool export attachments --path <.xcresult> --output-path <資料夾>` 拿出來(見 `StewardUITests/GestureTests.swift`;只開看板/程式碼頁和管家側欄,不切終端機;程式碼頁的測試用 `-resetCodeLayout YES` 從空的版面開始,有幾個要先建 `ios-native/zz-scratch.txt`(兩行文字)和 `ios-native/zz-mixed.pdf`(三頁,第二頁比較寬)、測完刪掉)
   - 最好接隔離的管家跑(`TEST_RUNNER_STEWARD_TEST_SERVER=http://127.0.0.1:<port>`,專案用那個管家裡登記的 repo 複本):用連結打開專案會把它記成「目前專案」,接真的管家會把你其他裝置的專案也換掉
   - 標題列的測試 `testProjectTitleMenu` 只在隔離的管家跑(會換專案):另外給 `TEST_RUNNER_STEWARD_TITLE_PROJECT`(長名字、隱私的專案 id)、`TEST_RUNNER_STEWARD_TITLE_NAME`(它的名字)、`TEST_RUNNER_STEWARD_TITLE_OTHER`(另一個專案的名字)
+  - 登入後的版面測試(`IPadChromeTests.testLoginThenPDFHasNoChromeGap`、`IPhoneChromeTests.testLoginThenPDFHasNoGap`)只接 `http://127.0.0.1:18799` 的隔離管家，而且那個管家要設好管理密碼：給 `TEST_RUNNER_STEWARD_TEST_PASSWORD`(密碼)、`TEST_RUNNER_STEWARD_PDF_PROJECT`(專案 id)、`TEST_RUNNER_STEWARD_PDF_FILE`、`TEST_RUNNER_STEWARD_PDF_FILE_2`(專案裡的兩個 PDF)。測試開始前會把同一個密碼再設一次，讓所有登入失效，App 才會停在登入畫面。不要對真的管家跑，那會讓你所有裝置都要重新登入
 - 注意:切到終端機、在終端機換專案會讓 herdr 跳到那個專案的 space(跟網頁一樣),電腦上的 herdr 畫面也會跟著換
 
 ## TestFlight
