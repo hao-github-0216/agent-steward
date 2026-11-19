@@ -129,6 +129,33 @@ final class DemoTests: XCTestCase {
         XCTAssertTrue(notice.label.contains("示範模式不會真的執行"))
     }
 
+    /// HTML 檔預覽:畫出網頁、同資料夾的圖片和 CSS 讀得到;切到原文看得到原始碼
+    func testDemoHTMLPreview() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES"]
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        app.buttons["程式碼"].firstMatch.tap()
+        let openSidebar = app.buttons["打開側欄"].firstMatch
+        if openSidebar.waitForExistence(timeout: 3) { openSidebar.tap() }
+        let row = element(app, "row-index.html")
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.buttons["原文"].waitForExistence(timeout: 10))
+        let preview = app.webViews["html-preview"]
+        XCTAssertTrue(preview.staticTexts["今日 24°C"].waitForExistence(timeout: 20))
+        let image = preview.descendants(matching: .any)["範例天氣：晴時多雲"].firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(image.frame.height, 50, "相對路徑的圖片沒有載入")
+        shot(app, "html-preview")
+
+        app.buttons["原文"].tap()
+        XCTAssertFalse(preview.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<!doctype html>")).firstMatch.waitForExistence(timeout: 10))
+    }
+
     func testDemoWalkthrough() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES"]

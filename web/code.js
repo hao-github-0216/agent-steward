@@ -139,6 +139,7 @@
 		return mdLib;
 	}
 	const isMd = (p) => /\.(md|markdown|mdx)$/i.test(p || "");
+	const isHtml = (p) => /\.(html|htm)$/i.test(p || "");
 	const isNb = (p) => /\.ipynb$/i.test(p || "");
 	const isTex = (p) => /\.tex$/i.test(p || "");
 	let mathLib = null;
@@ -230,6 +231,7 @@
 		g.editor.addAction({ id: "steward.ask", label: tr("問管家"), contextMenuGroupId: "1_steward", contextMenuOrder: 1, run: (ed) => askSteward(pick(ed)) });
 		g.editor.addAction({ id: "steward.card", label: tr("建立工作卡"), contextMenuGroupId: "1_steward", contextMenuOrder: 2, run: (ed) => newCard(pick(ed)) });
 		g.editor.addAction({ id: "steward.mdPreview", label: tr("預覽 Markdown"), contextMenuGroupId: "2_layout", contextMenuOrder: 0, precondition: undefined, run: () => isMd(g.active?.path) ? openPreview(g.active.path) : toast(tr("這不是 Markdown 檔")) });
+		g.editor.addAction({ id: "steward.htmlPreview", label: tr("預覽 HTML"), contextMenuGroupId: "2_layout", contextMenuOrder: 0, precondition: undefined, run: () => isHtml(g.active?.path) ? openHtmlPreview(g.active.path) : toast(tr("這不是 HTML 檔")) });
 		g.editor.addAction({ id: "steward.splitRight", label: tr("向右分割"), contextMenuGroupId: "2_layout", run: () => g.active && splitWith(g.active, g, "right") });
 		g.editor.addAction({ id: "steward.splitDown", label: tr("向下分割"), contextMenuGroupId: "2_layout", run: () => g.active && splitWith(g.active, g, "bottom") });
 		if (g.active) activate(g, g.active);
@@ -247,9 +249,9 @@
 		for (const x of allGroups()) x.el.classList.toggle("active", x === g);
 		notifyCurrent();
 	}
-	// 浮動球的「目前檔案」= 取得焦點的群組正在顯示的檔案(一般檔、Notebook、Markdown 預覽)。
+	// 浮動球的「目前檔案」= 取得焦點的群組正在顯示的檔案(一般檔、Notebook、Markdown 或 HTML 預覽)。
 	// 每次現算,不另外記:切群組、關分頁、換專案都不會留下舊的
-	const textKind = (t) => !!t?.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md");
+	const textKind = (t) => !!t?.path && (t.kind === "file" || t.kind === "nb" || t.kind === "md" || t.kind === "html");
 	function currentPath() {
 		const t = cm.activeGroup?.active;
 		return textKind(t) && cm.activeGroup.tabs.includes(t) ? t.path : null;
@@ -1393,7 +1395,7 @@
 				g.editor.setModel(t.model);
 				g.editor.updateOptions({ readOnly: !!t.readonly });
 				if (isTex(t.path) && !t.truncated && !t.readonly && cm.plugins.latex) texBar(g, t);
-				else bar(g, t.truncated ? `<span>${tr("大檔({size})唯讀:只顯示開頭和結尾各 {shown} 行,共 {total} 行", { size: fmtSize(t.size), shown: t.truncated.shown, total: t.truncated.total })}</span><span class="sp"></span><button class="small" data-bar="more">${tr("多載入 2000 行")}</button><button class="small" data-bar="term">${tr("在終端機開啟")}</button>` : t.readonly ? `<span>${tr("唯讀")}</span>` : isMd(t.path) ? `${mdToolbar()}<span class="sp"></span><button class="small" data-bar="mdprev" title="${esc(tr("預覽 Markdown"))}" aria-label="${esc(tr("預覽 Markdown"))}">${mobile() ? tr("預覽") : tr("在旁邊預覽")}</button>` : "");
+				else bar(g, t.truncated ? `<span>${tr("大檔({size})唯讀:只顯示開頭和結尾各 {shown} 行,共 {total} 行", { size: fmtSize(t.size), shown: t.truncated.shown, total: t.truncated.total })}</span><span class="sp"></span><button class="small" data-bar="more">${tr("多載入 2000 行")}</button><button class="small" data-bar="term">${tr("在終端機開啟")}</button>` : t.readonly ? `<span>${tr("唯讀")}</span>` : isMd(t.path) ? `${mdToolbar()}<span class="sp"></span><button class="small" data-bar="mdprev" title="${esc(tr("預覽 Markdown"))}" aria-label="${esc(tr("預覽 Markdown"))}">${mobile() ? tr("預覽") : tr("在旁邊預覽")}</button>` : isHtml(t.path) ? `<span class="sp"></span><button class="small" data-bar="htmlprev" title="${esc(tr("預覽 HTML"))}" aria-label="${esc(tr("預覽 HTML"))}">${mobile() ? tr("預覽") : tr("在旁邊預覽")}</button>` : "");
 				if (mdEditable(g)) {
 					g.barEl.classList.add("md-toolbar");
 					g.barEl.querySelectorAll("[data-md]").forEach((button) => {
@@ -1430,6 +1432,13 @@
 			showPv(g, t);
 			renderWtMap(t);
 			bar(g, `<span>${tr("分支圖:{repo} 的 worktree 與 agent 留下的分支", { repo: esc(cm.wts?.repoName || "") })}</span>`);
+		} else if (t.kind === "html") {
+			surface(g, "previewEl");
+			const fresh = !t.pv || t.pv.parentNode !== g.previewEl;
+			pvNode(g, t);
+			if (fresh) renderHtml(t);
+			showPv(g, t);
+			bar(g, `<span>${tr("預覽 {path}(存檔後更新)", { path: esc(t.path) })}</span><span class="sp"></span><button class="small" data-bar="openfile">${mobile() ? tr("回到編輯") : tr("開啟原始檔")}</button>`);
 		} else if (t.kind === "md") {
 			surface(g, "previewEl");
 			pvNode(g, t).classList.add("md");
@@ -1489,6 +1498,7 @@
 		if (a === "term") { setMode("term"); return jumpTo(cm.pid); }
 		if (a === "openfile") return openFile(t.path);
 		if (a === "mdprev") return openPreview(t.path);
+		if (a === "htmlprev") return openHtmlPreview(t.path);
 		if (a === "nbreload") {
 			if (t.dirty && !(await confirmBox(tr("重新載入"), tr("網頁上還沒存的修改會不見,確定嗎?"), tr("重新載入")))) return;
 			return renderNb(t, true);
@@ -1705,6 +1715,50 @@
 		const message = el("div", "hint");
 		message.textContent = tr("圖表語法有誤:{error}", { error: error.message || String(error) });
 		block.parentNode.after(message);
+	}
+	// ---------- HTML 靜態預覽 ----------
+	const htmlViewUrl = (path) => `/api/code/${cp()}/view/${path.split("/").map(encodeURIComponent).join("/")}`;
+	async function openHtmlPreview(rel, target = null, { quiet = false, pos = null } = {}) {
+		const key = `html:${rel}`;
+		const existing = findTab(key);
+		if (existing) { setActiveGroup(existing.group); return activate(existing.group, existing); }
+		let srcTab = findTab(`file:${rel}`);
+		if (!srcTab && !target) { await openFile(rel, cm.activeGroup, { quiet }); srcTab = findTab(`file:${rel}`); }
+		if (!srcTab && !target) return;
+		const stamps = await api("stamps", { method: "POST", body: JSON.stringify({ paths: [rel] }) }).catch((e) => { if (!quiet) fail(e); return null; });
+		const hash = stamps?.[rel]?.hash;
+		if (!hash) return;
+		let g = target;
+		if (!g) {
+			g = srcTab.group;
+			if (!mobile()) {
+				const ci = cm.cols.indexOf(colOf(g));
+				g = cm.cols[ci + 1]?.groups[0] || (cm.cols.length < MAX_COLS ? newGroupAt(g, "right") : g);
+			}
+		}
+		const t = { key, group: g, kind: "html", path: rel, label: tr("預覽 {name}", { name: baseName(rel) }), title: tr("{path}(預覽)", { path: rel }), hash, ...(pos ? { pos } : {}) };
+		g.tabs.push(t);
+		setActiveGroup(g);
+		activate(g, t);
+	}
+	function renderHtml(t) {
+		const box = pvNode(t.group, t);
+		box.style.overflow = "hidden";
+		box.style.background = "white";
+		const frame = el("iframe");
+		frame.setAttribute("sandbox", "allow-same-origin");
+		frame.setAttribute("referrerpolicy", "no-referrer");
+		frame.title = tr("預覽 {name}", { name: baseName(t.path) });
+		frame.style.cssText = "width:100%;height:100%;border:0;display:block;background:white";
+		frame.src = htmlViewUrl(t.path);
+		box.replaceChildren(frame);
+	}
+	function reloadHtml(path, hash) {
+		const t = findTab(`html:${path}`);
+		if (!t) return;
+		if (hash) t.hash = hash;
+		const frame = t.pv?.querySelector("iframe");
+		if (frame) frame.src = htmlViewUrl(path);
 	}
 	// ---------- Markdown 預覽 ----------
 	/** 開預覽分頁:電腦放在右邊(沒有就分割出來),手機放在同一個群組 */
@@ -2304,6 +2358,7 @@
 		t.model.setValue(f.content);
 		t.hash = f.hash; t.truncated = f.truncated; t.readonly = f.readonly;
 		t.savedVersion = t.model.getAlternativeVersionId(); t.dirty = false;
+		if (isHtml(t.path)) reloadHtml(t.path, f.hash);
 		if (t.group.active === t) activate(t.group, t); else renderTabs(t.group);
 	}
 	async function save(g = cm.activeGroup, force = false) {
@@ -2325,6 +2380,7 @@
 			toast(tr("已存檔"));
 			cm.dirs = {}; renderFiles(); refreshGit();
 			if (isTex(t.path) && texAuto()) texBuild(t);
+			if (isHtml(t.path)) reloadHtml(t.path, r.hash);
 			return true;
 		} catch (e) {
 			if (e.status === 409 && e.data?.disk) {
@@ -2395,7 +2451,7 @@
 			const st = (await api("stamps", { method: "POST", body: JSON.stringify({ paths: [t.path] }) }).catch(() => null))?.[t.path];
 			if (st?.hash && st.hash !== t.hash) renderNb(t, true);
 		}
-		const watch = allTabs().filter((t) => t.kind === "file" && !t.readonly);
+		const watch = allTabs().filter((t) => (t.kind === "file" && !t.readonly) || t.kind === "html");
 		if (!watch.length) return;
 		const stamps = await api("stamps", { method: "POST", body: JSON.stringify({ paths: [...new Set(watch.map((t) => t.path))] }) }).catch(() => null);
 		if (!stamps) return;
@@ -2403,6 +2459,7 @@
 			const s = stamps[t.path];
 			if (!s) continue;
 			if (s.gone) { if (!t.label.endsWith(tr("(已刪除)"))) { t.label += tr("(已刪除)"); renderTabs(t.group); } continue; }
+			if (t.kind === "html") { if (s.hash && s.hash !== t.hash) reloadHtml(t.path, s.hash); continue; }
 			if (s.hash && s.hash !== t.hash && !t.dirty && !t.conflict) await reloadTab(t);
 		}
 	}, 4000);
@@ -2467,6 +2524,7 @@
 		}
 		const pos = t.pos ? { pos: t.pos } : {};
 		if (t.kind === "md") return { kind: "md", path: t.path, ...pos };
+		if (t.kind === "html") return { kind: "html", path: t.path, ...pos };
 		if (t.kind === "nb") return { kind: "nb", path: t.path, ...pos };
 		if (t.kind !== "file") return { kind: "file", path: t.path, ...pos }; // 圖片、PDF、Office:重開時 openFile 會判斷類型
 		const spec = { kind: "file", path: t.path };
@@ -2528,6 +2586,7 @@
 				if (!ts?.path) continue;
 				if (ts.kind === "diff") await openDiff(ts.path, ts.which, ts.commit, g, { quiet: true, view: ts.view || null, repo: ts.repo || null });
 				else if (ts.kind === "md") await openPreview(ts.path, g, { quiet: true, pos: ts.pos });
+				else if (ts.kind === "html") await openHtmlPreview(ts.path, g, { quiet: true, pos: ts.pos });
 				else if (ts.kind === "nb") await openNotebook(ts.path, g, { quiet: true, pos: ts.pos });
 				else await openFile(ts.path, g, { quiet: true, view: ts.view || null, raw: true, pos: ts.pos });
 			}
@@ -2623,6 +2682,7 @@
 		];
 		if (type === "file" && !mobile()) items.unshift({ label: tr("在右邊開啟"), run: () => openToSide(rel) });
 		if (type === "file" && isMd(rel)) items.unshift({ label: tr("預覽 Markdown"), run: () => openPreview(rel) });
+		if (type === "file" && isHtml(rel)) items.unshift({ label: tr("預覽 HTML"), run: () => openHtmlPreview(rel) });
 		if (type === "file" && isNb(rel)) items.unshift({ label: tr("以原始 JSON 開啟"), run: () => openFile(rel, cm.activeGroup, { raw: true }) });
 		if (type === "dir") items.unshift({ label: tr("上傳檔案到這裡"), run: () => pickAndUpload(rel, false) }, { label: tr("上傳資料夾到這裡"), run: () => pickAndUpload(rel, true) }, { label: tr("在這裡新增檔案"), run: () => toolAct("newfile", rel) }, { label: tr("在這裡新增資料夾"), run: () => toolAct("newdir", rel) });
 		menu(x, y, items);

@@ -88,6 +88,61 @@ enum DemoData {
     """) + "\n"
 
     static let files: [String: String] = [
+        "index.html": text( // i18n-ok: 依系統語言選擇的示範資料
+        """
+        <!doctype html>
+        <html lang="zh-Hant">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>天氣小幫手</title>
+          <link rel="stylesheet" href="style.css">
+        </head>
+        <body>
+          <main>
+            <h1>天氣小幫手</h1>
+            <img src="docs/weather.svg" alt="範例天氣：晴時多雲">
+            <p class="temperature">今日 24°C</p>
+            <p>晴時多雲，出門散步剛剛好。</p>
+            <p class="notice">這是靜態預覽，使用虛構的天氣資料，不會執行 JavaScript。</p>
+          </main>
+        </body>
+        </html>
+        """, // i18n-ok: 依系統語言選擇的示範資料
+        """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Weather Helper</title>
+          <link rel="stylesheet" href="style.css">
+        </head>
+        <body>
+          <main>
+            <h1>Weather Helper</h1>
+            <img src="docs/weather.svg" alt="Sample weather: partly cloudy">
+            <p class="temperature">Today: 24°C</p>
+            <p>Partly cloudy, perfect for a walk outside.</p>
+            <p class="notice">This static preview uses fictional weather data and does not run JavaScript.</p>
+          </main>
+        </body>
+        </html>
+        """) + "\n", // i18n-ok: 依系統語言選擇的示範資料
+        "style.css": """
+        :root { color-scheme: light dark; }
+        body { margin: 0; padding: 24px 16px; font: 17px/1.6 system-ui, sans-serif; background: #eaf3ff; color: #243b53; }
+        main { max-width: 560px; margin: auto; padding: 24px; border-radius: 20px; background: white; }
+        h1 { margin-top: 0; font-size: 1.6em; }
+        img { max-width: 100%; height: auto; }
+        .temperature { font-size: 2em; font-weight: bold; }
+        .notice { font-size: 0.85em; color: #52697f; }
+        @media (prefers-color-scheme: dark) {
+          body { background: #12202e; color: #eaf3ff; }
+          main { background: #243b53; }
+          .notice { color: #bed3e6; }
+        }
+        """ + "\n",
         "weather.py": text( // i18n-ok: 依系統語言選擇的示範資料
         """
         def weather_summary(temperature, description):
@@ -317,11 +372,20 @@ enum DemoData {
         guard path.count >= 4, path[0] == "api", path[1] == "code", projects.contains(where: { $0["id"] as? String == path[2] }) else { return missing() }
         let operation = path.dropFirst(3).joined(separator: "/")
         let filePath = q("path")
+        if method == "GET", path[3] == "view" {
+            let resourcePath = path.dropFirst(4).joined(separator: "/")
+            if resourcePath == "docs/weather.svg" { return Response(contentType: "image/svg+xml", data: Data(weatherImage.utf8)) }
+            let ext = (resourcePath as NSString).pathExtension.lowercased()
+            guard let content = files[resourcePath], ["html", "htm", "css"].contains(ext) else { return missing() }
+            return Response(contentType: ext == "css" ? "text/css; charset=utf-8" : "text/html; charset=utf-8", data: Data(content.utf8))
+        }
         switch (method, operation) {
         case ("GET", "tree"):
             if q("dir").isEmpty {
                 return json(["entries": [["name": "docs", "rel": "docs", "type": "dir"],
                                          ["name": "README.md", "rel": "README.md", "type": "file", "size": files["README.md"]!.utf8.count],
+                                         ["name": "index.html", "rel": "index.html", "type": "file", "size": files["index.html"]!.utf8.count],
+                                         ["name": "style.css", "rel": "style.css", "type": "file", "size": files["style.css"]!.utf8.count],
                                          ["name": "weather.py", "rel": "weather.py", "type": "file", "size": files["weather.py"]!.utf8.count, "git": "M"]]])
             }
             if q("dir") == "docs" { return json(["entries": [["name": "notes.md", "rel": "docs/notes.md", "type": "file", "size": files["docs/notes.md"]!.utf8.count]]]) }

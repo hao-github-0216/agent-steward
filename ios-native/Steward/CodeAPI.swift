@@ -114,9 +114,14 @@ struct PdfConflict: LocalizedError {
 }
 
 extension API {
-    private func codePath(_ project: String, _ op: String, _ q: [URLQueryItem] = []) -> String {
+    private func codePath(_ project: String, _ op: String, _ q: [URLQueryItem] = [], percentEncodedOp: Bool = false) -> String {
         var c = URLComponents()
-        c.path = "api/code/\(project)/\(op)"
+        c.path = "api/code/\(project)/"
+        if percentEncodedOp {
+            c.percentEncodedPath += op
+        } else {
+            c.path += op
+        }
         let q = q + (worktree.map { [URLQueryItem(name: "wt", value: $0)] } ?? [])
         if !q.isEmpty { c.queryItems = q }
         return c.string ?? ""
@@ -197,6 +202,22 @@ extension API {
     /// 圖片、PDF、Notebook、Office 的原始內容
     func rawFile(project: String, path: String) async throws -> Data {
         let r = try request(codePath(project, "raw", [URLQueryItem(name: "path", value: path)]))
+        let (data, resp) = try await API.slowSession.data(for: r)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw APIError.server(code, msg ?? String(localized: "讀不到檔案", bundle: AppLanguage.bundle))
+        }
+        return data
+    }
+
+    /// 靜態網頁與資源走 view 路由,每段路徑只編碼一次。
+    func viewFile(project: String, path: String) async throws -> Data {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        let encoded = path.components(separatedBy: "/").map {
+            $0.addingPercentEncoding(withAllowedCharacters: allowed) ?? $0
+        }.joined(separator: "/")
+        let r = try request(codePath(project, "view/\(encoded)", percentEncodedOp: true))
         let (data, resp) = try await API.slowSession.data(for: r)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else {

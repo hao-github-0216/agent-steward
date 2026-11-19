@@ -28,7 +28,7 @@ import { publicProjectView } from "./privacy.ts";
 import { embedTexts } from "./recall.ts";
 import { BUILTINS, detectPiProviders, type ProviderConfig } from "./settings.ts";
 import { appendChat, updateChat, clearChat, getSuggestions, putSuggestions, readChat, recentChat, markShared, unseenImageTurns, type ChatQuote } from "./chat-log.ts";
-import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, writeFile, writePdf } from "./code.ts";
+import { CodeError, diffIn, fileForChat, fileStamps, findFiles, fsOp, gitActionIn, inProject, isRepo, listDir, rawFile, readFile, statusIn, uploadFile, viewFile, writeFile, writePdf } from "./code.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -351,6 +351,19 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (req.method === "GET" && sub === "find") return send(res, 200, { files: findFiles(p, q("q")) });
 			if (req.method === "GET" && sub === "tree") return send(res, 200, { entries: await listDir(p, q("dir"), q("hidden") === "1"), repo: await isRepo(p) });
 			if (req.method === "GET" && sub === "file") return send(res, 200, readFile(p, q("path"), { more: Number(q("more")) || 0 }));
+			if (req.method === "GET" && sub.startsWith("view/")) {
+				let rel: string;
+				try { rel = sub.slice(5).split("/").map(decodeURIComponent).join("/"); }
+				catch { return send(res, 400, { error: "bad request" }); }
+				const { buf, type } = viewFile(p, rel);
+				res.writeHead(200, {
+					"content-type": type,
+					"cache-control": "no-store",
+					"x-content-type-options": "nosniff",
+					"content-security-policy": "sandbox allow-same-origin; default-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; connect-src 'none'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; media-src 'self' https:",
+				});
+				return res.end(buf);
+			}
 			if (req.method === "GET" && sub === "raw") {
 				const { buf, type } = rawFile(p, q("path"));
 				// SVG 可能夾帶指令碼:沙箱化;PDF 不能加 sandbox(瀏覽器的 PDF 檢視器會被擋)

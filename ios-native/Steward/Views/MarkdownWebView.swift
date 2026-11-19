@@ -140,6 +140,7 @@ private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
 final class ProjectFileSchemeHandler: NSObject, WKURLSchemeHandler {
     var api: API?
     var project = ""
+    var useView = false
     /// 還沒被網頁取消的請求(取消之後再回應會當掉)
     private var live = Set<ObjectIdentifier>()
 
@@ -152,11 +153,19 @@ final class ProjectFileSchemeHandler: NSObject, WKURLSchemeHandler {
         live.insert(id)
         let path = MarkdownWebView.projectPath(url)
         let project = project
+        let useView = useView
         Task { @MainActor in
             do {
-                let data = try await api.rawFile(project: project, path: path)
+                let data: Data
+                if useView {
+                    data = try await api.viewFile(project: project, path: path)
+                } else {
+                    data = try await api.rawFile(project: project, path: path)
+                }
                 guard self.live.remove(id) != nil else { return }
-                task.didReceive(URLResponse(url: url, mimeType: Self.mime(path), expectedContentLength: data.count, textEncodingName: nil))
+                let mime = Self.mime(path)
+                let encoding = ["text/html", "text/css"].contains(mime) ? "utf-8" : nil
+                task.didReceive(URLResponse(url: url, mimeType: mime, expectedContentLength: data.count, textEncodingName: encoding))
                 task.didReceive(data)
                 task.didFinish()
             } catch {
@@ -172,6 +181,12 @@ final class ProjectFileSchemeHandler: NSObject, WKURLSchemeHandler {
 
     static func mime(_ path: String) -> String {
         switch (path as NSString).pathExtension.lowercased() {
+        case "html", "htm": "text/html"
+        case "css": "text/css"
+        case "woff": "font/woff"
+        case "woff2": "font/woff2"
+        case "ttf": "font/ttf"
+        case "otf": "font/otf"
         case "png": "image/png"
         case "jpg", "jpeg": "image/jpeg"
         case "gif": "image/gif"

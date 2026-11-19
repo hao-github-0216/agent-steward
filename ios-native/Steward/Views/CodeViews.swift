@@ -774,6 +774,7 @@ struct FileView: View {
     @State private var error: String?
     @State private var data: Data?
     @State private var showPreview = true
+    @State private var previewReloadToken = 0
     @State private var editing = false
     @State private var draft = ""
     @State private var saving = false
@@ -801,6 +802,7 @@ struct FileView: View {
 
     private var ext: String { (path as NSString).pathExtension.lowercased() }
     private var isMarkdown: Bool { ["md", "markdown", "mdx"].contains(ext) }
+    private var isHTML: Bool { ["html", "htm"].contains(ext) }
     private var isNotebook: Bool { ext == "ipynb" }
 
     var body: some View {
@@ -845,7 +847,7 @@ struct FileView: View {
     private var fullScreen: Bool { model.readerFullScreen == readerKey }
     /// 看(不是編輯)的時候才能全螢幕:編輯中、選行、尋找時點一下不切換
     private var canFullScreen: Bool {
-        guard let f = file, !editing, !markup.blocksReload, lineSel == nil, !finding else { return false }
+        guard let f = file, !isHTML, !editing, !markup.blocksReload, lineSel == nil, !finding else { return false }
         return ["text", "image", "pdf"].contains(f.kind)
     }
 
@@ -956,6 +958,8 @@ struct FileView: View {
                 }
             } else if isNotebook && showPreview, let d = (f.content ?? "").data(using: .utf8) {
                 NotebookView(json: d).modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
+            } else if isHTML && showPreview {
+                HTMLPreviewView(project: project.id, path: path, reloadToken: previewReloadToken)
             } else if isMarkdown && showPreview {
                 if mdFallback {
                     ScrollView { MarkdownText(f.content ?? "").padding() }.modifier(ReaderTap(fullScreen: fullScreen) { toggleFullScreen() })
@@ -1005,7 +1009,7 @@ struct FileView: View {
     }
 
     private var canEdit: Bool { file?.kind == "text" && file?.readonly != true && (!isNotebook || !showPreview) }
-    private var hasPreview: Bool { file?.kind == "text" && (isMarkdown || isNotebook) }
+    private var hasPreview: Bool { file?.kind == "text" && (isMarkdown || isHTML || isNotebook) }
 
     private func startEdit() {
         guard let f = file else { return }
@@ -1026,7 +1030,7 @@ struct FileView: View {
     @ViewBuilder
     private var moreMenu: some View {
         Button { model.pendingChat = .file(path); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
-        if let f = file, f.kind == "text", !editing, !(isMarkdown && showPreview), !(isNotebook && showPreview) {
+        if let f = file, f.kind == "text", !editing, !((isMarkdown || isHTML) && showPreview), !(isNotebook && showPreview) {
             Button { finding = true; findFocused = true } label: { Label("在檔案中尋找", systemImage: "magnifyingglass") }
             if f.truncated == nil {
                 Button { lineSel = 1...1 } label: { Label("選取幾行來問管家或開工作卡", systemImage: "text.line.first.and.arrowtriangle.forward") }
@@ -1104,7 +1108,7 @@ struct FileView: View {
             }
         } else {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let f = file, f.kind == "text", isMarkdown || isNotebook {
+                if hasPreview {
                     Picker("檢視", selection: $showPreview) {
                         Text("預覽").tag(true)
                         Text("原文").tag(false)
@@ -1197,6 +1201,7 @@ struct FileView: View {
                 if f.kind == "pdf" { pdfDocument = PDFDocument(data: raw) }
             }
             file = f
+            previewReloadToken += 1
             if let h = f.hash { stamp = h } else if let h = try? await api.stamps(project: project.id, paths: [path])[path]?.hash { stamp = h }
             if let msg { flash(msg) }
         } catch {}
@@ -1371,6 +1376,7 @@ struct FileView: View {
             file?.content = draft
             file?.hash = hash
             stamp = hash
+            previewReloadToken += 1
             baseHash = nil
             editing = false
             model.code.gitChanged += 1

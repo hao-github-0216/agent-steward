@@ -1,4 +1,7 @@
 {
+	"預覽 HTML": "Preview HTML",
+	"這不是 HTML 檔": "This is not an HTML file",
+	"預覽 {path}(存檔後更新)": "Preview {path} (updates after saving)",
 	"最近在這些資料夾工作過": "Recently worked in these folders",
 	"登記成專案": "Register as a project",
 	"解釋": "Explain",

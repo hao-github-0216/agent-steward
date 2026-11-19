@@ -579,6 +579,21 @@ export function rawFile(p: Project, rel: string): { buf: Buffer; type: string } 
 	return { buf: readFileSync(abs), type: MIME[ext] };
 }
 
+export function viewFile(p: Project, rel: string): { buf: Buffer; type: string } {
+	const abs = inProject(p, rel);
+	const ext = extname(abs).toLowerCase();
+	const types: Record<string, string> = {
+		".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+		".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf",
+	};
+	const type = IMAGE.has(ext) ? MIME[ext] : types[ext];
+	if (!type) throw new CodeError(404, tr("檔案不存在"));
+	const st = statSync(abs);
+	if (!st.isFile()) throw new CodeError(404, tr("檔案不存在"));
+	if (st.size > VIEW_LIMIT) throw new CodeError(413, tr("檔案太大"));
+	return { buf: readFileSync(abs), type };
+}
+
 /** 存檔:檔案在開啟後被別人改過(hash 不同)就回 409 和磁碟上的新內容,除非 force */
 export function writeFile(p: Project, rel: string, content: string, baseHash: string | undefined, force: boolean) {
 	const abs = inProject(p, rel);
