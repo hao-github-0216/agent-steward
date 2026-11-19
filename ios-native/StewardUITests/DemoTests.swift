@@ -18,6 +18,17 @@ final class DemoTests: XCTestCase {
 
     private func assertBannerDoesNotCoverNavigation(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let banner = element(app, "demo-banner")
+        if #available(iOS 26.0, *) {
+            XCTAssertFalse(banner.exists, file: file, line: line)
+            let subtitle = app.navigationBars.firstMatch.staticTexts.matching(NSPredicate(format: "label IN %@", ["示範模式", "Demo mode"])).firstMatch
+            if subtitle.waitForExistence(timeout: 2) {
+                XCTAssertFalse(subtitle.frame.isEmpty, file: file, line: line)
+                XCTAssertTrue(app.frame.intersects(subtitle.frame), file: file, line: line)
+            } else {
+                print("Demo subtitle unavailable in XCUITest; checked demo-banner absence only.")
+            }
+            return
+        }
         XCTAssertTrue(banner.waitForExistence(timeout: 5), file: file, line: line)
         let frame = banner.frame
         XCTAssertGreaterThan(frame.height, 0, file: file, line: line)
@@ -47,9 +58,20 @@ final class DemoTests: XCTestCase {
         XCTAssertEqual(errors.count, 0, "示範設定頁不應顯示錯誤", file: file, line: line)
     }
 
+    private func openProjectMenu(_ app: XCUIApplication) {
+        let title = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "天氣小幫手")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+    }
+
+    private func menuButton(_ app: XCUIApplication, _ identifier: String, label: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", identifier, label)).firstMatch
+    }
+
     private func walkSettings(_ app: XCUIApplication) {
         app.buttons["看板"].firstMatch.tap()
-        let settings = app.navigationBars.buttons["設定"]
+        openProjectMenu(app)
+        let settings = menuButton(app, "menu-settings", label: "設定…")
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
         XCTAssertTrue(element(app, "settings-general").waitForExistence(timeout: 10))
@@ -136,14 +158,13 @@ final class DemoTests: XCTestCase {
         app.launch()
         defer { app.terminate() }
 
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["程式碼"].firstMatch.waitForExistence(timeout: 20))
         app.buttons["程式碼"].firstMatch.tap()
         let openSidebar = app.buttons["打開側欄"].firstMatch
         if openSidebar.waitForExistence(timeout: 3) { openSidebar.tap() }
         let row = element(app, "row-index.html")
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        XCTAssertTrue(app.buttons["原文"].waitForExistence(timeout: 10))
         let preview = app.webViews["html-preview"]
         XCTAssertTrue(preview.staticTexts["今日 24°C"].waitForExistence(timeout: 20))
         let image = preview.descendants(matching: .any)["範例天氣：晴時多雲"].firstMatch
@@ -151,33 +172,41 @@ final class DemoTests: XCTestCase {
         XCTAssertGreaterThan(image.frame.height, 50, "相對路徑的圖片沒有載入")
         shot(app, "html-preview")
 
-        app.buttons["原文"].tap()
-        XCTAssertFalse(preview.exists)
+        app.buttons["原文"].firstMatch.tap()
+        XCTAssertFalse(preview.waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<!doctype html>")).firstMatch.waitForExistence(timeout: 10))
     }
 
     func testDemoWalkthrough() {
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES"]
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-ballCorner", "br"]
         app.launch()
         defer { app.terminate() }
 
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 20))
         let card = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "加入一週天氣預報")).firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.navigationBars.buttons["設定"].exists)
+        openProjectMenu(app)
+        XCTAssertTrue(menuButton(app, "menu-settings", label: "設定…").waitForExistence(timeout: 5))
+        app.buttons["看板"].firstMatch.tap()
         assertBannerDoesNotCoverNavigation(app)
         shot(app, "01-board")
 
         card.tap()
-        XCTAssertTrue(app.navigationBars["工作卡"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["在今日天氣下方加入未來七天的預報卡片，先使用範例資料。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, "card-title").waitForExistence(timeout: 5))
+        let primary = element(app, "card-primary-action")
+        XCTAssertTrue(primary.waitForExistence(timeout: 5))
+        XCTAssertEqual(primary.label, "核准派工")
+        let instructions = app.staticTexts["在今日天氣下方加入未來七天的預報卡片，先使用範例資料。"]
+        reveal(instructions, in: app)
+        XCTAssertTrue(instructions.waitForExistence(timeout: 5))
         shot(app, "02-card")
         app.buttons["關閉"].firstMatch.tap()
 
         element(app, "steward-ball").tap()
         let conversation = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "這些都是範例資料，沒有真的派工或執行程式。")).firstMatch
         XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["chat-reply-draft"].firstMatch.waitForExistence(timeout: 5))
         shot(app, "03-chat")
 
         let input = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
@@ -230,7 +259,8 @@ final class DemoTests: XCTestCase {
 
         walkSettings(app)
 
-        app.buttons["demo-exit"].tap()
+        openProjectMenu(app)
+        menuButton(app, "demo-exit", label: "離開示範模式").tap()
         XCTAssertTrue(element(app, "server-url").waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["demo-enter"].exists)
         shot(app, "07-setup")

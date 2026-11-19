@@ -1,5 +1,5 @@
 // 工作卡視窗:內容和能做的事跟網頁的工作卡視窗一樣,元件用 Apple 的清單和系統按鈕
-//   提案:核准派工 / 不要;卡住:重新派工 / 標成完成;完成:重做一次;進行中/卡住/完成又有窗格:在終端機看這個窗格
+//   標題和資訊放在內容頂端;核准派工/重新派工/重做一次放在底部，其他動作放在導覽列選單
 //   追問:完成/卡住的卡在下面輸入框接著問做這張卡的 agent,進行中的先排隊;問題和 agent 的完整回覆排成一串對話
 import SwiftUI
 
@@ -23,12 +23,10 @@ struct CardPopup: View {
                     ScrollViewReader { proxy in
                     List {
                         Section {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(c.title).font(.title3.bold())
-                                meta(c)
-                            }
-                            .padding(.vertical, 2)
+                            Text(c.title).font(.title2.bold())
+                                .accessibilityIdentifier("card-title")
                         }
+                        info(c)
                         if let note = c.note, !note.isEmpty {
                             Section("最新狀態") { Text(note).textSelection(.enabled) }
                         }
@@ -40,7 +38,6 @@ struct CardPopup: View {
                         Section("完成標準") {
                             Text(c.doneCriteria?.isEmpty == false ? c.doneCriteria! : String(localized: "(沒有)", bundle: AppLanguage.bundle))
                         }
-                        actions(c)
                         if let thread = c.thread, !thread.isEmpty {
                             Section("追問") {
                                 ForEach(thread) { turn in
@@ -61,8 +58,26 @@ struct CardPopup: View {
                         }
                     }
                     .listStyle(.insetGrouped)
-                    // 輸入框在最下面(像「訊息」):完成/卡住的馬上送,進行中的先排隊
-                    .safeAreaInset(edge: .bottom) { if c.askable { askBar(c) } }
+                    // 主要動作和追問輸入列固定在底部。
+                    .safeAreaInset(edge: .bottom) {
+                        VStack(spacing: 0) {
+                            if let title = primaryActionTitle(c) {
+                                Button { Task { await move(c, "approved") } } label: {
+                                    HStack {
+                                        Text(title)
+                                        if busy { ProgressView() }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(busy)
+                                .accessibilityIdentifier("card-primary-action")
+                                .padding(.horizontal, 16).padding(.top, 8)
+                            }
+                            if c.askable { askBar(c) }
+                        }
+                        .background(.bar)
+                    }
                     .onAppear { scrollToEnd(c, proxy, animated: false) }
                     .onChange(of: c.thread?.count) { scrollToEnd(c, proxy, animated: true) }
                     }
@@ -70,9 +85,15 @@ struct CardPopup: View {
                     ContentUnavailableView("找不到這張工作卡", systemImage: "questionmark.square.dashed")
                 }
             }
-            .navigationTitle("工作卡")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if let c = model.card(cardId), ["proposed", "blocked"].contains(c.column) || canJump(c) {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu { moreActions(c) } label: { Image(systemName: "ellipsis.circle") }
+                            .accessibilityLabel("更多")
+                            .accessibilityIdentifier("card-more")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) { Button("關閉") { dismiss() } }
             }
         }
@@ -83,16 +104,35 @@ struct CardPopup: View {
         }
     }
 
-    private func meta(_ c: Card) -> some View {
-        let p = model.project(c.projectId)
-        let parts = ["#\(c.id)", c.agent, p?.name, (c.attempts ?? 0) > 1 ? String(localized: "第 \(c.attempts!) 次派工", bundle: AppLanguage.bundle) : nil, c.lastChanged.map { Fmt.ago($0) }].compactMap { $0 }
-        return HStack(spacing: 8) {
-            Text(columnLabel[c.column] ?? c.column)
-                .font(.caption.bold())
-                .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(columnColor(c.column).opacity(0.15), in: Capsule())
-                .foregroundStyle(columnColor(c.column))
-            Text(parts.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+    private func info(_ c: Card) -> some View {
+        Section("資訊") {
+            LabeledContent("狀態") {
+                Text(columnLabel[c.column] ?? c.column)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(columnColor(c.column).opacity(0.15), in: Capsule())
+                    .foregroundStyle(columnColor(c.column))
+            }
+            LabeledContent("編號", value: "#\(c.id)")
+            if ["proposed", "blocked", "done"].contains(c.column) {
+                Picker("交給", selection: Binding(
+                    get: { agentIdOf(c.agent ?? "") ?? c.agent ?? "" },
+                    set: { agent in Task { await updateAgent(c, agent) } }
+                )) {
+                    if agentIdOf(c.agent ?? "") == nil {
+                        Text(agentsReady ? String(localized: "\(c.agent ?? "")(沒有安裝)", bundle: AppLanguage.bundle) : (c.agent ?? "")).tag(c.agent ?? "")
+                    }
+                    ForEach(agents) { agent in
+                        Text(agent.name ?? agent.id).tag(agent.id)
+                    }
+                }
+                .disabled(busy)
+            } else if let agent = c.agent, !agent.isEmpty {
+                LabeledContent("Agent", value: agent)
+            }
+            if let p = model.project(c.projectId) { LabeledContent("所屬專案", value: p.name) }
+            if let attempts = c.attempts, attempts > 1 { LabeledContent("派工次數", value: "\(attempts)") }
+            if let changed = c.lastChanged { LabeledContent("最後更新", value: Fmt.ago(changed)) }
         }
     }
 
@@ -101,49 +141,31 @@ struct CardPopup: View {
         return agents.first { $0.id.lowercased() == n || $0.name?.lowercased() == n }?.id
     }
 
+    private func primaryActionTitle(_ c: Card) -> String? {
+        switch c.column {
+        case "proposed": String(localized: "核准派工", bundle: AppLanguage.bundle)
+        case "blocked": String(localized: "重新派工", bundle: AppLanguage.bundle)
+        case "done": String(localized: "重做一次", bundle: AppLanguage.bundle)
+        default: nil
+        }
+    }
+
+    private func canJump(_ c: Card) -> Bool {
+        (c.terminalId != nil || c.paneId != nil) && ["running", "blocked", "done"].contains(c.column)
+    }
+
     @ViewBuilder
-    private func actions(_ c: Card) -> some View {
-        let canJump = (c.terminalId != nil || c.paneId != nil) && ["running", "blocked", "done"].contains(c.column)
-        let moves: [(String, String, Bool)] = {
-            switch c.column {
-            case "proposed": [(String(localized: "核准派工", bundle: AppLanguage.bundle), "approved", true), (String(localized: "不要", bundle: AppLanguage.bundle), "rejected", false)]
-            case "blocked": [(String(localized: "重新派工", bundle: AppLanguage.bundle), "approved", true), (String(localized: "標成完成", bundle: AppLanguage.bundle), "done", false)]
-            case "done": [(String(localized: "重做一次", bundle: AppLanguage.bundle), "approved", false)]
-            default: []
-            }
-        }()
-        if !moves.isEmpty || canJump {
-            Section {
-                if ["proposed", "blocked", "done"].contains(c.column) {
-                    Picker("交給", selection: Binding(
-                        get: { agentIdOf(c.agent ?? "") ?? c.agent ?? "" },
-                        set: { agent in Task { await updateAgent(c, agent) } }
-                    )) {
-                        if agentIdOf(c.agent ?? "") == nil {
-                            Text(agentsReady ? String(localized: "\(c.agent ?? "")(沒有安裝)", bundle: AppLanguage.bundle) : (c.agent ?? "")).tag(c.agent ?? "")
-                        }
-                        ForEach(agents) { agent in
-                            Text(agent.name ?? agent.id).tag(agent.id)
-                        }
-                    }
-                    .disabled(busy)
-                }
-                ForEach(moves, id: \.1) { label, column, primary in
-                    Button(role: column == "rejected" ? .destructive : nil) {
-                        Task { await move(c, column) }
-                    } label: {
-                        HStack {
-                            Text(label).fontWeight(primary ? .semibold : .regular)
-                            Spacer()
-                            if busy { ProgressView() }
-                        }
-                    }
-                    .disabled(busy)
-                }
-                if canJump {
-                    Button { Task { await jump(c) } } label: { Label("在終端機看這個窗格", systemImage: "terminal") }
-                }
-            }
+    private func moreActions(_ c: Card) -> some View {
+        if c.column == "proposed" {
+            Button("不要", role: .destructive) { Task { await move(c, "rejected") } }
+                .disabled(busy)
+        }
+        if c.column == "blocked" {
+            Button("標成完成") { Task { await move(c, "done") } }
+                .disabled(busy)
+        }
+        if canJump(c) {
+            Button { Task { await jump(c) } } label: { Label("在終端機看這個窗格", systemImage: "terminal") }
         }
     }
 

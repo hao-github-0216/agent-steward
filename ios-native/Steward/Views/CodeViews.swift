@@ -1,6 +1,6 @@
 // 程式碼頁(原生):結構跟網頁的程式碼頁一樣(上面切「檔案|版本控制」),元件用 Apple 的。
 //   檔案:系統清單一層層點進資料夾、搜尋、Git 標記;點檔案用原生檢視(程式碼/文字可以編輯存檔、Markdown 預覽、
-//         圖片、PDF、Word/Excel/PowerPoint 用 Quick Look、Notebook)
+//         圖片、PDF、Word/Excel/PowerPoint 用 Quick Look、Notebook);iPhone 的檔案動作放在底部工具列
 //   版本控制:見 GitViews.swift
 // 編譯 LaTeX、執行 Notebook、分割編輯器這些重的功能留在網頁:「在網頁版編輯器打開」
 import PDFKit
@@ -155,10 +155,12 @@ struct CodeTab: View {
         // 上傳進度(在浮動球下面一層,球不會被蓋住)
         .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
         // 窄畫面的浮動球跟著整個分頁，點進檔案後也能使用。
-        .overlay { if sizeClass != .regular && !model.isReaderFullScreen { BallLayer().padding(.top, 50) } }
+        .overlay {
+            if sizeClass != .regular && !model.isReaderFullScreen {
+                BallLayer().padding(.top, 50).padding(.bottom, model.codePath.last == .editor ? 50 : 0)
+            }
+        }
         .modifier(UploadConflictDialog())
-        // 管家側欄掛在最外層:iPad 是右邊獨立一欄(有自己的標題列),iPhone 是從底下升起的視窗
-        .modifier(DrawerInspector(mode: .code))
     }
 }
 
@@ -187,15 +189,21 @@ struct CodeDestination: View {
     }
 }
 
-/// 導覽列右邊:管家、設定、⋯(帶入網頁版的版面、關閉所有分頁)
+/// 導覽列右邊是選項選單，iPad 寬畫面另有管家側欄開關。
 struct CodeToolbarItems: ToolbarContent {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Binding var notice: String?
+
+    private var regularPad: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
-            SettingsToolbarButton()
+            if regularPad {
+                Button { model.drawerOpen.toggle() } label: { Image(systemName: "sidebar.right") }
+                    .accessibilityIdentifier("drawer-toggle")
+                    .accessibilityLabel(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle))
+            }
             Menu {
                 Button { Task { await importWeb() } } label: { Label("帶入網頁版的版面", systemImage: "square.and.arrow.down.on.square") }
                 // 沒存的留著(分頁上有小圓點),跟長按分頁的「關閉其他分頁」一樣
@@ -203,6 +211,11 @@ struct CodeToolbarItems: ToolbarContent {
                     Label("關閉所有分頁", systemImage: "xmark.square")
                 }
                 .disabled(model.code.allTabs.isEmpty)
+                if !regularPad {
+                    Divider()
+                    Button(model.drawerOpen ? String(localized: "收起管家側欄", bundle: AppLanguage.bundle) : String(localized: "打開管家側欄", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
+                        .accessibilityIdentifier("drawer-toggle")
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -238,6 +251,7 @@ struct CompactCodeLayout: View {
                     ContentUnavailableView("還沒有專案", systemImage: "tray")
                 }
             }
+            .modifier(DrawerPanel(mode: .code))
             .modifier(ProjectChrome())
             .toolbar { CodeToolbarItems(notice: $notice) }
             .navigationDestination(for: CodeRoute.self) { CodeDestination(route: $0) }
@@ -278,8 +292,9 @@ struct RegularCodeLayout: View {
                         ContentUnavailableView("還沒有專案", systemImage: "tray")
                     }
                 }
+                .overlay { if !model.isReaderFullScreen { BallLayer() } }
             }
-            .overlay { if !model.isReaderFullScreen { BallLayer() } }
+            .modifier(DrawerPanel(mode: .code))
             .modifier(ProjectChrome())
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -756,6 +771,7 @@ func fileIcon(_ name: String) -> String {
 
 struct FileView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     let project: Project
     let path: String
     /// 這個分頁的 id:編輯中還沒存的內容記在版面資料裡(切分頁、重開 app 都還在)
@@ -804,6 +820,7 @@ struct FileView: View {
     private var isMarkdown: Bool { ["md", "markdown", "mdx"].contains(ext) }
     private var isHTML: Bool { ["html", "htm"].contains(ext) }
     private var isNotebook: Bool { ext == "ipynb" }
+    private var compactFile: Bool { !embedded && sizeClass == .compact }
 
     var body: some View {
         dialogs(lifecycle(chrome))
@@ -811,7 +828,7 @@ struct FileView: View {
 
     /// 內容 + 導覽列/動作列。
     /// 格子裡:動作列和提示列直接排在內容上面(用浮在上面的列的話,iPad 格子裡的編輯框會拿不到焦點);
-    /// 不在格子裡:提示列浮在上面、按鈕在導覽列
+    /// 不在格子裡:提示列浮在上面;iPhone 的閱讀動作在底部工具列，編輯動作在導覽列
     private var chrome: some View {
         VStack(spacing: 0) {
             if embedded && !fullScreen { topBars }
@@ -831,7 +848,16 @@ struct FileView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
                 .safeAreaInset(edge: .top, spacing: 0) { if !fullScreen { topBars } }
-                .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .tabBar)
+                .if(compactFile) { view in
+                    view.toolbar(.hidden, for: .tabBar)
+                        .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .bottomBar)
+                }
+                .if(!compactFile) { $0.toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .tabBar) }
+                .if(compactFile) { view in
+                    Group {
+                        if #available(iOS 26.0, *) { view.navigationSubtitle(project.name) } else { view }
+                    }
+                }
         }
         // iPad 的導覽列由外層統一控制，縮成零的格子不改工具列的顯示狀態。
         .background {
@@ -1043,6 +1069,42 @@ struct FileView: View {
         Button { model.present(.web(.codeEditor)) } label: { Label("在網頁版編輯器打開", systemImage: "safari") }
     }
 
+    @ViewBuilder
+    private var moreMenuCompact: some View {
+        if file?.kind == "office" {
+            Button { showHistory = true } label: { Label("歷史版本", systemImage: "clock.arrow.circlepath") }
+        }
+        Button { UIPasteboard.general.string = path } label: { Label("複製路徑", systemImage: "doc.on.doc") }
+        Button { model.present(.web(.codeEditor)) } label: { Label("在網頁版編輯器打開", systemImage: "safari") }
+    }
+
+    @ViewBuilder
+    private var compactBottomBar: some View {
+        if file?.kind == "text" {
+            Button { showPreview = false; finding = true; findFocused = true } label: { Image(systemName: "magnifyingglass") }
+                .accessibilityLabel("在檔案中尋找")
+                .accessibilityIdentifier("file-find")
+            Spacer()
+            Button { showPreview = false; lineSel = 1...1 } label: { Image(systemName: "list.number") }
+                .disabled(file?.truncated != nil)
+                .accessibilityLabel("選取幾行來問管家或開工作卡")
+                .accessibilityIdentifier("file-select-lines")
+            Spacer()
+        }
+        Button { model.pendingChat = .file(path); model.present(.chat) } label: { Image(systemName: "bubble.left.and.bubble.right") }
+            .accessibilityLabel("問管家這個檔案")
+            .accessibilityIdentifier("file-ask")
+        Spacer()
+        if hasPreview {
+            Button { showPreview.toggle() } label: { showPreview ? Text("原文") : Text("預覽") }
+                .accessibilityIdentifier("file-preview-toggle")
+            Spacer()
+        }
+        Menu { moreMenuCompact } label: { Image(systemName: "ellipsis.circle") }
+            .accessibilityLabel("更多")
+            .accessibilityIdentifier("file-more")
+    }
+
     /// 格子裡的動作列(像 Xcode 編輯器上方那一條):路徑、預覽/原文、編輯(或取消/儲存)、尋找、⋯
     private var actionBar: some View {
         HStack(spacing: 14) {
@@ -1086,6 +1148,9 @@ struct FileView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         if !embedded { navToolbar }
+        if compactFile && !editing {
+            ToolbarItemGroup(placement: .bottomBar) { compactBottomBar }
+        }
     }
 
     @ToolbarContentBuilder
@@ -1108,7 +1173,7 @@ struct FileView: View {
             }
         } else {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if hasPreview {
+                if !compactFile, hasPreview {
                     Picker("檢視", selection: $showPreview) {
                         Text("預覽").tag(true)
                         Text("原文").tag(false)
@@ -1119,10 +1184,10 @@ struct FileView: View {
                 if canEdit {
                     Button("編輯") { startEdit() }
                 }
-                Menu { moreMenu } label: {
-                    Image(systemName: "ellipsis.circle")
+                if !compactFile {
+                    Menu { moreMenu } label: { Image(systemName: "ellipsis.circle") }
+                        .accessibilityLabel("更多")
                 }
-                .accessibilityLabel("更多")
             }
         }
     }

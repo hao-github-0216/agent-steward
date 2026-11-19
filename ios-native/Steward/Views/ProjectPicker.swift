@@ -188,15 +188,15 @@ struct ProjectRow: View {
                             .foregroundStyle(.orange)
                             .accessibilityLabel("\(w) 個 agent 工作中")
                     }
+                    if selected {
+                        Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Theme.accent)
+                            .accessibilityLabel("目前的專案")
+                    }
                 }
                 if let progress = project.state?.progress, !progress.isEmpty {
                     Text(Markdown.plain(progress)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Text(project.lastActive.map { Fmt.ago($0) } ?? String(localized: "尚無紀錄", bundle: AppLanguage.bundle)).font(.caption).foregroundStyle(.tertiary)
-            }
-            if selected {
-                Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Theme.accent)
-                    .accessibilityLabel("目前的專案")
             }
         }
         .contentShape(Rectangle())

@@ -16,24 +16,18 @@ struct AppShell: View {
         @Bindable var model = model
         @Bindable var snap = model.snap
         TabView(selection: $model.mode) {
-            VStack(spacing: 0) {
-                BoardTab()
-                DemoBanner()
-            }
-            .tabItem { Label("看板", systemImage: "rectangle.split.3x1") }
-            .tag(Mode.board)
-            VStack(spacing: 0) {
-                CodeTab()
-                DemoBanner()
-            }
-            .tabItem { Label("程式碼", systemImage: "chevron.left.forwardslash.chevron.right") }
-            .tag(Mode.code)
-            VStack(spacing: 0) {
-                WebModeTab(mode: .terminal)
-                DemoBanner()
-            }
-            .tabItem { Label("終端機", systemImage: "terminal") }
-            .tag(Mode.terminal)
+            BoardTab()
+                .safeAreaInset(edge: .bottom, spacing: 0) { DemoBanner() }
+                .tabItem { Label("看板", systemImage: "rectangle.split.3x1") }
+                .tag(Mode.board)
+            CodeTab()
+                .safeAreaInset(edge: .bottom, spacing: 0) { DemoBanner() }
+                .tabItem { Label("程式碼", systemImage: "chevron.left.forwardslash.chevron.right") }
+                .tag(Mode.code)
+            WebModeTab(mode: .terminal)
+                .safeAreaInset(edge: .bottom, spacing: 0) { DemoBanner() }
+                .tabItem { Label("終端機", systemImage: "terminal") }
+                .tag(Mode.terminal)
         }
         .accessibilityHidden(!ready)
         .allowsHitTesting(ready)
@@ -87,13 +81,15 @@ private struct DemoBanner: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if model.isDemo {
+        if #available(iOS 26.0, *) {
+            DemoWriteNotice()
+        } else if model.isDemo {
             VStack(spacing: 0) {
                 HStack {
                     Text("示範模式・資料都是範例")
                     Spacer()
                     Button("離開") { model.leaveDemo() }
-                        .accessibilityIdentifier("demo-exit")
+                        .accessibilityIdentifier("demo-exit-banner")
                 }
                 .font(.footnote)
                 .padding(.horizontal).padding(.vertical, 8)
@@ -133,13 +129,15 @@ private struct DemoWriteNotice: View {
 /// 點標題打開選單:直接換專案,或打開完整的專案清單(建立、改名、停止追蹤…)
 struct ProjectChrome: ViewModifier {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     func body(content: Content) -> some View {
         content
             .navigationTitle(model.current?.name ?? String(localized: "選專案", bundle: AppLanguage.bundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarTitleMenu { ProjectTitleMenu() }
-            .modifier(PrivateSubtitle(isPrivate: model.current?.private == true))
+            .modifier(ProjectSubtitle())
+            .if(UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular) { $0.toolbarRole(.editor) }
     }
 }
 
@@ -162,6 +160,14 @@ struct ProjectTitleMenu: View {
         Section {
             Button { model.present(.projectPicker) } label: { Label("所有專案…", systemImage: "list.bullet") }
         }
+        Section {
+            Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                .accessibilityIdentifier("menu-settings")
+            if model.isDemo {
+                Button(role: .destructive) { model.leaveDemo() } label: { Label("離開示範模式", systemImage: "rectangle.portrait.and.arrow.right") }
+                    .accessibilityIdentifier("demo-exit")
+            }
+        }
     }
 
     @ViewBuilder
@@ -171,24 +177,16 @@ struct ProjectTitleMenu: View {
     }
 }
 
-/// 隱私專案:標題下面多一行「隱私專案」(iOS 26 起才有副標題;判斷 iOS 版本的分支固定不變,換專案時畫面不會重建)
-private struct PrivateSubtitle: ViewModifier {
-    let isPrivate: Bool
+/// iOS 26 起在標題下面顯示示範模式或隱私專案，示範模式優先。
+private struct ProjectSubtitle: ViewModifier {
+    @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.navigationSubtitle(isPrivate ? Text("隱私專案") : Text(""))
+            content.navigationSubtitle(model.isDemo ? Text("示範模式") : model.current?.private == true ? Text("隱私專案") : Text(""))
         } else {
             content
         }
-    }
-}
-
-struct SettingsToolbarButton: View {
-    @Environment(AppModel.self) private var model
-    var body: some View {
-        Button { model.present(.settings) } label: { Image(systemName: "gearshape") }
-            .accessibilityLabel("設定")
     }
 }
 
@@ -214,7 +212,6 @@ struct BoardTab: View {
                             Image(systemName: "ellipsis.circle")
                         }
                         .accessibilityLabel("看板選項")
-                        SettingsToolbarButton()
                     }
                 }
                 .alert("工作卡的規則", isPresented: $showRules) {
@@ -230,8 +227,11 @@ struct BoardTab: View {
 
 struct WebModeTab: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     let mode: Mode
     @State private var attachToken = 0
+
+    private var regularPad: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
 
     var body: some View {
         NavigationStack {
@@ -246,18 +246,33 @@ struct WebModeTab: View {
                     ContentUnavailableView("還沒有專案", systemImage: "tray")
                 }
             }
+            .modifier(DrawerPanel(mode: mode))
             .modifier(ProjectChrome())
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if mode == .terminal { branchTools }
-                    Button(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
-                        .accessibilityHint("打開或收起管家側欄")
+                    if regularPad {
+                        Button { model.drawerOpen.toggle() } label: { Image(systemName: "sidebar.right") }
+                            .accessibilityIdentifier("drawer-toggle")
+                            .accessibilityLabel(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle))
+                    }
+                    if !regularPad || (mode == .terminal && (model.termState.branchMain != nil || model.termState.agent)) {
+                        Menu {
+                            if mode == .terminal { branchTools }
+                            if !regularPad {
+                                Divider()
+                                Button(model.drawerOpen ? String(localized: "收起管家側欄", bundle: AppLanguage.bundle) : String(localized: "打開管家側欄", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
+                                    .accessibilityIdentifier("drawer-toggle")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .accessibilityLabel("更多")
+                    }
                 }
             }
         }
         // 程式碼和終端機共用同一個網頁:這一頁出現時把網頁搬過來
         .onAppear { attachToken += 1 }
-        .modifier(DrawerInspector(mode: mode))
     }
 
     /// 終端機的支線工具(跟網頁一樣:herdr 停在 agent 上才能開支線;停在支線上換成「帶回」)
@@ -268,15 +283,8 @@ struct WebModeTab: View {
                 .disabled(!model.termState.mainAlive)
                 .accessibilityLabel(model.termState.mainAlive ? String(localized: "把這條支線的結論帶回「\(main)」", bundle: AppLanguage.bundle) : String(localized: "主線已經關閉,沒辦法帶回", bundle: AppLanguage.bundle))
         } else if model.termState.agent {
-            Menu {
-                Button("開支線(另開 worktree)") { model.web.openBranch(here: false) }
-                Button("同資料夾開(不建 worktree)") { model.web.openBranch(here: true) }
-            } label: {
-                Text("＋支線")
-            } primaryAction: {
-                model.web.openBranch(here: false)
-            }
-            .accessibilityHint("從 herdr 目前的 agent 開一條支線;長按有其他開法")
+            Button("開支線(另開 worktree)") { model.web.openBranch(here: false) }
+            Button("同資料夾開(不建 worktree)") { model.web.openBranch(here: true) }
         }
     }
 }
@@ -285,6 +293,7 @@ struct WebModeTab: View {
 
 struct BallLayer: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var drag: CGSize = .zero
     @State private var dragging = false
 
@@ -317,7 +326,20 @@ struct BallLayer: View {
                                 dragging = false
                             }
                     )
-                    .simultaneousGesture(TapGesture().onEnded { openChat() })
+                    .if(sizeClass == .compact) {
+                        $0.simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.5)
+                                .exclusively(before: TapGesture())
+                                .onEnded { gesture in
+                                    switch gesture {
+                                    case .first(true): model.drawerOpen = true
+                                    case .second: openChat()
+                                    default: break
+                                    }
+                                }
+                        )
+                    }
+                    .if(sizeClass != .compact) { $0.simultaneousGesture(TapGesture().onEnded { openChat() }) }
                     .accessibilityElement()
                     .accessibilityLabel("問管家")
                     .accessibilityIdentifier("steward-ball")
@@ -379,21 +401,27 @@ struct CatBall: View {
 
 // MARK: - 管家側欄(程式碼/終端機下面,網頁的 #drawer)
 
-/// 管家側欄用 Apple 的 inspector:iPhone(窄畫面)是從底下升起、疊在程式碼/終端機上面的視窗,
-/// 預設半個螢幕、往上拖展開,半高時後面還可以操作;iPad(寬畫面)是右邊一欄,跟程式碼/終端機並排
-struct DrawerInspector: ViewModifier {
+/// 寬畫面在內容右邊放管家側欄；窄畫面從底下升起，預設半高且後面的內容仍可操作。
+struct DrawerPanel: ViewModifier {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     let mode: Mode
     @State private var detent: PresentationDetent = .medium
 
     func body(content: Content) -> some View {
-        // 看檔案全螢幕時先收起來(結束全螢幕再出來)
-        content.inspector(isPresented: Binding(get: { model.drawerOpen && model.mode == mode && !model.isReaderFullScreen && model.phase == .ready }, set: { if !$0 && !model.isReaderFullScreen { model.drawerCardId = nil; model.drawerOpen = false } })) {
+        let base = model.drawerOpen && model.mode == mode && !model.isReaderFullScreen && model.phase == .ready
+        HStack(spacing: 0) {
+            content
+            if base && sizeClass == .regular {
+                Divider()
+                StewardDrawer(embedded: true).frame(width: 360)
+            }
+        }
+        .sheet(isPresented: Binding(get: { base && sizeClass != .regular }, set: { if !$0 && !model.isReaderFullScreen { model.drawerCardId = nil; model.drawerOpen = false } })) {
             StewardDrawer()
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                .inspectorColumnWidth(min: 300, ideal: 360, max: 480)
                 .onAppear { detent = .medium }
         }
     }
@@ -404,39 +432,64 @@ struct DrawerInspector: ViewModifier {
 struct StewardDrawer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    var embedded = false
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let p = model.current {
-                    List { sections(p) }
-                        .listStyle(.insetGrouped)
-                } else {
-                    ContentUnavailableView("還沒有專案", systemImage: "tray", description: Text("在看板、程式碼頁面或 herdr 選一個專案"))
-                }
-            }
-            .navigationTitle(model.current?.name ?? String(localized: "管家", bundle: AppLanguage.bundle))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if sizeClass == .regular {
-                    ToolbarItemGroup(placement: .confirmationAction) {
+        Group {
+            if embedded {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text(model.current?.name ?? String(localized: "管家", bundle: AppLanguage.bundle))
+                            .font(.headline)
+                            .lineLimit(1)
+                        Spacer()
                         askButton
                         Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
                     }
-                } else {
-                    ToolbarItem(placement: .topBarLeading) { askButton }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
-                    }
+                    .padding(.horizontal)
+                    .frame(height: 50)
+                    drawerContent
+                }
+            } else {
+                NavigationStack {
+                    drawerContent
+                        .navigationTitle(model.current?.name ?? String(localized: "管家", bundle: AppLanguage.bundle))
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            if sizeClass == .regular {
+                                ToolbarItemGroup(placement: .confirmationAction) {
+                                    askButton
+                                    Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
+                                }
+                            } else {
+                                ToolbarItem(placement: .topBarLeading) { askButton }
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
+                                }
+                            }
+                        }
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("drawer-panel")
         // 收好了:排隊的視窗(問管家、換專案…)接著打開
         .onDisappear { model.drainPending() }
         .sheet(item: Binding(get: { model.drawerCardId.map(CardRef.init) }, set: { model.drawerCardId = $0?.id })) { ref in
             CardPopup(cardId: ref.id)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var drawerContent: some View {
+        Group {
+            if let p = model.current {
+                List { sections(p) }
+                    .listStyle(.insetGrouped)
+            } else {
+                ContentUnavailableView("還沒有專案", systemImage: "tray", description: Text("在看板、程式碼頁面或 herdr 選一個專案"))
+            }
         }
     }
 

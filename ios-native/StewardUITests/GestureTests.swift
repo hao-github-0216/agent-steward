@@ -38,12 +38,21 @@ final class GestureTests: XCTestCase {
         shot(app, "code-2-after-drag-left")
     }
 
+    private func openDrawer(_ app: XCUIApplication) {
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            app.buttons["程式碼頁選項"].firstMatch.tap()
+        }
+        let toggle = app.buttons["drawer-toggle"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.tap()
+    }
+
     /// 找檔名在「檔案|版本控制」下面;管家側欄半個螢幕,往上拖展開
     func testSearchAndDrawer() {
         let app = launch("agentsteward://project/\(project)/code")
         sleep(6)
         shot(app, "drawer-0-code-home")
-        app.buttons["管家"].firstMatch.tap()
+        openDrawer(app)
         sleep(2)
         shot(app, "drawer-1-medium")
         let grab = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.53))
@@ -404,11 +413,14 @@ final class GestureTests: XCTestCase {
         if UIDevice.current.userInterfaceIdiom == .pad, let (bar, _) = titleIn(name) {
             // iPad:再打開管家側欄,中間那欄最窄的時候標題還是不能被蓋住
             _ = bar
-            app.buttons["管家"].firstMatch.tap()
+            openDrawer(app)
             sleep(3)
             shot(app, "title-1b-ipad-drawer")
             assertNotCovered(name, "iPad 打開管家側欄")
-            if app.buttons["收起管家"].firstMatch.exists { app.buttons["收起管家"].firstMatch.tap(); sleep(2) }
+            let panel = app.descendants(matching: .any)["drawer-panel"].firstMatch
+            panel.buttons["完成"].firstMatch.tap()
+            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: panel)
+            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
         }
         // 點標題 → 選單 → 選另一個專案
         titleIn(name)?.title.tap()

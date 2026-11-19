@@ -1,6 +1,76 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "所屬專案": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Project" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "所屬專案" } }
+      }
+    },
+    "資訊": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Info" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "資訊" } }
+      }
+    },
+    "編號": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Number" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "編號" } }
+      }
+    },
+    "派工次數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Dispatch count" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "派工次數" } }
+      }
+    },
+    "最後更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Last updated" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "最後更新" } }
+      }
+    },
+    "依目前的對話開工作卡": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Create card from this conversation" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "依目前的對話開工作卡" } }
+      }
+    },
+    "依照這則管家回覆開工作卡:\n%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Create a card from this steward reply:\n%@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "依照這則管家回覆開工作卡:\n%@" } }
+      }
+    },
+    "設定…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Settings…" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "設定…" } }
+      }
+    },
+    "打開管家側欄": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open steward sidebar" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "打開管家側欄" } }
+      }
+    },
+    "收起管家側欄": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Collapse steward sidebar" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "收起管家側欄" } }
+      }
+    },
     "標題 %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -14120,7 +14190,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Exit demo mode"
+            "value": "Leave demo mode"
           }
         },
         "zh-Hant": {
