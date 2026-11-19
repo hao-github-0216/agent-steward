@@ -357,43 +357,92 @@ final class IPadChromeTests: XCTestCase {
         reader(.landscapeLeft, name: "landscape", split: true)
     }
 
-    // MARK: 主畫面晚建立時，切換列和導覽列之間不能多出空白
+    // MARK: 一列導覽：專案標題、模式切換列、右側按鈕在同一列，各種狀態下位置都不變
 
-    /// 正常啟動時切換列底到導覽列頂的距離。太大是多出空白，負的是導覽列被切換列蓋住
-    private let normalChromeGap: CGFloat = 14
-
-    /// 切換列底到導覽列頂的距離。主畫面在啟動後才建立時曾經變成 34pt(設定畫面進示範)或 88pt(登入後)
-    private func chromeGap(_ app: XCUIApplication, _ name: String) -> CGFloat {
-        let tabs = modeButtons(app).filter { $0.exists }
+    /// 量頂端那一列：切換列要在導覽列那一列裡，不能壓到任何按鈕，專案標題要看得到。回傳導覽列的 minY,給不同狀態比對
+    @discardableResult
+    private func topRow(_ app: XCUIApplication, _ name: String, title: String = "天氣小幫手",
+                        file: StaticString = #filePath, line: UInt = #line) -> CGFloat {
+        let tabs = modeButtons(app).filter { $0.exists && $0.frame.width > 0 }
         let bar = app.navigationBars.firstMatch
         guard tabs.count == 3, bar.exists else {
-            XCTFail("\(name)：找不到切換列或導覽列")
+            XCTFail("\(name)：找不到切換列或導覽列", file: file, line: line)
             return .infinity
         }
-        let gap = bar.frame.minY - tabs.map(\.frame.maxY).max()!
-        attach(app, name, frames: ["gap: \(gap)", "nav: \(bar.frame)"] + tabs.map { "\($0.label): \($0.frame)" })
-        return gap
+        let buttons = bar.buttons.allElementsBoundByIndex.filter { $0.frame.width > 0 && !$0.label.isEmpty }
+        var frames = ["nav: \(bar.frame)"] + tabs.map { "切換列 \($0.label): \($0.frame)" }
+        frames += buttons.map { "\($0.identifier) | \($0.label): \($0.frame)" }
+        attach(app, name, frames: frames)
+        for tab in tabs {
+            XCTAssertTrue(tab.frame.midY > bar.frame.minY && tab.frame.midY < bar.frame.maxY,
+                          "\(name)：切換列 \(tab.frame) 不在導覽列 \(bar.frame) 那一列", file: file, line: line)
+            for b in buttons where !tabs.contains(where: { $0.label == b.label }) {
+                XCTAssertFalse(tab.frame.intersects(b.frame), "\(name)：切換列「\(tab.label)」擋住「\(b.label)」", file: file, line: line)
+            }
+        }
+        XCTAssertTrue(buttons.contains { $0.label.hasPrefix(title) }, "\(name)：看不到專案標題「\(title)」", file: file, line: line)
+        let drawer = element(app, "drawer-panel")
+        if drawer.exists {
+            XCTAssertGreaterThanOrEqual(drawer.frame.minY, bar.frame.maxY - 1, "\(name)：管家側欄蓋到頂端那一列", file: file, line: line)
+        }
+        return bar.frame.minY
     }
 
-    /// 示範模式一般啟動直接進程式碼頁，不轉向(真管家的一般啟動在 testLoginThenPDFHasNoChromeGap 最後)
-    func testNormalLaunchChromeGap() {
+    private func assertSameRow(_ ys: [(String, CGFloat)], file: StaticString = #filePath, line: UInt = #line) {
+        guard let first = ys.first else { return }
+        for (name, y) in ys {
+            XCTAssertEqual(y, first.1, accuracy: 1, "\(name) 的導覽列在 \(y),\(first.0) 在 \(first.1)", file: file, line: line)
+        }
+    }
+
+    private func setDrawerToggle(_ app: XCUIApplication, open: Bool) {
+        let toggle = app.buttons["drawer-toggle"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "找不到管家側欄開關(drawer-toggle)")
+        let panel = element(app, "drawer-panel")
+        if panel.exists != open { toggle.tap() }
+        let done = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == %@", NSNumber(value: open)), object: panel)
+        XCTAssertEqual(XCTWaiter.wait(for: [done], timeout: 5), .completed, open ? "管家側欄沒打開" : "管家側欄沒收起")
+    }
+
+    /// 示範模式：切分頁、打開檔案、全螢幕來回、開關管家側欄、轉向，頂端那一列都不動
+    func testOneRowAcrossStates() {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW",
-                               "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES", "-codeSection", "files"]
+                               "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES", "-codeSection", "files", "-mode", "board"]
         app.launch()
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
-        app.buttons["程式碼"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["程式碼"].firstMatch.waitForExistence(timeout: 20))
         sleep(2)
-        let gap = chromeGap(app, "normal-launch-code")
-        let known = XCTExpectedFailure.Options(); known.isStrict = false
-        XCTExpectFailure("已知問題：示範模式一開始常是 34pt;修改前就是這樣", options: known) {
-            XCTAssertEqual(gap, normalChromeGap, accuracy: 6, "示範模式啟動時切換列和導覽列之間是 \(gap)pt")
-        }
+        var ys = [("board", topRow(app, "row-board"))]
+        app.buttons["程式碼"].firstMatch.tap(); sleep(2)
+        ys.append(("code", topRow(app, "row-code")))
+        setSidebar(app, open: true)
+        element(app, "row-README.md").tap()
+        let paragraph = app.webViews["markdown-view"].staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "一個用 Python 練習的天氣網頁 App。")).firstMatch
+        XCTAssertTrue(paragraph.waitForExistence(timeout: 20))
+        ys.append(("readme", topRow(app, "row-readme")))
+        paragraph.tap(); sleep(2)
+        XCTAssertEqual(app.navigationBars.count, 0, "全螢幕仍有導覽列")
+        paragraph.tap(); sleep(2)
+        ys.append(("after-fullscreen", topRow(app, "row-after-fullscreen")))
+        setDrawerToggle(app, open: true); sleep(1)
+        ys.append(("code-drawer", topRow(app, "row-code-drawer")))
+        app.buttons["終端機"].firstMatch.tap(); sleep(2)
+        ys.append(("terminal-drawer", topRow(app, "row-terminal-drawer")))
+        setDrawerToggle(app, open: false); sleep(1)
+        ys.append(("terminal", topRow(app, "row-terminal")))
+        app.buttons["程式碼"].firstMatch.tap(); sleep(1)
+        setSidebar(app, open: false)
+        ys.append(("code-no-sidebar", topRow(app, "row-code-no-sidebar")))
+        XCUIDevice.shared.orientation = .landscapeLeft; sleep(2)
+        topRow(app, "row-landscape")
+        XCUIDevice.shared.orientation = .portrait; sleep(2)
+        ys.append(("rotated-back", topRow(app, "row-rotated-back")))
+        assertSameRow(ys)
     }
 
-    /// 全新安裝:設定畫面 →「先看示範」→ 程式碼頁(不用管家，跟 App Store 審查的路徑一樣)
-    func testDemoFromSetupHasNoChromeGap() {
+    /// 全新安裝：設定畫面 →「先看示範」(主畫面晚建立，跟 App Store 審查的路徑一樣)
+    func testOneRowFromSetupDemo() {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES",
@@ -407,33 +456,27 @@ final class IPadChromeTests: XCTestCase {
         let hiddenCode = app.buttons["程式碼"].firstMatch
         if hiddenCode.exists { hiddenCode.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         demo.tap()
-        XCTAssertTrue(app.buttons["demo-exit"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 20))
+        sleep(2)
         XCTAssertTrue(app.buttons["看板"].firstMatch.isSelected, "在設定畫面點到了底下的切換列")
-        app.buttons["程式碼"].firstMatch.tap()
-        sleep(2)
-        let initial = chromeGap(app, "setup-demo-code-initial")
-        let known = XCTExpectedFailure.Options(); known.isStrict = false
-        XCTExpectFailure("已知問題：示範模式一開始常是 34pt,轉向後才變 14pt;修改前就是這樣", options: known) {
-            XCTAssertEqual(initial, normalChromeGap, accuracy: 6, "從設定畫面進示範後，切換列和導覽列之間是 \(initial)pt")
+        var ys = [("board", topRow(app, "setup-demo-board"))]
+        for (label, name) in [("程式碼", "code"), ("終端機", "terminal"), ("看板", "board-again")] {
+            app.buttons[label].firstMatch.tap(); sleep(2)
+            ys.append((name, topRow(app, "setup-demo-\(name)")))
         }
-        // 轉一次方向系統會重新排版;排版前後應該一樣
-        XCUIDevice.shared.orientation = .landscapeLeft
-        sleep(2)
-        XCUIDevice.shared.orientation = .portrait
-        sleep(2)
-        let rotated = chromeGap(app, "setup-demo-code-rotated")
-        XCTAssertEqual(rotated, normalChromeGap, accuracy: 6, "轉向後切換列和導覽列之間是 \(rotated)pt")
-        XCTExpectFailure("已知問題：示範模式轉向前後距離可能不一樣", options: known) {
-            XCTAssertEqual(initial, rotated, accuracy: 1, "轉向前後切換列和導覽列的距離不一樣")
-        }
+        XCUIDevice.shared.orientation = .landscapeLeft; sleep(2)
+        XCUIDevice.shared.orientation = .portrait; sleep(2)
+        ys.append(("rotated", topRow(app, "setup-demo-rotated")))
+        assertSameRow(ys)
     }
 
-    /// 登入後直接打開 PDF:初始、換分頁、進出全螢幕，切換列和導覽列的距離都一樣。
+    /// 登入後直接打開 PDF:初始、換分頁、進出全螢幕、重開 App,頂端那一列都不動。
     /// 要接 18799 的隔離管家(有設密碼):測試會把同一個密碼再設一次，讓所有登入失效
-    func testLoginThenPDFHasNoChromeGap() throws {
+    func testLoginThenPDFKeepsOneRow() throws {
         let env = ProcessInfo.processInfo.environment
         guard let server = env["STEWARD_TEST_SERVER"], let project = env["STEWARD_PDF_PROJECT"],
               let pdfPath = env["STEWARD_PDF_FILE"], let other = env["STEWARD_PDF_FILE_2"], let password = env["STEWARD_TEST_PASSWORD"],
+              let title = env["STEWARD_PDF_PROJECT_NAME"],
               let url = URL(string: server), url.host == "127.0.0.1", url.port == 18799 else {
             throw XCTSkip("登入後的版面測試需要 18799 的隔離管家和它的密碼")
         }
@@ -451,21 +494,20 @@ final class IPadChromeTests: XCTestCase {
         let pdf = element(app, "pdf-view")
         XCTAssertTrue(pdf.waitForExistence(timeout: 20), "登入後沒有打開 PDF")
         sleep(2)
-        let initial = chromeGap(app, "login-pdf-initial")
-        XCTAssertEqual(initial, normalChromeGap, accuracy: 6, "登入後切換列和導覽列之間是 \(initial)pt")
+        let initial = topRow(app, "login-pdf-initial", title: title)
         let row = element(app, "row-\(other)")
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
         XCTAssertTrue(element(app, "tab-file:\(other)").waitForExistence(timeout: 10))
         sleep(2)
-        XCTAssertEqual(chromeGap(app, "login-pdf-second-tab"), initial, accuracy: 1, "換分頁後距離變了")
+        XCTAssertEqual(topRow(app, "login-pdf-second-tab", title: title), initial, accuracy: 1, "換分頁後頂端那一列移動了")
         pdf.tap()
         let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element(app, "steward-ball"))
         XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, "點 PDF 沒有進入全螢幕")
         pdf.tap()
         XCTAssertTrue(element(app, "steward-ball").waitForExistence(timeout: 5), "再點一下沒有離開全螢幕")
         sleep(2)
-        XCTAssertEqual(chromeGap(app, "login-pdf-after-fullscreen"), initial, accuracy: 1, "進出全螢幕後距離變了")
+        XCTAssertEqual(topRow(app, "login-pdf-after-fullscreen", title: title), initial, accuracy: 1, "進出全螢幕後頂端那一列移動了")
         // 重開 App(登入還在):一般啟動也要一樣
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES",
@@ -473,8 +515,7 @@ final class IPadChromeTests: XCTestCase {
         app.launch()
         XCTAssertTrue(element(app, "pdf-view").waitForExistence(timeout: 20), "重開後沒有回到 PDF")
         sleep(2)
-        let relaunched = chromeGap(app, "login-pdf-relaunch")
-        XCTAssertEqual(relaunched, normalChromeGap, accuracy: 6, "重開 App 後切換列和導覽列之間是 \(relaunched)pt")
+        XCTAssertEqual(topRow(app, "login-pdf-relaunch", title: title), initial, accuracy: 1, "重開 App 後頂端那一列移動了")
     }
 }
 
