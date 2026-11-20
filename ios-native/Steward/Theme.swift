@@ -5,6 +5,8 @@ import UIKit
 
 enum Theme {
     static let accent = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x6B9CFF) : UIColor(hex: 0x2F6FDF) })
+    static let gitButtonText = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x4DA3FF) : UIColor(hex: 0x0058CC) })
+    static let gitButtonFill = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x18334F) : UIColor(hex: 0xE6F0FF) })
     /// 浮動球的底色(網頁 #stewardBall)
     static let ball = Color(UIColor(hex: 0xFFF1DC))
 }

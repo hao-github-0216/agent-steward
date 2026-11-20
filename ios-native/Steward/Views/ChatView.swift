@@ -167,7 +167,7 @@ private struct ChatContent: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 attachMenu
-                TextField("問管家這個專案的事…", text: $draft, axis: .vertical)
+                TextField(attachedPaths.isEmpty ? String(localized: "問管家這個專案的事…", bundle: AppLanguage.bundle) : String(localized: "問這個檔案…", bundle: AppLanguage.bundle), text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($inputFocused)
                     .padding(.horizontal, 14).padding(.vertical, 9)
@@ -304,6 +304,9 @@ private struct ChatContent: View {
         model.chatUnread = false
         // 在程式碼頁打開:正在看的檔案當「目前檔案」
         if model.mode == .code, model.codeShowsFile, let f = model.activeCodeFile { currentFile = f }
+        if let cf = currentFile, !attachedPaths.contains(cf.path) {
+            if let text = cf.unsaved { attachments.append(Attachment(kind: .editorFile(cf.path, text))) } else { attachments.append(Attachment(kind: .projectFile(cf.path))) }
+        }
         suggestions = (try? await api.suggestions(project: project.id)) ?? []
     }
 

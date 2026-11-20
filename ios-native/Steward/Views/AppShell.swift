@@ -1,7 +1,7 @@
 // app 的骨架:結構跟管家網頁一樣(專案在最上層,下面是看板/程式碼/終端機),元件用 Apple 的:
 //   底部系統分頁列:看板 · 程式碼 · 終端機(跟網頁的三個模式同順序)
 //   每一頁頂端的系統導覽列:標題是目前專案,點一下打開選單換專案(或打開完整的專案清單)
-//   右下角:貓咪浮動球(問管家)和它旁邊的圈選鈕(全 app 只有這一個圈選入口)
+//   問管家用貓咪入口:檔案頁放在底部工具列，其他頁面浮在角落；長按可圈選畫面
 //   分頁容器從啟動就建立;還沒連上管家時，由 RootView 的設定、登入等畫面蓋在上面
 import SwiftUI
 
@@ -293,13 +293,13 @@ struct WebModeTab: View {
     }
 }
 
-// MARK: - 浮動球(貓咪)和圈選鈕
+// MARK: - 貓咪入口和長按選單
 
 struct BallLayer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var drag: CGSize = .zero
-    @State private var dragging = false
+    @State private var showMenu = false
 
     private let size: CGFloat = 56
     private let inset: CGFloat = 16
@@ -310,46 +310,42 @@ struct BallLayer: View {
             let x = c.isRight ? geo.size.width - inset - size / 2 : inset + size / 2
             let y = c.isBottom ? geo.size.height - inset - size / 2 : inset + size / 2
             ZStack {
-                // 圈選鈕:在貓的內側上方(網頁的位置)
-                if !dragging {
-                    SnapButton()
-                        .position(x: x + (c.isRight ? -44 : 44), y: y + (c.isBottom ? -44 : 44))
-                }
                 CatBall(busy: model.chatBusy, unread: model.chatUnread)
                     .frame(width: size, height: size)
                     .position(x: x + drag.width, y: y + drag.height)
                     .gesture(
                         DragGesture(minimumDistance: 8)
-                            .onChanged { v in dragging = true; drag = v.translation }
+                            .onChanged { v in drag = v.translation }
                             .onEnded { v in
                                 // 放開:吸到最近的角落(跟網頁一樣)
                                 let fx = x + v.translation.width, fy = y + v.translation.height
                                 let right = fx > geo.size.width / 2, bottom = fy > geo.size.height / 2
                                 model.ballCorner = bottom ? (right ? .br : .bl) : (right ? .tr : .tl)
                                 drag = .zero
-                                dragging = false
                             }
                     )
-                    .if(sizeClass == .compact) {
-                        $0.simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0.5)
-                                .exclusively(before: TapGesture())
-                                .onEnded { gesture in
-                                    switch gesture {
-                                    case .first(true): model.drawerOpen = true
-                                    case .second: openChat()
-                                    default: break
-                                    }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.5)
+                            .exclusively(before: TapGesture())
+                            .onEnded { gesture in
+                                switch gesture {
+                                case .first(true): showMenu = true
+                                case .second: openChat()
+                                default: break
                                 }
-                        )
-                    }
-                    .if(sizeClass != .compact) { $0.simultaneousGesture(TapGesture().onEnded { openChat() }) }
+                            }
+                    )
+                    .confirmationDialog("管家", isPresented: $showMenu) { CatMenuActions() }
                     .accessibilityElement()
                     .accessibilityLabel("問管家")
                     .accessibilityIdentifier("steward-ball")
                     .accessibilityHint("可以拖到畫面四個角落")
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { openChat() }
+                    .accessibilityAction(named: Text("圈選畫面問管家")) { model.beginSnap() }
+                    .if(sizeClass == .compact) {
+                        $0.accessibilityAction(named: Text("打開管家側欄")) { model.drawerOpen = true }
+                    }
             }
             .animation(.spring(duration: 0.25), value: model.ballCorner)
         }
@@ -361,22 +357,44 @@ struct BallLayer: View {
     }
 }
 
-/// 圈選鈕:三個分頁都用 app 自己的圈選(iPhone 的文字辨識);終端機圈的會請管家認出是哪個 agent 窗格
-struct SnapButton: View {
+private struct CatMenuActions: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        Button {
-            model.beginSnap()
-        } label: {
-            Image(systemName: "text.viewfinder")
-                .font(.title3)
-                .frame(width: 40, height: 40)
-                .background(.regularMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+        Button("圈選畫面問管家") { model.beginSnap() }
+        if sizeClass == .compact {
+            Button("打開管家側欄") { model.drawerOpen = true }
         }
-        .tint(Theme.accent)
-        .accessibilityLabel("圈選畫面問管家")
+        Button("取消", role: .cancel) {}
+    }
+}
+
+struct ToolbarCatButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var showMenu = false
+    let action: () -> Void
+
+    var body: some View {
+        CatBall(busy: model.chatBusy, unread: model.chatUnread)
+            .frame(width: 44, height: 44)
+            .gesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .exclusively(before: TapGesture())
+                    .onEnded { gesture in
+                        switch gesture {
+                        case .first(true): showMenu = true
+                        case .second: action()
+                        default: break
+                        }
+                    }
+            )
+            .confirmationDialog("管家", isPresented: $showMenu) { CatMenuActions() }
+            .accessibilityElement()
+            .accessibilityLabel("問管家")
+            .accessibilityIdentifier("file-ask")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { action() }
     }
 }
 

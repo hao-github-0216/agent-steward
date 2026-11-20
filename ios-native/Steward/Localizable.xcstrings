@@ -57,6 +57,13 @@
         "zh-Hant": { "stringUnit": { "state": "translated", "value": "設定…" } }
       }
     },
+    "問這個檔案…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Ask about this file…" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "問這個檔案…" } }
+      }
+    },
     "打開管家側欄": {
       "extractionState": "manual",
       "localizations": {

@@ -93,7 +93,7 @@ struct GitView: View {
                 gitButton(String(localized: "推送", bundle: AppLanguage.bundle), "push", "arrow.up.circle")
                 gitButton(String(localized: "抓取", bundle: AppLanguage.bundle), "fetch", "arrow.triangle.2.circlepath")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 if let info { Text(info) } else if let up = s.upstream, !up.isEmpty { Text("追蹤 \(up)") }
@@ -108,9 +108,25 @@ struct GitView: View {
         Button {
             Task { await run(action, [:], done: String(localized: "\(title)完成", bundle: AppLanguage.bundle)) }
         } label: {
-            if busy == action { ProgressView().frame(maxWidth: .infinity) } else { Label(title, systemImage: icon).frame(maxWidth: .infinity) }
+            VStack(spacing: 4) {
+                if busy == action {
+                    ProgressView()
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 20))
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 60)
+            .background(Theme.gitButtonFill, in: RoundedRectangle(cornerRadius: 14))
+            .foregroundStyle(Theme.gitButtonText)
         }
         .disabled(busy != nil)
+        .opacity(busy != nil ? 0.5 : 1)
     }
 
     /// 提交訊息 + 產生 + 提交

@@ -154,10 +154,10 @@ struct CodeTab: View {
         .onChange(of: sizeClass, initial: true) { _, c in if c == .regular { model.codePath.removeAll { $0 == .editor } } }
         // 上傳進度(在浮動球下面一層,球不會被蓋住)
         .overlay(alignment: .bottom) { UploadStatusBar().padding(.bottom, 8).animation(.snappy, value: model.uploads.running) }
-        // 窄畫面的浮動球跟著整個分頁，點進檔案後也能使用。
+        // 窄畫面打開檔案時，貓咪改放在底部工具列。
         .overlay {
-            if sizeClass != .regular && !model.isReaderFullScreen {
-                BallLayer().padding(.top, 50).padding(.bottom, model.codePath.last == .editor ? 50 : 0)
+            if sizeClass != .regular && model.codePath.last != .editor && !model.isReaderFullScreen {
+                BallLayer().padding(.top, 50)
             }
         }
         .modifier(UploadConflictDialog())
@@ -1059,7 +1059,6 @@ struct FileView: View {
     /// 「⋯」選單(導覽列和格子的動作列共用)
     @ViewBuilder
     private var moreMenu: some View {
-        Button { model.pendingChat = .file(path); model.present(.chat) } label: { Label("問管家這個檔案", systemImage: "bubble.left.and.text.bubble.right") }
         if let f = file, f.kind == "text", !editing, !((isMarkdown || isHTML) && showPreview), !(isNotebook && showPreview) {
             Button { finding = true; findFocused = true } label: { Label("在檔案中尋找", systemImage: "magnifyingglass") }
             if f.truncated == nil {
@@ -1095,9 +1094,7 @@ struct FileView: View {
                 .accessibilityIdentifier("file-select-lines")
             Spacer()
         }
-        Button { model.pendingChat = .file(path); model.present(.chat) } label: { Image(systemName: "bubble.left.and.bubble.right") }
-            .accessibilityLabel("問管家這個檔案")
-            .accessibilityIdentifier("file-ask")
+        ToolbarCatButton { model.pendingChat = .file(path); model.present(.chat) }
         Spacer()
         if hasPreview {
             Button { showPreview.toggle() } label: { showPreview ? Text("原文") : Text("預覽") }

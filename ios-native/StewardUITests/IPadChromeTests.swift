@@ -617,11 +617,10 @@ final class IPhoneChromeTests: XCTestCase {
         let identifiers = ["file-find", "file-select-lines", "file-ask", "file-preview-toggle", "file-more"]
         let controls = identifiers.map { app.buttons[$0].firstMatch }
         let cat = app.descendants(matching: .any)["steward-ball"].firstMatch
-        XCTAssertTrue(cat.waitForExistence(timeout: 5))
+        XCTAssertFalse(cat.exists, "檔案打開時只顯示工具列的貓咪")
         for (index, control) in controls.enumerated() {
             XCTAssertTrue(control.waitForExistence(timeout: 5) && control.isHittable, identifiers[index])
             XCTAssertGreaterThanOrEqual(control.frame.minY, app.frame.midY, identifiers[index])
-            XCTAssertFalse(cat.frame.intersects(control.frame), "貓咪擋住 \(identifiers[index])")
             for other in controls.dropFirst(index + 1) {
                 XCTAssertFalse(control.frame.intersects(other.frame), "\(identifiers[index]) 和 \(other.identifier) 重疊")
             }
@@ -632,19 +631,31 @@ final class IPhoneChromeTests: XCTestCase {
         XCTAssertEqual(toggle.label, "預覽")
         app.buttons["file-select-lines"].firstMatch.tap()
         XCTAssertTrue(app.buttons["複製"].firstMatch.waitForExistence(timeout: 5))
-        app.buttons["file-ask"].firstMatch.tap()
+        let toolbarCat = app.buttons["file-ask"].firstMatch
+        toolbarCat.tap()
         XCTAssertTrue(app.navigationBars.buttons["關閉"].firstMatch.waitForExistence(timeout: 5))
+        let attachedFile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "拿掉 ", "README.md")).firstMatch
+        XCTAssertTrue(attachedFile.waitForExistence(timeout: 5), "問管家應自動附上 README.md")
         app.navigationBars.buttons["關閉"].firstMatch.tap()
 
         let drawer = app.descendants(matching: .any)["drawer-panel"].firstMatch
         for _ in 0..<3 {
-            cat.press(forDuration: 0.7)
+            toolbarCat.press(forDuration: 0.7)
+            XCTAssertTrue(app.buttons["圈選畫面問管家"].firstMatch.waitForExistence(timeout: 5))
+            let openDrawer = app.buttons["打開管家側欄"].firstMatch
+            XCTAssertTrue(openDrawer.exists)
+            XCTAssertFalse(app.navigationBars.buttons["關閉"].firstMatch.exists, "長按只能打開選單，不能同時打開問管家")
+            openDrawer.tap()
             XCTAssertTrue(drawer.waitForExistence(timeout: 5))
-            XCTAssertFalse(app.navigationBars.buttons["關閉"].firstMatch.exists, "長按只能打開側欄，不能同時打開問管家")
             drawer.buttons["完成"].firstMatch.tap()
             let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: drawer)
             XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
         }
+        let back = app.navigationBars.buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+        XCTAssertTrue(readme.waitForExistence(timeout: 5))
+        XCTAssertTrue(cat.waitForExistence(timeout: 5), "返回檔案清單後應恢復浮動貓咪")
         cat.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)))
         XCTAssertLessThan(cat.frame.midY, app.frame.midY, "貓咪應能拖到上方角落")
