@@ -267,15 +267,6 @@ struct SnapSheet: View {
                     .pickerStyle(.menu)
                     .disabled(busy || !turns.isEmpty)
                 }
-                if turns.isEmpty {
-                    Section("快速問") {
-                        ForEach(Self.quick, id: \.0) { q in
-                            Button { Task { await ask(q.2, shown: q.0) } } label: { Label(q.0, systemImage: q.1) }
-                        }
-                        Button { Task { await draft() } } label: { Label("開工作卡", systemImage: "rectangle.stack.badge.plus") }
-                    }
-                    .disabled(busy)
-                }
                 ForEach(Array(turns.enumerated()), id: \.offset) { _, t in
                     Section {
                         if t.error { Text(t.a).foregroundStyle(.red) } else { MarkdownText(t.a) }
@@ -316,8 +307,41 @@ struct SnapSheet: View {
         }
     }
 
-    /// iMessage 式的輸入列:寫問題按送出;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
+    /// 快速問的小按鈕：圖示和字並排，四個平分一排
+    private func quickButton(_ title: String, systemImage: String, action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: {
+            Label(title, systemImage: systemImage)
+                .font(.footnote)
+                .labelStyle(CompactQuickLabel())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    /// 底部：快速問一排 + iMessage 式的輸入列:寫問題按送出;寫要做的事按「開工作卡」(會照這裡寫的擬工作卡)
     private var inputBar: some View {
+        VStack(spacing: 8) {
+            // 四個快速動作排成一排，放在輸入框上面：面板拉到多高都看得到
+            if turns.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Self.quick, id: \.0) { q in
+                        quickButton(q.0, systemImage: q.1) { await ask(q.2, shown: q.0) }
+                    }
+                    quickButton(String(localized: "工作卡", bundle: AppLanguage.bundle), systemImage: "rectangle.stack.badge.plus") { await draft() }
+                        .accessibilityLabel("開工作卡")
+                }
+                .disabled(busy)
+            }
+            inputRow
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var inputRow: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField(turns.isEmpty ? String(localized: "問這一塊,或寫要做的事(再按「開工作卡」)…", bundle: AppLanguage.bundle) : String(localized: "接著問,或寫要做的事(再按「開工作卡」)…", bundle: AppLanguage.bundle), text: $question, axis: .vertical)
                 .lineLimit(1...4)
@@ -334,8 +358,6 @@ struct SnapSheet: View {
             .accessibilityLabel("送出")
             .disabled(busy)
         }
-        .padding(.horizontal).padding(.vertical, 8)
-        .background(.bar)
     }
 
     /// 第一題帶圈選內容(管家記成「↪ 圈選」的引用);之後接著問就是一般提問,管家有前面的對話
@@ -397,5 +419,12 @@ struct SnapSheet: View {
         m += String(localized: "\n出處:\(label)\n內容:\n\(body.prefix(3000))", bundle: AppLanguage.bundle)
         if let answer { m += String(localized: "\n\n管家的看法:\n\(answer.prefix(2000))", bundle: AppLanguage.bundle) }
         return m
+    }
+}
+
+/// 快速問按鈕的圖示和字靠很近，窄螢幕四顆也排得下
+private struct CompactQuickLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) { configuration.icon; configuration.title }
     }
 }
