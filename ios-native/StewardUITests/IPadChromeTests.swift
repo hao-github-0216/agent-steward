@@ -34,6 +34,65 @@ final class IPadChromeTests: XCTestCase {
         return app
     }
 
+    private func launchFloatingChat() -> XCUIApplication {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW",
+                               "-demo", "YES", "-resetCodeLayout", "YES", "-resetChatWindow", "YES",
+                               "-noPush", "YES", "-codeSection", "files", "-ballCorner", "br", "-mode", "board"]
+        app.launch()
+        let ball = element(app, "steward-ball")
+        XCTAssertTrue(ball.waitForExistence(timeout: 20))
+        ball.tap()
+        XCTAssertTrue(element(app, "chat-window").waitForExistence(timeout: 10))
+        return app
+    }
+
+    func testFloatingChatDoesNotBlockBackground() {
+        let app = launchFloatingChat()
+        let window = element(app, "chat-window")
+        app.buttons["程式碼"].firstMatch.tap()
+        XCTAssertTrue(window.exists, "切換分頁不能關閉問管家")
+        setSidebar(app, open: true)
+        let readme = element(app, "row-README.md")
+        XCTAssertTrue(readme.waitForExistence(timeout: 10))
+        readme.tap()
+        XCTAssertTrue(element(app, "tab-file:README.md").waitForExistence(timeout: 10))
+        XCTAssertTrue(window.exists, "打開檔案不能關閉問管家")
+        setDrawer(app, open: true)
+        XCTAssertTrue(window.exists, "打開管家側欄不能關閉問管家")
+        setDrawer(app, open: false)
+        attach(app, "floating-chat-background", frames: ["window: \(window.frame)"])
+    }
+
+    func testFloatingChatResizeAndMove() {
+        let app = launchFloatingChat()
+        let window = element(app, "chat-window")
+        let original = window.frame
+        let corner = element(app, "chat-resize-sw")
+        XCTAssertTrue(corner.waitForExistence(timeout: 5))
+        let start = corner.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -120, dy: 120)))
+        let resized = window.frame
+        XCTAssertGreaterThanOrEqual(resized.width, original.width + 80, "往左下拖應增加寬度")
+        XCTAssertGreaterThanOrEqual(resized.height, original.height + 80, "往左下拖應增加高度")
+
+        let title = element(app, "chat-window-titlebar").coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5))
+        title.press(forDuration: 0.1, thenDragTo: title.withOffset(CGVector(dx: -200, dy: 0)))
+        let moved = window.frame
+        XCTAssertLessThan(moved.minX, resized.minX - 150, "標題列應能往左移動視窗")
+        app.buttons["chat-window-close"].tap()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: window)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+        element(app, "steward-ball").tap()
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        XCTAssertEqual(window.frame.minX, moved.minX, accuracy: 2)
+        XCTAssertEqual(window.frame.minY, moved.minY, accuracy: 2)
+        XCTAssertEqual(window.frame.width, moved.width, accuracy: 2)
+        XCTAssertEqual(window.frame.height, moved.height, accuracy: 2)
+        attach(app, "floating-chat-resized-reopened", frames: ["original: \(original)", "resized: \(resized)", "moved: \(moved)", "reopened: \(window.frame)"])
+    }
+
     private func attach(_ app: XCUIApplication, _ name: String, frames: [String]) {
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = name

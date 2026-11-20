@@ -1,6 +1,20 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "問管家 · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Ask Steward · %@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "問管家 · %@" } }
+      }
+    },
+    "調整視窗大小": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Resize window" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "調整視窗大小" } }
+      }
+    },
     "所屬專案": {
       "extractionState": "manual",
       "localizations": {

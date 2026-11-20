@@ -103,6 +103,7 @@ final class AppModel {
     }
     var showProjectPicker = false
     var showChat = false
+    var chatFloating = false
     var showSettings = false
     /// 程式碼/終端機下面的管家側欄展開了沒(網頁的 body.drawer)
     /// 管家側欄:從底下升起的視窗(程式碼、終端機才有;每次開 app 都是收著的)
@@ -173,6 +174,10 @@ final class AppModel {
     var api: API? { server.map { API(base: $0, worktree: codeWorktree?.id) } }
 
     init() {
+        if UserDefaults.standard.bool(forKey: "resetChatWindow") {
+            UserDefaults.standard.removeObject(forKey: "chatWindowFrame")
+            UserDefaults.standard.removeObject(forKey: "chatSheetFraction")
+        }
         if isDemo { server = DemoData.baseURL; currentProjectId = DemoData.projectID }
         phase = server == nil ? .setup : .checking
         web = WebStore(model: self)
@@ -531,7 +536,7 @@ final class AppModel {
     }
 
     private var anySheetShown: Bool {
-        showChat || openCardId != nil || showSettings || webSheet != nil || showProjectPicker || snap.result != nil || drawerShown
+        (showChat && !chatFloating) || openCardId != nil || showSettings || webSheet != nil || showProjectPicker || snap.result != nil || drawerShown
     }
 
     private func show(_ p: Presentation) {

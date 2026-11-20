@@ -11,6 +11,10 @@ struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var ready: Bool { model.phase == .ready }
+    private var floating: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
+    private var chatDetents: Set<PresentationDetent> {
+        Set((5...19).map { .fraction(Double($0) / 20) } + [.large])
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -40,18 +44,19 @@ struct AppShell: View {
                 SnapOverlay(screen: screen, onDone: { snap.finish($0, label: model.screenLabel, kind: model.snapKind) }, onCancel: { snap.cancel() })
             }
         }
+        .overlay { FloatingChatWindow() }
         // 從底下升起的視窗都掛在這裡;收好時叫 drainPending,接著打開排隊的下一個
         .sheet(item: $snap.result, onDismiss: { model.drainPending() }) { r in
             SnapSheet(snap: r, projectId: model.currentProjectId ?? "")
                 .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $model.showChat, onDismiss: { model.drainPending() }) {
+        .sheet(isPresented: Binding(get: { model.showChat && !model.chatFloating }, set: { model.showChat = $0 }), onDismiss: { model.drainPending() }) {
             ChatPanel()
                 .safeAreaInset(edge: .top, spacing: 0) { DemoWriteNotice() }
-                // 一打開就是全高(對話需要空間),往下拉變半高
-                .presentationDetents([.large, .medium], selection: $chatDetent)
+                .accessibilityIdentifier("chat-sheet")
+                .presentationDetents(chatDetents, selection: $chatDetent)
                 .presentationDragIndicator(.visible)
-                .onAppear { chatDetent = .large }
+                .onAppear { restoreChatDetent() }
         }
         .sheet(item: Binding(get: { model.openCardId.map(CardRef.init) }, set: { model.openCardId = $0?.id }), onDismiss: { model.drainPending() }) { ref in
             CardPopup(cardId: ref.id)
@@ -66,12 +71,27 @@ struct AppShell: View {
         }
         .sheet(isPresented: $model.showProjectPicker, onDismiss: { model.drainPending() }) { ProjectPicker() }
         .onChange(of: sizeClass, initial: true) { _, c in model.compact = c != .regular }
+        .onChange(of: floating, initial: true) { _, value in model.chatFloating = value }
+        .onChange(of: model.showChat) { _, shown in
+            if shown && !model.chatFloating { restoreChatDetent() }
+            if !shown && model.chatFloating { model.drainPending() }
+        }
+        .onChange(of: chatDetent) { _, detent in
+            let step = (5...19).first { detent == .fraction(Double($0) / 20) }
+            UserDefaults.standard.set(step.map { Double($0) / 20 } ?? 1, forKey: "chatSheetFraction")
+        }
         .alert("這個專案還沒有 herdr space", isPresented: Binding(get: { model.mode == .terminal && model.needSpace != nil && model.needSpace == model.currentProjectId }, set: { if !$0 { model.needSpace = nil } })) {
             Button("建立並跳過去") { model.web.createSpace(); model.needSpace = nil }
             Button("先不要", role: .cancel) { model.needSpace = nil }
         } message: {
             Text("管家會在 herdr 開一個「\(model.current?.name ?? "")」的 space,終端機跳過去。")
         }
+    }
+
+    private func restoreChatDetent() {
+        let saved = UserDefaults.standard.object(forKey: "chatSheetFraction") as? Double ?? 1
+        let step = Int((min(1, max(0.25, saved)) * 20).rounded())
+        chatDetent = step == 20 ? .large : .fraction(Double(step) / 20)
     }
 }
 

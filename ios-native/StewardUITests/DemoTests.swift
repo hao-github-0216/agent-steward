@@ -177,9 +177,37 @@ final class DemoTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<!doctype html>")).firstMatch.waitForExistence(timeout: 10))
     }
 
+    func testChatSheetRemembersHeight() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("寬 iPad 使用浮動視窗") }
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES",
+                               "-resetCodeLayout", "YES", "-resetChatWindow", "YES", "-ballCorner", "br", "-mode", "board"]
+        app.launch()
+        defer { app.terminate() }
+        let ball = element(app, "steward-ball")
+        XCTAssertTrue(ball.waitForExistence(timeout: 20))
+        ball.tap()
+        let close = app.navigationBars.buttons["關閉"].firstMatch
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        let originalY = app.navigationBars.firstMatch.frame.minY
+        let handle = app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: app.frame.midX, dy: originalY - 10))
+        handle.press(forDuration: 0.1, thenDragTo: handle.withOffset(CGVector(dx: 0, dy: app.frame.height * 0.3)))
+        let loweredY = app.navigationBars.firstMatch.frame.minY
+        XCTAssertGreaterThan(loweredY, originalY + 150)
+        XCTAssertLessThan(loweredY, app.frame.height * 0.45, "面板應能停在半高和全高之間")
+        close.tap()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: close)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+        ball.tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.navigationBars.firstMatch.frame.minY, loweredY, accuracy: 2, "重新打開應使用上次高度")
+    }
+
     func testDemoWalkthrough() {
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-ballCorner", "br"]
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-resetChatWindow", "YES", "-ballCorner", "br"]
         app.launch()
         defer { app.terminate() }
 
@@ -217,7 +245,8 @@ final class DemoTests: XCTestCase {
         let reply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "這是示範模式，沒有連到真的管家。")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
         shot(app, "04-demo-answer")
-        app.buttons["關閉"].firstMatch.tap()
+        let windowClose = app.buttons["chat-window-close"]
+        if windowClose.exists { windowClose.tap() } else { app.buttons["關閉"].firstMatch.tap() }
 
         app.buttons["程式碼"].firstMatch.tap()
         let openSidebar = app.buttons["打開側欄"].firstMatch

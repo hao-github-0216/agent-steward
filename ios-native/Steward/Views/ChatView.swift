@@ -30,7 +30,6 @@ struct ChatPanel: View {
 
 private struct ChatContent: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
     let project: Project
 
     @State private var items: [ChatEntry] = []
@@ -96,13 +95,16 @@ private struct ChatContent: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text("問管家").font(.headline)
-                    Text(project.name).font(.caption2).foregroundStyle(.secondary)
+            // 浮動視窗自己的標題列已經寫了「問管家 · 專案」,這裡只留 ⋯
+            if !model.chatFloating {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text("問管家").font(.headline)
+                        Text(project.name).font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
+                ToolbarItem(placement: .cancellationAction) { Button("關閉") { model.showChat = false } }
             }
-            ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { startDraft(draft) } label: {
