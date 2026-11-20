@@ -11,7 +11,9 @@ final class SettingsTests: XCTestCase {
         app.launch()
         let title = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "選專案")).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 20), "未經 fixture 登入進入 App")
-        title.tap()
+        let more = app.buttons.matching(identifier: "more-menu").allElementsBoundByIndex.first { $0.isHittable }
+        XCTAssertNotNil(more, "找不到右上角的 ⋯")
+        more?.tap()
         let settings = app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "menu-settings", "設定…")).firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()

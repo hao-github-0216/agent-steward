@@ -218,11 +218,13 @@ struct CodeToolbarItems: ToolbarContent {
                 }
                 Section {
                     Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                        .accessibilityIdentifier("menu-settings")
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
             .accessibilityLabel("程式碼頁選項")
+            .accessibilityIdentifier("more-menu")
         }
     }
 

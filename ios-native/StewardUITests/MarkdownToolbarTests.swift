@@ -82,6 +82,46 @@ final class MarkdownToolbarTests: XCTestCase {
         XCTAssertTrue(app.buttons["編輯"].firstMatch.exists)
     }
 
+    /// 深色模式：空白檔案先按工具列再打字，字要是亮色(看得到),不能是預設的黑字
+    func testDarkModeToolbarTextIsVisible() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["path": "notes.md", "content": "", "force": true])
+        _ = try request("file", method: "PUT", body: body)
+        XCUIDevice.shared.appearance = .dark
+        defer { XCUIDevice.shared.appearance = .light }
+        let app = launch(selection: "0,0")
+        defer { app.terminate() }
+        let editor = app.textViews["markdown-editor"]
+        element(app, "md-tool-bold").tap()
+        editor.typeText("Dark mode text")
+        XCTAssertTrue((editor.value as? String ?? "").contains("Dark mode text"))
+        sleep(1)
+        shot(app, "markdown-dark")
+        // 編輯器上方一塊裡要有夠亮的字(深色底上的黑字一個亮點都沒有)
+        let screenshot = app.screenshot().image
+        let scale = screenshot.scale
+        let area = CGRect(x: editor.frame.minX * scale, y: editor.frame.minY * scale,
+                          width: editor.frame.width * scale, height: min(120, editor.frame.height) * scale)
+        let (bright, dark, total) = pixels(in: screenshot, area: area)
+        XCTAssertGreaterThan(Double(dark) / Double(max(total, 1)), 0.5, "畫面不是深色模式，這個測試量不到")
+        XCTAssertGreaterThan(bright, 30, "深色模式下工具列插入的文字看不到")
+    }
+
+    /// 數一塊畫面裡的亮點和暗點
+    private func pixels(in image: UIImage, area: CGRect) -> (bright: Int, dark: Int, total: Int) {
+        guard let cg = image.cgImage?.cropping(to: area) else { return (0, 0, 0) }
+        let w = cg.width, h = cg.height
+        var data = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return (0, 0, 0) }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var bright = 0, dark = 0
+        for i in stride(from: 0, to: data.count, by: 4) {
+            let (r, g, b) = (data[i], data[i + 1], data[i + 2])
+            if r > 200 && g > 200 && b > 200 { bright += 1 } else if r < 60 && g < 60 && b < 60 { dark += 1 }
+        }
+        return (bright, dark, w * h)
+    }
+
     func testBoldAndTableSaveToDisk() throws {
         var app = launch(selection: "0,5")
         defer { app.terminate() }

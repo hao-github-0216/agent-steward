@@ -181,8 +181,6 @@ struct ProjectTitleMenu: View {
             Button { model.present(.projectPicker) } label: { Label("所有專案…", systemImage: "list.bullet") }
         }
         Section {
-            Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
-                .accessibilityIdentifier("menu-settings")
             if model.isDemo {
                 Button(role: .destructive) { model.leaveDemo() } label: { Label("離開示範模式", systemImage: "rectangle.portrait.and.arrow.right") }
                     .accessibilityIdentifier("demo-exit")
@@ -230,11 +228,13 @@ struct BoardTab: View {
                             Button("工作卡規則…") { showRules = true }
                             Section {
                                 Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                                    .accessibilityIdentifier("menu-settings")
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                         }
                         .accessibilityLabel("看板選項")
+                        .accessibilityIdentifier("more-menu")
                     }
                 }
                 .alert("工作卡的規則", isPresented: $showRules) {
@@ -287,11 +287,13 @@ struct WebModeTab: View {
                         }
                         Section {
                             Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                                .accessibilityIdentifier("menu-settings")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                     .accessibilityLabel("更多")
+                    .accessibilityIdentifier("more-menu")
                 }
             }
         }
@@ -313,13 +315,11 @@ struct WebModeTab: View {
     }
 }
 
-// MARK: - 貓咪入口和長按選單
+// MARK: - 貓咪入口(點一下問管家，長按圈選畫面)
 
 struct BallLayer: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var drag: CGSize = .zero
-    @State private var showMenu = false
 
     private let size: CGFloat = 56
     private let inset: CGFloat = 16
@@ -349,13 +349,12 @@ struct BallLayer: View {
                             .exclusively(before: TapGesture())
                             .onEnded { gesture in
                                 switch gesture {
-                                case .first(true): showMenu = true
+                                case .first(true): model.beginSnap()
                                 case .second: openChat()
                                 default: break
                                 }
                             }
                     )
-                    .confirmationDialog("管家", isPresented: $showMenu) { CatMenuActions() }
                     .accessibilityElement()
                     .accessibilityLabel("問管家")
                     .accessibilityIdentifier("steward-ball")
@@ -363,9 +362,6 @@ struct BallLayer: View {
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { openChat() }
                     .accessibilityAction(named: Text("圈選畫面問管家")) { model.beginSnap() }
-                    .if(sizeClass == .compact) {
-                        $0.accessibilityAction(named: Text("打開管家側欄")) { model.drawerOpen = true }
-                    }
             }
             .animation(.spring(duration: 0.25), value: model.ballCorner)
         }
@@ -377,22 +373,8 @@ struct BallLayer: View {
     }
 }
 
-private struct CatMenuActions: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    var body: some View {
-        Button("圈選畫面問管家") { model.beginSnap() }
-        if sizeClass == .compact {
-            Button("打開管家側欄") { model.drawerOpen = true }
-        }
-        Button("取消", role: .cancel) {}
-    }
-}
-
 struct ToolbarCatButton: View {
     @Environment(AppModel.self) private var model
-    @State private var showMenu = false
     let action: () -> Void
 
     var body: some View {
@@ -403,18 +385,18 @@ struct ToolbarCatButton: View {
                     .exclusively(before: TapGesture())
                     .onEnded { gesture in
                         switch gesture {
-                        case .first(true): showMenu = true
+                        case .first(true): model.beginSnap()
                         case .second: action()
                         default: break
                         }
                     }
             )
-            .confirmationDialog("管家", isPresented: $showMenu) { CatMenuActions() }
             .accessibilityElement()
             .accessibilityLabel("問管家")
             .accessibilityIdentifier("file-ask")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { action() }
+            .accessibilityAction(named: Text("圈選畫面問管家")) { model.beginSnap() }
     }
 }
 
@@ -473,7 +455,6 @@ struct DrawerPanel: ViewModifier {
 /// iPhone 上點工作卡在側欄上面再疊一層;iPad 上照常打開工作卡視窗
 struct StewardDrawer: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
     var embedded = false
 
     var body: some View {
@@ -485,7 +466,6 @@ struct StewardDrawer: View {
                             .font(.headline)
                             .lineLimit(1)
                         Spacer()
-                        askButton
                         Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
                     }
                     .padding(.horizontal)
@@ -498,16 +478,8 @@ struct StewardDrawer: View {
                         .navigationTitle(model.current?.name ?? String(localized: "管家", bundle: AppLanguage.bundle))
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
-                            if sizeClass == .regular {
-                                ToolbarItemGroup(placement: .confirmationAction) {
-                                    askButton
-                                    Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
-                                }
-                            } else {
-                                ToolbarItem(placement: .topBarLeading) { askButton }
-                                ToolbarItem(placement: .confirmationAction) {
-                                    Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
-                                }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("完成") { model.drawerCardId = nil; model.drawerOpen = false }
                             }
                         }
                 }
@@ -533,10 +505,6 @@ struct StewardDrawer: View {
                 ContentUnavailableView("還沒有專案", systemImage: "tray", description: Text("在看板、程式碼頁面或 herdr 選一個專案"))
             }
         }
-    }
-
-    private var askButton: some View {
-        Button { model.present(.chat) } label: { Label("問管家", systemImage: "bubble.left.and.bubble.right") }
     }
 
     @ViewBuilder

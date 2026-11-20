@@ -56,13 +56,19 @@ final class EnglishTests: XCTestCase {
         button.tap()
     }
 
+    private func openMoreMenu(_ app: XCUIApplication) {
+        let more = app.buttons.matching(identifier: "more-menu").allElementsBoundByIndex.first { $0.isHittable }
+        XCTAssertNotNil(more, "找不到右上角的 ⋯")
+        more?.tap()
+    }
+
     private func menuButton(_ app: XCUIApplication, _ identifier: String, label: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", identifier, label)).firstMatch
     }
 
     private func walkSettings(_ app: XCUIApplication) {
         app.buttons["Board"].firstMatch.tap()
-        openProjectMenu(app)
+        openMoreMenu(app)
         let settings = menuButton(app, "menu-settings", label: "Settings…")
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
@@ -185,7 +191,7 @@ final class EnglishTests: XCTestCase {
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["看板"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "加入一週天氣預報")).firstMatch.exists)
-        openProjectMenu(app, title: "天氣小幫手")
+        openMoreMenu(app)
         XCTAssertTrue(menuButton(app, "menu-settings", label: "設定…").waitForExistence(timeout: 5))
     }
 }

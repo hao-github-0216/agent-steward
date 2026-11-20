@@ -64,13 +64,19 @@ final class DemoTests: XCTestCase {
         title.tap()
     }
 
+    private func openMoreMenu(_ app: XCUIApplication) {
+        let more = app.buttons.matching(identifier: "more-menu").allElementsBoundByIndex.first { $0.isHittable }
+        XCTAssertNotNil(more, "找不到右上角的 ⋯")
+        more?.tap()
+    }
+
     private func menuButton(_ app: XCUIApplication, _ identifier: String, label: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", identifier, label)).firstMatch
     }
 
     private func walkSettings(_ app: XCUIApplication) {
         app.buttons["看板"].firstMatch.tap()
-        openProjectMenu(app)
+        openMoreMenu(app)
         let settings = menuButton(app, "menu-settings", label: "設定…")
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         settings.tap()
@@ -215,6 +221,9 @@ final class DemoTests: XCTestCase {
         let card = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "加入一週天氣預報")).firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         openProjectMenu(app)
+        XCTAssertFalse(menuButton(app, "menu-settings", label: "設定…").waitForExistence(timeout: 2), "專案選單裡不該有設定")
+        app.buttons["看板"].firstMatch.tap()
+        openMoreMenu(app)
         XCTAssertTrue(menuButton(app, "menu-settings", label: "設定…").waitForExistence(timeout: 5))
         app.buttons["看板"].firstMatch.tap()
         assertBannerDoesNotCoverNavigation(app)

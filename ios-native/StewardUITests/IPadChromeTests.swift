@@ -150,9 +150,9 @@ final class IPadChromeTests: XCTestCase {
             XCTAssertTrue(captured.contains { $0.1.contains(title) }, "\(state)：專案標題選單不見了", file: file, line: line)
             if drawer {
                 let panel = element(app, "drawer-panel")
-                for label in ["問管家", "完成"] {
-                    XCTAssertTrue(panel.buttons[label].firstMatch.exists, "\(state)：缺少 \(label)", file: file, line: line)
-                }
+                XCTAssertTrue(panel.buttons["完成"].firstMatch.exists, "\(state)：缺少 完成", file: file, line: line)
+                // 問管家改由貓咪的浮動視窗負責，側欄裡不再放這個按鈕
+                XCTAssertFalse(panel.buttons["問管家"].firstMatch.exists, "\(state)：側欄不該有問管家", file: file, line: line)
             }
             var frames = tabs.map { "切換列 \($0.0): \($0.1)" }
             frames += captured.map { "\($0.0) | \($0.1): \($0.2)" }
@@ -697,18 +697,16 @@ final class IPhoneChromeTests: XCTestCase {
         XCTAssertTrue(attachedFile.waitForExistence(timeout: 5), "問管家應自動附上 README.md")
         app.navigationBars.buttons["關閉"].firstMatch.tap()
 
-        let drawer = app.descendants(matching: .any)["drawer-panel"].firstMatch
+        // 長按貓咪直接進入圈選(沒有選單、不會打開問管家或側欄)
         for _ in 0..<3 {
             toolbarCat.press(forDuration: 0.7)
-            XCTAssertTrue(app.buttons["圈選畫面問管家"].firstMatch.waitForExistence(timeout: 5))
-            let openDrawer = app.buttons["打開管家側欄"].firstMatch
-            XCTAssertTrue(openDrawer.exists)
-            XCTAssertFalse(app.navigationBars.buttons["關閉"].firstMatch.exists, "長按只能打開選單，不能同時打開問管家")
-            openDrawer.tap()
-            XCTAssertTrue(drawer.waitForExistence(timeout: 5))
-            drawer.buttons["完成"].firstMatch.tap()
-            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: drawer)
-            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+            let hint = app.staticTexts["拉一個框圈出要問的地方"].firstMatch
+            XCTAssertTrue(hint.waitForExistence(timeout: 5), "長按貓咪應直接進入圈選")
+            XCTAssertFalse(app.navigationBars.buttons["關閉"].firstMatch.exists, "長按不能同時打開問管家")
+            XCTAssertFalse(app.descendants(matching: .any)["drawer-panel"].firstMatch.exists, "長按不能打開側欄")
+            app.buttons["取消"].firstMatch.tap()
+            let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: hint)
+            XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed)
         }
         let back = app.navigationBars.buttons["BackButton"]
         XCTAssertTrue(back.waitForExistence(timeout: 5))
@@ -727,7 +725,8 @@ final class IPhoneChromeTests: XCTestCase {
         XCTAssertGreaterThan(cat.frame.midY, app.frame.midY, "貓咪應放回下方角落")
     }
 
-    func testDemoDrawerKeepsAskOnLeadingEdge() {
+    /// iPhone 的管家側欄只有「完成」:問管家走貓咪
+    func testDemoDrawerHasNoAskButton() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-demo", "YES", "-resetCodeLayout", "YES", "-noPush", "YES"]
         app.launch()
@@ -738,15 +737,12 @@ final class IPhoneChromeTests: XCTestCase {
         let drawer = app.buttons["drawer-toggle"].firstMatch
         XCTAssertTrue(drawer.waitForExistence(timeout: 5))
         drawer.tap()
-        let ask = app.navigationBars.buttons["問管家"].firstMatch
         let done = app.navigationBars.buttons["完成"].firstMatch
-        XCTAssertTrue(ask.waitForExistence(timeout: 5))
-        XCTAssertTrue(done.exists)
-        XCTAssertLessThan(ask.frame.minX, app.frame.minX + app.frame.width / 3)
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(done.frame.midX, app.frame.midX)
-        XCTAssertFalse(ask.frame.intersects(done.frame))
+        XCTAssertFalse(app.navigationBars.buttons["問管家"].firstMatch.exists, "側欄不該有問管家")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "iphone-drawer-leading-ask"
+        screenshot.name = "iphone-drawer-no-ask"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         done.tap()

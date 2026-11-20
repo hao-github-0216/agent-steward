@@ -176,14 +176,22 @@ final class MarkdownTextView: UITextView {
         onFindingChange?(false)
     }
 
+    /// 編輯器文字的字型和顏色(顏色跟著深淺色模式)
+    private var editorAttributes: [NSAttributedString.Key: Any] {
+        [.font: font ?? UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular),
+         .foregroundColor: textColor ?? UIColor.label]
+    }
+
     // 工具列的修改與選取範圍一起加入復原紀錄。
     fileprivate func apply(text newText: String, selection: NSRange) {
         let before = text ?? ""
         let oldSelection = selectedRange
         if before != newText {
             undoManager?.registerUndo(withTarget: self) { target in target.apply(text: before, selection: oldSelection) }
-            textStorage.replaceCharacters(in: NSRange(location: 0, length: textStorage.length), with: newText)
+            // 換掉的文字要帶編輯器的字型和顏色：純文字會變成預設的黑字，深色模式下看不到
+            textStorage.replaceCharacters(in: NSRange(location: 0, length: textStorage.length), with: NSAttributedString(string: newText, attributes: editorAttributes))
         }
+        typingAttributes = editorAttributes
         selectedRange = Self.clamped(selection, length: (newText as NSString).length)
         scrollRangeToVisible(selectedRange)
         onTextChange?()
@@ -234,6 +242,7 @@ struct MarkdownEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> MarkdownTextView {
         let view = MarkdownTextView()
         view.font = .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular)
+        view.textColor = .label
         view.adjustsFontForContentSizeCategory = true
         view.backgroundColor = .clear
         view.autocorrectionType = .no
