@@ -444,7 +444,8 @@ final class GestureTests: XCTestCase {
     /// 全螢幕:導覽列、底下的分頁列、浮動球都收起來
     private func assertFullScreen(_ app: XCUIApplication, _ on: Bool, _ step: String) {
         let tabs = ["rectangle.split.3x1", "chevron.left.forwardslash.chevron.right", "terminal"].map { app.buttons[$0].firstMatch }
-        let ball = app.descendants(matching: .any)["steward-ball"]
+        // iPhone 打開檔案時貓咪在底部工具列(file-ask);iPad 是浮動貓咪
+        let ball = app.descendants(matching: .any)[UIDevice.current.userInterfaceIdiom == .pad ? "steward-ball" : "file-ask"]
         if on {
             XCTAssertEqual(app.navigationBars.count, 0, "\(step):導覽列還在")
             // iPad 上方的切換列全螢幕時留著(收起再放回來，導覽列會被它蓋住);iPhone 底下的分頁列要收起來
