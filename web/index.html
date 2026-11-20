@@ -2385,7 +2385,7 @@ $("gearBtn").onclick = () => openSettings();
 async function syncPwBanner() {
 	const a = await fetch("/api/auth/status").then((x) => x.json()).catch(() => null);
 	document.querySelector(".pwbanner:not(.setupbanner)")?.remove();
-	if (a?.authed && !a.hasPassword) {
+	if (a?.authed && !a.hasPassword && !inApp()) {
 		const b = document.createElement("div");
 		b.className = "pwbanner";
 		b.textContent = tr("還沒設定管理密碼:除了這台電腦(和你的 Tailscale 裝置),其他地方都沒辦法登入。點這裡設定 →");
@@ -2416,7 +2416,7 @@ syncPwBanner();
 // 第一次使用:自動打開設定精靈(只有能改設定的人才會看到)
 fetch("/api/settings").then((r) => (r.ok ? r.json() : null)).then(async (d) => {
 	if (!d) return;
-	if (!d.settings.setupDone) { openSettings("general", true); return; }
+	if (!d.settings.setupDone && !inApp()) { openSettings("general", true); return; }
 	const tsIps = d.settings.server.hosts.filter((h) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h));
 	if (tsIps.length && !d.settings.server.tailnetBindReviewed && !d.settings.access.lan.enabled) {
 		// choiceBox 在頁尾的 code.js 裡:設定可能比它先讀回來,等頁面的 script 都跑完
@@ -2711,7 +2711,8 @@ function setMode(mode, opts = {}) {
 	}
 	if (term) setTimeout(() => { try { $("term").contentWindow.dispatchEvent(new Event("resize")); focusTerm(); } catch {} }, 50);
 	const hash = term ? "#terminal" : code ? "#code" : "";
-	if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
+	// 保留網址的查詢參數(?app=1):app 裡的網頁重新載入後還認得自己在 app 裡
+	if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
 	if ((term || code) && window.innerWidth >= 1800 && pref("steward.drawer") !== "0") document.body.classList.add("drawer");
 	renderDrawer();
 	$("nav").classList.remove("open"); syncMenuLabel();

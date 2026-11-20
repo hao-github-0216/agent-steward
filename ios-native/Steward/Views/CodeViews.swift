@@ -216,6 +216,9 @@ struct CodeToolbarItems: ToolbarContent {
                     Button(model.drawerOpen ? String(localized: "收起管家側欄", bundle: AppLanguage.bundle) : String(localized: "打開管家側欄", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
                         .accessibilityIdentifier("drawer-toggle")
                 }
+                Section {
+                    Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -452,7 +455,8 @@ struct FolderView: View {
             TextField("名稱", text: $newName)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Button("好") { Task { await commitName() } }
+            // 先記下要建什麼:按下去對話框就關了,naming 會被清成 nil
+            Button("好") { let action = naming; Task { await commitName(action) } }
             Button("取消", role: .cancel) {}
         }
         .confirmationDialog("把「\(trashing?.name ?? "")」移到垃圾桶?", isPresented: Binding(get: { trashing != nil }, set: { if !$0 { trashing = nil } }), titleVisibility: .visible) {
@@ -599,11 +603,11 @@ struct FolderView: View {
         }
     }
 
-    private func commitName() async {
+    private func commitName(_ action: NameAction?) async {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         let join = { (d: String, n: String) in d.isEmpty ? n : "\(d)/\(n)" }
-        switch naming {
+        switch action {
         case .newFile(let d): await op("mkfile", join(d, name))
         case .newFolder(let d): await op("mkdir", join(d, name))
         case .rename(let e):

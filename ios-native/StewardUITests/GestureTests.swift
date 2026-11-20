@@ -623,4 +623,38 @@ final class GestureTests: XCTestCase {
         XCTAssertFalse(queued.exists, "取消後還在排隊")
         shot(app, "fu-3-cancelled")
     }
+
+    /// 檔案列表的「＋」:新資料夾、新檔案要真的建出來(要接 18799 的隔離管家;測完把建的東西移到垃圾桶)
+    func testCreateFolderAndFile() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let url = URL(string: server), url.port == 18799, !project.isEmpty else {
+            throw XCTSkip("要接 18799 的隔離管家")
+        }
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES", "-isDemo", "NO",
+                               "-serverURL", server, "-resetCodeLayout", "YES", "-codeSidebar", "YES", "-codeSection", "files",
+                               "-openURL", "agentsteward://project/\(project)/code"]
+        app.launch()
+        defer { app.terminate() }
+        let add = app.buttons["新增、上傳檔案"].firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 20), "找不到「＋」")
+        let stamp = Int(Date().timeIntervalSince1970)
+        for (kind, name) in [("新資料夾", "aa-folder-\(stamp)"), ("新檔案", "aa-file-\(stamp).txt")] {
+            add.tap()
+            let item = app.buttons[kind].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5), "選單裡沒有\(kind)")
+            item.tap()
+            let field = app.alerts.textFields.firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 5), "\(kind)沒有跳出輸入名稱")
+            field.typeText(name)
+            shot(app, "typed-\(name)")
+            app.alerts.buttons["好"].tap()
+            sleep(2)
+            shot(app, "after-ok-\(name)")
+            let row = app.descendants(matching: .any)["row-\(name)"].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "\(kind)按「好」之後沒有建出 \(name)")
+            shot(app, "created-\(name)")
+        }
+    }
 }

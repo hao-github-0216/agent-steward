@@ -208,6 +208,9 @@ struct BoardTab: View {
                             Toggle("顯示所有專案的工作卡", isOn: $model.allCards)
                             Toggle("收起看板", isOn: $model.boardCollapsed)
                             Button("工作卡規則…") { showRules = true }
+                            Section {
+                                Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                            }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                         }
@@ -255,19 +258,20 @@ struct WebModeTab: View {
                             .accessibilityIdentifier("drawer-toggle")
                             .accessibilityLabel(model.drawerOpen ? String(localized: "收起管家", bundle: AppLanguage.bundle) : String(localized: "管家", bundle: AppLanguage.bundle))
                     }
-                    if !regularPad || (mode == .terminal && (model.termState.branchMain != nil || model.termState.agent)) {
-                        Menu {
-                            if mode == .terminal { branchTools }
-                            if !regularPad {
-                                Divider()
-                                Button(model.drawerOpen ? String(localized: "收起管家側欄", bundle: AppLanguage.bundle) : String(localized: "打開管家側欄", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
-                                    .accessibilityIdentifier("drawer-toggle")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
+                    Menu {
+                        if mode == .terminal { branchTools }
+                        if !regularPad {
+                            Divider()
+                            Button(model.drawerOpen ? String(localized: "收起管家側欄", bundle: AppLanguage.bundle) : String(localized: "打開管家側欄", bundle: AppLanguage.bundle)) { model.drawerOpen.toggle() }
+                                .accessibilityIdentifier("drawer-toggle")
                         }
-                        .accessibilityLabel("更多")
+                        Section {
+                            Button { model.present(.settings) } label: { Label("設定…", systemImage: "gearshape") }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("更多")
                 }
             }
         }

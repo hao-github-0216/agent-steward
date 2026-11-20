@@ -17,6 +17,9 @@ final class WebStore {
 
     init(model: AppModel) { self.model = model }
 
+    /// 系統在背景收回網頁的記憶體後,照 app 的網址(?app=1)重新載入,不是空白或整個網頁版
+    private lazy var navigation = WebNavigation { [weak self] in self?.load() }
+
     /// 程式碼/終端機共用的網頁(第一次切到程式碼或終端機時才載入)
     func view() -> WKWebView {
         if let main { return main }
@@ -26,6 +29,7 @@ final class WebStore {
         let v = WKWebView(frame: .zero, configuration: config)
         v.isInspectable = true
         v.scrollView.contentInsetAdjustmentBehavior = .never
+        v.navigationDelegate = navigation
         main = v
         load()
         return v
@@ -257,5 +261,14 @@ struct OneShotWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ v: WKWebView, coordinator: ()) {
         v.configuration.userContentController.removeScriptMessageHandler(forName: "steward")
+    }
+}
+
+/// 共用網頁的導覽事件:網頁的程序被系統結束時通知重新載入
+final class WebNavigation: NSObject, WKNavigationDelegate {
+    private let onTerminate: @MainActor () -> Void
+    init(onTerminate: @escaping @MainActor () -> Void) { self.onTerminate = onTerminate }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        MainActor.assumeIsolated { onTerminate() }
     }
 }

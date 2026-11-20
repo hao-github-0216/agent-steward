@@ -266,6 +266,36 @@ final class IPadChromeTests: XCTestCase {
         XCTFail("側欄找不到 \(target.identifier)")
     }
 
+    /// 終端機分頁只顯示終端機:網頁版自己的標題列(看板/程式碼/終端機、⚙)要藏起來,由 app 的原生標題列負責
+    func testTerminalTabShowsOnlyTerminal() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let server = env["STEWARD_TEST_SERVER"], let project = env["STEWARD_PROJECT"],
+              let url = URL(string: server), url.host == "127.0.0.1", url.port == 18799 else {
+            throw XCTSkip("要接 18799 的隔離管家")
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-noPush", "YES",
+                               "-isDemo", "NO", "-serverURL", server, "-openURL", "agentsteward://project/\(project)/code"]
+        app.launch()
+        defer { app.terminate() }
+        let term = app.buttons["終端機"].firstMatch
+        XCTAssertTrue(term.waitForExistence(timeout: 20))
+        term.tap()
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 20), "終端機分頁沒有網頁")
+        sleep(4)
+        attach(app, "terminal-tab", frames: ["web: \(web.frame)"])
+        for label in ["看板", "程式碼"] {
+            let b = web.buttons[label].firstMatch
+            XCTAssertFalse(b.exists && b.isHittable, "終端機分頁裡出現網頁版的「\(label)」:整個網頁版都顯示出來了")
+        }
+        // 網頁版的設定精靈、密碼提示會打開網頁樣式的設定:app 裡不顯示(設定走原生畫面)
+        let wizard = web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "第一次設定")).firstMatch
+        XCTAssertFalse(wizard.exists, "終端機分頁跳出網頁版的設定精靈")
+        let banner = web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "還沒設定管理密碼")).firstMatch
+        XCTAssertFalse(banner.exists, "終端機分頁出現網頁版的密碼提示")
+    }
+
     func testSidebarPreservesScrollPosition() throws {
         let env = ProcessInfo.processInfo.environment
         guard let server = env["STEWARD_TEST_SERVER"], let project = env["STEWARD_PROJECT"],
