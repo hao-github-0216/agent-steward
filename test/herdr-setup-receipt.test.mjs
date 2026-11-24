@@ -43,7 +43,8 @@ test("herdr setup records its shortcut, respects removal, and supports --readd",
 	writeFileSync(config, original);
 	const explanation = run();
 	assert.equal(readFileSync(config, "utf8"), original);
-	assert.match(explanation, /You removed the herdr folder-navigation shortcut.*(--readd-herdr-key|-ReaddHerdrKey)/); // Windows 上的提示用 -ReaddHerdrKey
+	// Windows 只剩桌面 App,沒有安裝腳本的 --readd-herdr-key 可以提示
+	assert.match(explanation, process.platform === "win32" ? /You removed the herdr folder-navigation shortcut, so it was not added back\./ : /You removed the herdr folder-navigation shortcut.*--readd-herdr-key/);
 
 	run("--readd");
 	assert.match(readFileSync(config, "utf8"), /key = "prefix\+e"/);
