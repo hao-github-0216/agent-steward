@@ -1,16 +1,11 @@
-// 檢查更新 / 一鍵更新:看 GitHub 上最新的 release,更新時在背景重跑安裝程式(install.sh / scripts/install-windows.ps1)。
-// 安裝程式會換掉 ~/.agent-steward/app 並重啟服務,所以要用獨立的程序跑(不能是管家的子程序)。
+// 檢查 GitHub 上的最新版本
 import { tr } from "./i18n.ts";
-import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { APP_DIR } from "./agents.ts";
-import { IS_WIN } from "./platform.ts";
-import { DATA_DIR } from "./settings.ts";
+import { integrityStatus } from "./integrity.ts";
 
 export const REPO = process.env.STEWARD_REPO ?? "hao-github-0216/agent-steward";
-const LOG = join(DATA_DIR, "logs", "update.log");
 
 /** 目前裝的版本:release 標籤(v1.2.3)、main,或開發版的 commit */
 export function currentVersion(): string {
@@ -25,108 +20,22 @@ function newer(a: string, b: string): boolean {
 }
 
 let cache: { at: number; latest: string; url: string; notes: string } | undefined;
-export interface UpdateInfo { current: string; latest?: string; hasUpdate: boolean; dev: boolean; url?: string; notes?: string; error?: string; running: boolean; desktop: boolean; downloadUrl: string }
-
-export function updateRequestError(info: UpdateInfo, tag: unknown): string | undefined {
-	if (!info.hasUpdate || !info.latest) return info.error ?? (info.dev ? tr("開發版不能自動更新") : tr("已經是最新版"));
-	if (typeof tag !== "string" || tag !== info.latest) return tr("有更新的版本了,請重新檢查更新後再按一次");
-	return undefined;
-}
+export interface UpdateInfo { current: string; latest?: string; hasUpdate: boolean; dev: boolean; url?: string; notes?: string; error?: string; desktop: boolean; downloadUrl: string; releaseUrl: string; integrity: ReturnType<typeof integrityStatus> }
 
 export async function checkUpdate(force = false): Promise<UpdateInfo> {
 	const current = currentVersion();
 	const dev = !isRelease(current);
-	const mode = { desktop: process.env.STEWARD_DESKTOP === "1", downloadUrl: `https://github.com/${REPO}/releases/latest` };
+	const mode = () => ({ desktop: process.env.STEWARD_DESKTOP === "1", downloadUrl: `https://github.com/${REPO}/releases/latest`, releaseUrl: current.startsWith("v") ? `https://github.com/${REPO}/releases/tag/${encodeURIComponent(current)}` : `https://github.com/${REPO}/releases/latest`, integrity: integrityStatus() });
 	try {
 		if (force || !cache || Date.now() - cache.at > 3600_000) {
 			const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { accept: "application/vnd.github+json", "user-agent": "agent-steward" }, signal: AbortSignal.timeout(10_000) });
-			if (r.status === 404) return { ...mode, current, dev, hasUpdate: false, running: updating(), error: tr("還沒有發布任何版本") };
+			if (r.status === 404) return { ...mode(), current, dev, hasUpdate: false, error: tr("還沒有發布任何版本") };
 			if (!r.ok) throw new Error(tr("GitHub 回應 {status}", { status: r.status }));
 			const j = (await r.json()) as { tag_name: string; html_url: string; body?: string };
 			cache = { at: Date.now(), latest: j.tag_name, url: j.html_url, notes: (j.body ?? "").slice(0, 2000) };
 		}
-		return { ...mode, current, dev, latest: cache.latest, url: cache.url, notes: cache.notes, hasUpdate: !dev && newer(cache.latest, current), running: updating() };
+		return { ...mode(), current, dev, latest: cache.latest, url: cache.url, notes: cache.notes, hasUpdate: !dev && newer(cache.latest, current) };
 	} catch (e) {
-		return { ...mode, current, dev, hasUpdate: false, running: updating(), error: tr("查不到最新版本:{error}", { error: (e as Error).message }) };
+		return { ...mode(), current, dev, hasUpdate: false, error: tr("查不到最新版本:{error}", { error: (e as Error).message }) };
 	}
-}
-
-const LOCK = join(DATA_DIR, "update.lock");
-function updating(): boolean {
-	try { return Date.now() - Number(readFileSync(LOCK, "utf8")) < 10 * 60_000; } catch { return false; }
-}
-
-const MISSING_SUMS = "這個版本沒有檢查碼,請手動更新";
-
-export function checkSums(content: Buffer, sumsText: string, name: string): string | undefined {
-	for (const line of sumsText.split(/\r?\n/)) {
-		const match = /^([a-fA-F0-9]{64})[ \t]+\*?(.+)$/.exec(line);
-		if (match?.[2] !== name) continue;
-		return createHash("sha256").update(content).digest("hex") === match[1].toLowerCase()
-			? undefined : tr("下載的安裝程式檢查碼不符,沒有更新");
-	}
-	return tr(MISSING_SUMS);
-}
-
-async function downloadHTTPS(url: string): Promise<Response> {
-	for (let redirects = 0; redirects <= 10; redirects++) {
-		if (new URL(url).protocol !== "https:") throw new Error(tr("下載網址必須使用 HTTPS"));
-		const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
-		if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-		const location = response.headers.get("location");
-		if (!location) throw new Error(tr("下載重新導向沒有網址"));
-		url = new URL(location, url).href;
-	}
-	throw new Error(tr("下載重新導向次數過多"));
-}
-
-/** 下載安裝程式、在背景執行;回傳後管家大約十幾秒內會被重啟 */
-export async function applyUpdate(tag: string): Promise<void> {
-	if (process.env.STEWARD_DESKTOP === "1") throw new Error(tr("App 版請到 GitHub 下載新版 App"));
-	if (!/^v[\w.-]+$/.test(tag)) throw new Error(tr("版本格式不對"));
-	if (updating()) throw new Error(tr("已經在更新了"));
-	const dir = join(DATA_DIR, "update");
-	mkdirSync(dir, { recursive: true });
-	mkdirSync(join(DATA_DIR, "logs"), { recursive: true });
-	const name = IS_WIN ? "install-windows.ps1" : "install.sh";
-	const file = join(dir, name);
-	const release = `https://github.com/${REPO}/releases/download/${tag}`;
-	const r = await downloadHTTPS(`${release}/${name}`);
-	if (!r.ok) throw new Error(tr("下載安裝程式失敗({status})", { status: r.status }));
-	const content = Buffer.from(await r.arrayBuffer());
-	let sumsText: string;
-	try {
-		const sums = await downloadHTTPS(`${release}/SHA256SUMS`);
-		if (!sums.ok) throw new Error(tr(MISSING_SUMS));
-		sumsText = await sums.text();
-	} catch {
-		throw new Error(tr(MISSING_SUMS));
-	}
-	const error = checkSums(content, sumsText, name);
-	if (error) throw new Error(error);
-	// Windows PowerShell 5.1 讀沒有 BOM 的 .ps1 會把中文當成亂碼
-	const text = content.toString("utf8");
-	writeFileSync(file, IS_WIN && !text.startsWith("\uFEFF") ? `\uFEFF${text}` : text);
-	writeFileSync(LOCK, String(Date.now()));
-	const out = openSync(LOG, "a");
-	writeFileSync(LOG, `\n===== ${new Date().toISOString()} ${tr("更新到 {tag}", { tag })} =====\n`, { flag: "a" });
-	let cmd: string, args: string[];
-	if (IS_WIN) {
-		cmd = "powershell.exe";
-		args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file, "-Version", tag, "-NoOpen", "-Yes"];
-	} else if (process.platform === "linux" && existsSync("/usr/bin/systemd-run")) {
-		// systemd 會把服務底下的程序一起停掉,改由 systemd 另外跑
-		cmd = "systemd-run";
-		args = ["--user", "--collect", "--quiet", "/bin/sh", file, "--version", tag, "--no-open", "--yes"];
-	} else {
-		cmd = "/bin/sh";
-		args = [file, "--version", tag, "--no-open", "--yes"];
-	}
-	const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], windowsHide: true, env: { ...process.env, STEWARD_REPO: REPO } });
-	child.unref();
-}
-
-/** 更新紀錄最後幾行(給設定頁看進度) */
-export function updateLog(): string {
-	try { return readFileSync(LOG, "utf8").split("\n").slice(-30).join("\n"); } catch { return ""; }
 }

@@ -4,6 +4,6 @@
     "externalBin": ["binaries/node", "binaries/ttyd"],
     "resources": { "../resources/herdr/": "herdr/" },
     "targets": ["nsis"],
-    "windows": { "nsis": { "languages": ["English", "TradChinese"], "displayLanguageSelector": true } }
+    "windows": { "nsis": { "languages": ["English", "TradChinese"], "installMode": "perMachine", "displayLanguageSelector": false, "installerHooks": "./windows/hooks.nsh" } }
   }
 }

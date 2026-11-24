@@ -16,7 +16,7 @@ delete process.env.STEWARD_DESKTOP;
 writeFileSync(join(HOME, "settings.json"), JSON.stringify({ version: 1, access: { tailscale: { enabled: false } }, plugins: {}, setupDone: true, aiDetected: true }));
 after(() => rmSync(HOME, { recursive: true, force: true }));
 const { DEFAULTS, settings, updateSettings } = await import("../src/settings.ts");
-const { applyUpdate, checkUpdate, REPO } = await import("../src/update.ts");
+const { checkUpdate, REPO } = await import("../src/update.ts");
 
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
 async function within(promise, ms) {
@@ -201,23 +201,25 @@ for (const signal of ["SIGTERM", "SIGINT"]) test(`service terminal preserves ${s
 	pid = undefined;
 });
 
-test("desktop update checks return mode/download URL offline and never apply an installer", async (t) => {
+test("update checks preserve mode and download URL on success, 404 and offline", async (t) => {
 	process.env.STEWARD_DESKTOP = "1";
 	t.after(() => { delete process.env.STEWARD_DESKTOP; });
-	let calls = 0;
-	const mockedFetch = t.mock.method(globalThis, "fetch", async () => { calls++; return new Response(JSON.stringify({ tag_name: "v9.9.9", html_url: "https://example.invalid/release", body: "test" })); });
-	await assert.rejects(applyUpdate("v9.9.9"), { message: "App 版請到 GitHub 下載新版 App" });
-	assert.equal(calls, 0);
-	assert.equal(existsSync(join(HOME, "update")), false);
+	const mockedFetch = t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ tag_name: "v9.9.9", html_url: "https://example.invalid/release", body: "test" })));
 	const info = await checkUpdate(true);
 	assert.equal(info.desktop, true);
 	assert.equal(info.downloadUrl, `https://github.com/${REPO}/releases/latest`);
 	mockedFetch.mock.mockImplementation(async () => new Response("Not Found", { status: 404 }));
-	assert.equal((await checkUpdate(true)).desktop, true);
+	const notFound = await checkUpdate(true);
+	assert.equal(notFound.desktop, true);
+	assert.equal(notFound.downloadUrl, info.downloadUrl);
 	mockedFetch.mock.mockImplementation(async () => { throw new Error("offline"); });
-	assert.equal((await checkUpdate(true)).downloadUrl, info.downloadUrl);
+	const offline = await checkUpdate(true);
+	assert.equal(offline.desktop, true);
+	assert.equal(offline.downloadUrl, info.downloadUrl);
 	delete process.env.STEWARD_DESKTOP;
-	assert.equal((await checkUpdate(true)).desktop, false);
+	const service = await checkUpdate(true);
+	assert.equal(service.desktop, false);
+	assert.equal(service.downloadUrl, info.downloadUrl);
 });
 
 test("desktopSignal emits newline-terminated single-line JSON only in desktop mode", () => {
@@ -278,11 +280,11 @@ function uiFixture(desktop, { fetch: fetchMock, post: postMock } = {}) {
 		if (!nodes.has(id)) nodes.set(id, { innerHTML: "", textContent: "", addEventListener(event, handler) { this[`on${event}`] = handler; } });
 		return nodes.get(id);
 	};
-	const requests = [], fetchRequests = [], toasts = [];
+	const requests = [], fetchRequests = [], toasts = [], openedUrls = [];
 	const context = vm.createContext({
 		fetch: async (...args) => { fetchRequests.push(args); return fetchMock ? fetchMock(...args) : { ok: true, json: async () => ({ configured: false, devices: [] }) }; },
 		post: async (...args) => { requests.push(args); return postMock ? postMock(...args) : {}; }, toast: (message) => toasts.push(message),
-		$: element, fixtureSettings: structuredClone(DEFAULTS), window: {}, pref: () => "", clearInterval,
+		$: element, fixtureSettings: structuredClone(DEFAULTS), window: { open: (...args) => openedUrls.push(args) }, pref: () => "", clearInterval,
 		aiPane: () => "", agentsPane: () => "", routingPane: () => "", saveSettings: async () => true,
 		setModels: {},
 		tr: (zh, vars) => {
@@ -297,7 +299,7 @@ function uiFixture(desktop, { fetch: fetchMock, post: postMock } = {}) {
 	const collect = html.slice(html.indexOf("function collectSettings()"), html.indexOf("async function saveSettings("));
 	run(html.match(/^const esc = .*;$/m)[0] + "\n" + settingsSource + "\n" + render + "\n" + collect);
 	run(`setState = { s: fixtureSettings, detected: {}, platform: "darwin", desktop: ${desktop}, tab: "general" }; setAgents = []; setPlugins = []; setUpdate = { current: "v1.0.0", latest: "v1.1.0", hasUpdate: true, desktop: ${desktop}, downloadUrl: "https://github.com/example/repo/releases/latest", components: [] };`);
-	return { run, modal, element, requests, fetchRequests, toasts };
+	return { run, modal, element, requests, fetchRequests, toasts, openedUrls };
 }
 
 test("desktop UI adds App controls and a wizard-only step; service UI stays unchanged", async () => {
@@ -422,13 +424,14 @@ test("a late iPhone push status does not update another settings pane", async ()
 	assert.equal(f.element("setTestPhonePush"), null);
 });
 
-test("desktop About uses an App update button and hides installer update/removal controls", () => {
+test("About uses App download/update controls and shows developer removal only outside desktop mode", () => {
 	for (const desktop of [false, true]) {
 		const f = uiFixture(desktop);
 		const markup = f.run("aboutPane()");
-		assert.equal(markup.includes('id="updApply"'), !desktop);
+		assert.equal(markup.includes('id="updApply"'), false);
+		assert.equal(markup.includes('id="updGetApp"'), !desktop);
 		assert.equal(markup.includes('id="updDesktop"'), desktop);
-		assert.equal(markup.includes("sh ~/.agent-steward/app/uninstall.sh"), !desktop);
+		assert.equal(markup.includes("sh ~/.agent-steward/app/scripts/dev/uninstall.sh"), !desktop);
 		if (desktop) {
 			assert.match(markup, /更新 App 到 v1.1.0/);
 			f.run("setUpdate.hasUpdate = false");
@@ -437,6 +440,21 @@ test("desktop About uses an App update button and hides installer update/removal
 			assert.match(f.run("aboutPane()"), /Check for updates in App/);
 			assert.match(markup, /在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除/);
 		}
+	}
+});
+
+test("service App download button opens downloadUrl in a new tab in both languages", () => {
+	for (const lang of ["zh-TW", "en"]) {
+		const f = uiFixture(false);
+		f.run(`setState.s.ui.lang = ${JSON.stringify(lang)}; setState.tab = "about"; renderSettings()`);
+		assert.ok(f.modal.innerHTML.includes(lang === "en" ? "Download the desktop app" : "下載桌面 App"));
+		assert.equal(f.element("updApply"), null);
+		assert.equal(f.element("updDesktop"), null);
+		f.element("updGetApp").onclick();
+		assert.deepEqual(f.openedUrls, [["https://github.com/example/repo/releases/latest", "_blank", "noopener"]]);
+		assert.deepEqual(f.requests, []);
+		f.run("setUpdate.hasUpdate = false; renderSettings()");
+		assert.equal(f.element("updGetApp"), null);
 	}
 });
 

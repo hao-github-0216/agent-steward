@@ -8,6 +8,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { writeRustNotices } from "./rust-notices.mjs";
+import { writeIntegrityManifest } from "./integrity-manifest.mjs";
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(desktop, "..");
@@ -121,6 +122,7 @@ async function stage(target) {
 		run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: app, stdio: "inherit", shell: process.platform === "win32" });
 		const revision = run("git", ["describe", "--tags", "--match", "v*", "--always"]).trim(); // 只認版本標籤(deps-* 這類相依套件的標籤不算)
 		await writeFile(join(app, "REVISION"), `${revision}\n`);
+		await writeIntegrityManifest(app);
 		await copyFile(join(root, "THIRD_PARTY_NOTICES.md"), join(licenses, "THIRD_PARTY_NOTICES.md"));
 		await cp(join(root, "licenses"), join(licenses, "licenses"), { recursive: true });
 

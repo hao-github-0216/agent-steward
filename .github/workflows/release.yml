@@ -29,9 +29,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
       - name: Resolve release tag
         id: tag
         env:
@@ -41,77 +38,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             git show-ref --verify --quiet "refs/tags/$TAG" || { echo "Tag not found: $TAG" >&2; exit 1; }
           fi
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-      - name: Archive source
-        run: |
-          mkdir -p dist
-          git archive --format=tar.gz --prefix="agent-steward-$TAG/" -o "dist/agent-steward-$TAG.tar.gz" "$TAG"
-          git archive --format=zip --prefix="agent-steward-$TAG/" -o "dist/agent-steward-$TAG.zip" "$TAG"
-      - name: Generate release installers
-        run: node scripts/gen-install.mjs --release "$TAG" --dist dist
-      - name: Check PowerShell syntax
-        shell: pwsh
-        run: |
-          foreach ($file in @("dist/install.ps1", "dist/install-windows.ps1")) {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors) { $errors; throw "PowerShell syntax errors in $file" }
-            Write-Host "PASS: PowerShell syntax ($file)"
-          }
-      - name: Check installers and archive contents
-        shell: bash
-        run: |
-          set -euo pipefail
-          sh -n dist/install.sh
-          echo "PASS: shell syntax"
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { createHash } from "node:crypto";
-          import { readFileSync } from "node:fs";
-          const tag = process.env.TAG;
-          const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
-          const shell = readFileSync("dist/install.sh", "utf8");
-          const windowsBytes = readFileSync("dist/install-windows.ps1");
-          const windows = windowsBytes.toString("utf8");
-          const bootstrapBytes = readFileSync("dist/install.ps1");
-          const bootstrap = bootstrapBytes.toString("utf8");
-          assert.ok(bootstrapBytes.every((byte) => byte <= 0x7f));
-          assert.ok(bootstrap.includes("\r\n"));
-          assert.doesNotMatch(bootstrap, /(?<!\r)\n|\r(?!\n)/);
-          console.log("PASS: install.ps1 is ASCII with CRLF throughout");
-          assert.deepEqual([...windowsBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
-          assert.ok(!windows.includes("\r"));
-          console.log("PASS: install-windows.ps1 is UTF-8 with BOM and LF");
-          assert.equal(shell.match(/^APP_PIN_VERSION='([^']*)'$/m)?.[1], tag);
-          assert.equal(windows.match(/^\$AppPinVersion = '([^']*)'$/m)?.[1], tag);
-          console.log("PASS: installers pin the release tag");
-          for (const [text, pattern, asset] of [
-            [shell, /^APP_PIN_SHA256='([a-f0-9]{64})'$/m, `dist/agent-steward-${tag}.tar.gz`],
-            [windows, /^\$AppPinZipSha256 = '([a-f0-9]{64})'$/m, `dist/agent-steward-${tag}.zip`],
-            [bootstrap, /^\t\$expectedSha256 = '([a-f0-9]{64})'\r?$/m, "dist/install-windows.ps1"],
-          ]) {
-            assert.equal(text.match(pattern)?.[1], hash(asset), asset);
-            console.log(`PASS: pinned SHA-256 matches ${asset}`);
-          }
-          NODE
-          T=$(mktemp -d)
-          trap 'rm -rf "$T"' EXIT
-          tar -xzf "dist/agent-steward-$TAG.tar.gz" -C "$T"
-          test -f "$T/agent-steward-$TAG/src/main.ts"
-          echo "PASS: archive contains src/main.ts"
-          test -f "$T/agent-steward-$TAG/package.json"
-          echo "PASS: archive contains package.json"
-          test ! -e "$T/agent-steward-$TAG/ios-app"
-          echo "PASS: archive excludes ios-app/"
-          test ! -e "$T/agent-steward-$TAG/ios-native"
-          echo "PASS: archive excludes ios-native/"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-core
-          path: dist/
-          if-no-files-found: error
 
   signing:
     runs-on: ubuntu-latest
@@ -176,11 +103,6 @@ jobs:
           node-version: 22.x
       - uses: actions/download-artifact@v4
         with:
-          name: release-core
-          path: dist/
-          merge-multiple: true
-      - uses: actions/download-artifact@v4
-        with:
           name: desktop-macos
           path: dist/
           merge-multiple: true
@@ -231,21 +153,20 @@ jobs:
           import assert from 'node:assert/strict';
           import { readdirSync } from 'node:fs';
           const tag = process.env.TAG;
-          const expected = [`agent-steward-${tag}.tar.gz`, `agent-steward-${tag}.zip`, 'install.sh', 'install.ps1', 'install-windows.ps1'];
-          expected.push(
+          const expected = [
             `agent-steward-desktop-${tag}-macos-universal.dmg`,
             `agent-steward-desktop-${tag}-macos-universal.app.tar.gz`,
             `agent-steward-desktop-${tag}-macos-universal.app.tar.gz.sig`,
             `agent-steward-desktop-${tag}-windows-x64-setup.exe`,
             `agent-steward-desktop-${tag}-windows-x64-setup.exe.sig`,
             'latest.json',
-          );
+          ];
           const entries = readdirSync('dist', {withFileTypes:true});
           assert.ok(entries.every(entry => entry.isFile()), 'dist must contain only regular files');
           assert.deepEqual(entries.map(entry => entry.name).sort(), expected.sort(), 'Unexpected release assets');
           NODE
       - name: Generate SHA256SUMS
-        run: cd dist && sha256sum agent-steward-* install.sh install.ps1 install-windows.ps1 latest.json > SHA256SUMS
+        run: cd dist && sha256sum agent-steward-desktop-* latest.json > SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/*
@@ -281,26 +202,15 @@ jobs:
         if: runner.os == 'macOS'
         with:
           node-version: 22.x
-      - name: Install and uninstall the published release
-        shell: bash
-        run: |
-          set -euo pipefail
-          T=$(mktemp -d)
-          trap 'rm -rf "$T"' EXIT
-          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh"
-          env -i HOME="$T" PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=en_US.UTF-8 sh -c 'curl --proto =https --tlsv1.2 -fsSL --retry 4 --retry-delay 10 --retry-all-errors "$0" | sh -s -- --yes --without=autostart,open' "$URL"
-          test "$(cat "$T/.agent-steward/app/REVISION")" = "$TAG"
-          test -f "$T/.agent-steward/install.json"
-          env -i HOME="$T" PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=en_US.UTF-8 sh "$T/.agent-steward/app/uninstall.sh" --purge
       - name: Verify release provenance
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
           curl --proto '=https' --tlsv1.2 -fsSL --retry 4 --retry-delay 10 --retry-all-errors \
-            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/agent-steward-$TAG.tar.gz" \
-            -o "dist/agent-steward-$TAG.tar.gz"
-          gh attestation verify "dist/agent-steward-$TAG.tar.gz" -R "$GITHUB_REPOSITORY"
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/SHA256SUMS" \
+            -o dist/SHA256SUMS
+          gh attestation verify dist/SHA256SUMS -R "$GITHUB_REPOSITORY"
       - name: Verify the published Mac desktop App and updater
         if: runner.os == 'macOS'
         shell: bash
@@ -361,9 +271,6 @@ jobs:
     env:
       TAG: ${{ needs.build.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
-      STEWARD_YES: "1"
-      STEWARD_NO_SERVICE: "1"
-      STEWARD_NO_OPEN: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -371,17 +278,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
-      - name: Install and uninstall with Windows PowerShell 5.1
-        shell: powershell
-        run: |
-          $global:LASTEXITCODE = 0
-          irm "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/install.ps1" | iex
-          if ($LASTEXITCODE -ne 0) { throw "Installation failed: $LASTEXITCODE" }
-          $revision = (Get-Content "$HOME\.agent-steward\app\REVISION" -Raw -Encoding UTF8).Trim()
-          if ($revision -cne $env:TAG) { throw "Installed revision $revision does not match $env:TAG" }
-          if (-not (Test-Path "$HOME\.agent-steward\install.json" -PathType Leaf)) { throw "Missing installation receipt" }
-          & "$HOME\.agent-steward\app\uninstall.ps1" -Purge
-          if ($LASTEXITCODE -ne 0) { throw "Uninstall failed: $LASTEXITCODE" }
       - name: Verify the published Windows desktop installer and updater
         shell: pwsh
         run: |

@@ -110,11 +110,21 @@ test("Tauri-generated signatures verify and reject modified file, public key, an
 	await assert.rejects(verify({ pubkey, file, sig }), /Trusted comment global signature/);
 });
 
-test("Windows App updates run the installer silently", async () => {
-	// The NSIS language selector also appears in passive mode and would block an update
-	// until someone clicks OK; only silent mode (/S) skips it.
+test("Windows App uses per-machine installation and quiet updates with a per-user migration hook", async () => {
+	// per-machine 安裝由 Windows 要求管理員授權,更新維持靜默且不顯示語言選擇。
 	const config = JSON.parse(await readFile("desktop/src-tauri/tauri.conf.json", "utf8"));
 	const windows = JSON.parse(await readFile("desktop/src-tauri/tauri.windows.conf.json", "utf8"));
+	const nsis = windows.bundle.windows.nsis;
 	assert.equal(config.plugins.updater.windows.installMode, "quiet");
-	assert.equal(windows.bundle.windows.nsis.installMode ?? "currentUser", "currentUser");
+	assert.equal(nsis.installMode, "perMachine");
+	assert.equal(nsis.displayLanguageSelector, false);
+	assert.equal(nsis.installerHooks, "./windows/hooks.nsh");
+	const hook = await readFile(join("desktop/src-tauri", nsis.installerHooks), "utf8");
+	assert.match(hook, /!macro NSIS_HOOK_PREINSTALL\b/);
+	assert.match(hook, /ReadRegStr \$0 HKCU "\$\{UNINSTKEY\}" "InstallLocation"/);
+	assert.match(hook, /ReadRegStr \$1 HKCU "\$\{UNINSTKEY\}" "UninstallString"/);
+	assert.match(hook, /ExecWait '"\$1" \/S _\?=\$0' \$3/);
+	assert.match(hook, /Delete "\$0\\uninstall\.exe"/);
+	assert.match(hook, /RMDir "\$0"/);
+	assert.doesNotMatch(hook, /\b(?:Abort|Quit|MessageBox)\b|RMDir \/r|\.agent-steward/);
 });

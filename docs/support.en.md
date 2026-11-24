@@ -6,7 +6,7 @@ Agent Steward turns the work of the AI agents on your computer into one board: p
 
 ## Getting started
 
-1. **Install Agent Steward on your computer** with the one-line command or the desktop app described in the [README](../README.en.md). The app does not include the steward itself, so a computer running it is required.
+1. **Install Agent Steward on your computer** with the desktop app described in the [README](../README.en.md). The app does not include the steward itself, so a computer running it is required.
 2. **Make your computer reachable from your phone.** We recommend installing [Tailscale](https://tailscale.com/) on both and signing in with the same account. In the steward on your computer, open Settings → Access and turn on Tailscale access. You will see an address like `https://your-computer.xxxx.ts.net:8793/`.
 3. **Enter that address in the app.** Over Tailscale the steward recognizes you automatically; over other connections you enter the steward's admin password.
 4. **Allow notifications** (optional) to hear about new proposals, blocked cards, and finished work. Notifications are end-to-end encrypted; see the [privacy policy](privacy.en.md).

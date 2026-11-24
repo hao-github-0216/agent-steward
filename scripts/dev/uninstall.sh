@@ -24,15 +24,16 @@ msg() {
 		'en:invalid_env') printf '%s' 'Invalid value for %s. Use 0 or 1.' ;;
 		'zh-TW:need_command') printf '%s' '需要 %s。' ;;
 		'en:need_command') printf '%s' 'Required command: %s.' ;;
-		'zh-TW:unsupported_os') printf '%s' '不支援的系統：%s（Windows 請用 install.ps1）。' ;;
-		'en:unsupported_os') printf '%s' 'Unsupported system: %s. On Windows, use install.ps1.' ;;
+		'zh-TW:unsupported_os') printf '%s' '不支援的系統：%s。' ;;
+		'en:unsupported_os') printf '%s' 'Unsupported system: %s.' ;;
 		'zh-TW:unsupported_arch') printf '%s' '不支援的處理器：%s' ;;
 		'en:unsupported_arch') printf '%s' 'Unsupported processor: %s' ;;
+		'zh-TW:local_source_required') printf '%s' '一行指令安裝已停止支援。請到 https://github.com/hao-github-0216/agent-steward/releases/latest 下載桌面 App。這個腳本只給開發者部署用：sh scripts/dev/install.sh --from <repo 資料夾>' ;;
+		'en:local_source_required') printf '%s' 'The one-line installer is no longer supported. Download the desktop app from https://github.com/hao-github-0216/agent-steward/releases/latest. This script is only for developer deployments: sh scripts/dev/install.sh --from <repo folder>' ;;
 		'zh-TW:invalid_from') printf '%s' '找不到原始碼資料夾：%s' ;;
 		'en:invalid_from') printf '%s' 'Source directory not found: %s' ;;
-		'zh-TW:installer_help') printf '%s' '用法：sh install.sh [選項]
-  --from DIR       從本機原始碼安裝
-  --version TAG    安裝指定版本
+		'zh-TW:installer_help') printf '%s' '用法：sh scripts/dev/install.sh --from DIR [選項]
+  --from DIR       從本機原始碼安裝（必填）
   --yes, -y        不再詢問是否開始安裝
   --dry-run        只列出計畫，不做改動
   --without=a,b    不安裝指定元件（herdr、terminal、herdr-config、autostart、open、brew-node）
@@ -41,10 +42,9 @@ msg() {
   --skip-herdr     不下載 herdr，沿用你自己編的版本
   --no-service     等同 --without=autostart,open
   --no-open        等同 --without=open
-範例：sh install.sh --from . --yes --without=autostart,open' ;;
-		'en:installer_help') printf '%s' 'Usage: sh install.sh [options]
-  --from DIR       Install local source
-  --version TAG    Install a specific version
+範例：sh scripts/dev/install.sh --from . --yes --without=autostart,open' ;;
+		'en:installer_help') printf '%s' 'Usage: sh scripts/dev/install.sh --from DIR [options]
+  --from DIR       Install local source (required)
   --yes, -y        Skip installation confirmation
   --dry-run        Show the plan without making changes
   --without=a,b    Omit components (herdr, terminal, herdr-config, autostart, open, brew-node)
@@ -53,7 +53,7 @@ msg() {
   --skip-herdr     Don'\''t download herdr; use your own build
   --no-service     Same as --without=autostart,open
   --no-open        Same as --without=open
-Example: sh install.sh --from . --yes --without=autostart,open' ;;
+Example: sh scripts/dev/install.sh --from . --yes --without=autostart,open' ;;
 		'zh-TW:plan_title') printf '%s' '專案管家 %s 安裝程式 — 看完再決定要不要裝' ;;
 		'en:plan_title') printf '%s' 'agent-steward %s installer — review before installing' ;;
 		'zh-TW:plan_update_title') printf '%s' '專案管家 %s → %s' ;;
@@ -78,8 +78,6 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:plan_herdr_current') printf '%s' '  herdr: already at %s, no download' ;;
 		'zh-TW:plan_herdr_skipped') printf '%s' '  herdr：不下載，沿用你自己的 herdr（--skip-herdr）' ;;
 		'en:plan_herdr_skipped') printf '%s' '  herdr: not downloaded; using your own herdr (--skip-herdr)' ;;
-		'zh-TW:win_plan_herdr_skipped') printf '%s' '  herdr：不下載，沿用你自己的 herdr（-SkipHerdr）' ;;
-		'en:win_plan_herdr_skipped') printf '%s' '  herdr: not downloaded; using your own herdr (-SkipHerdr)' ;;
 		'zh-TW:plan_ttyd') printf '%s' '  ttyd（網頁終端機）   %s   github.com/tsl0922/ttyd（MIT）' ;;
 		'en:plan_ttyd') printf '%s' '  ttyd (web terminal)   %s   github.com/tsl0922/ttyd (MIT)' ;;
 		'zh-TW:plan_ttyd_brew') printf '%s' '  macOS：會執行 brew install ttyd（Homebrew）' ;;
@@ -114,8 +112,8 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:plan_access') printf '%s' '         To connect from a phone, enable access in Settings → Access after installing.' ;;
 		'zh-TW:plan_wont') printf '%s' '不會做：不改 AI agent 的設定（之後在「設定 → Agent」自己選）、不傳送任何使用資料、不需要 sudo。' ;;
 		'en:plan_wont') printf '%s' 'Will not change AI agent settings (choose integrations later in Settings → Agent), send usage data, or require sudo.' ;;
-		'zh-TW:plan_remove') printf '%s' '移除：sh %s/uninstall.sh' ;;
-		'en:plan_remove') printf '%s' 'Uninstall: sh %s/uninstall.sh' ;;
+		'zh-TW:plan_remove') printf '%s' '移除：sh %s/scripts/dev/uninstall.sh' ;;
+		'en:plan_remove') printf '%s' 'Uninstall: sh %s/scripts/dev/uninstall.sh' ;;
 		'zh-TW:plan_without') printf '%s' '這次不裝：%s' ;;
 		'en:plan_without') printf '%s' 'Omitted this time: %s' ;;
 		'zh-TW:update_downloads') printf '%s' '會下載：專案管家和相依套件（%s + %s）%s' ;;
@@ -128,8 +126,8 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:update_keep') printf '%s' 'Keep your previous choices. Settings you removed will not be added back.' ;;
 		'zh-TW:update_choices') printf '%s' '使用這次的選擇，你自己拿掉的設定不會加回來。' ;;
 		'en:update_choices') printf '%s' 'Use the choices shown here. Settings you removed will not be added back.' ;;
-		'zh-TW:no_tty') printf '%s' '沒有可互動的終端機，尚未做任何改動。請加 --yes，例如：curl -fsSL https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.sh | sh -s -- --yes' ;;
-		'en:no_tty') printf '%s' 'No interactive terminal; nothing has changed. Add --yes, for example: curl -fsSL https://github.com/hao-github-0216/agent-steward/releases/latest/download/install.sh | sh -s -- --yes' ;;
+		'zh-TW:no_tty') printf '%s' '沒有可互動的終端機，尚未做任何改動。請加 --yes，例如：sh scripts/dev/install.sh --from . --yes' ;;
+		'en:no_tty') printf '%s' 'No interactive terminal; nothing has changed. Add --yes, for example: sh scripts/dev/install.sh --from . --yes' ;;
 		'zh-TW:install_choices') printf '%s' '  1) 開始安裝   2) 自訂   3) 取消' ;;
 		'en:install_choices') printf '%s' '  1) Install   2) Customize   3) Cancel' ;;
 		'zh-TW:install_prompt') printf '%s' '請選擇 [1]：' ;;
@@ -188,8 +186,6 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:checksum_failed') printf '%s' 'The checksum for %s does not match. The file may be corrupted or tampered with, so installation stopped and the file was deleted.' ;;
 		'zh-TW:latest_unavailable') printf '%s' '查不到最新版本（連不上 GitHub）。請稍後再試，或用 --version 指定版本。' ;;
 		'en:latest_unavailable') printf '%s' 'Could not find the latest version (GitHub is unreachable). Try again later, or pass --version.' ;;
-		'zh-TW:win_latest_unavailable') printf '%s' '查不到最新版本（連不上 GitHub）。請稍後再試，或用 -Version 指定版本。' ;;
-		'en:win_latest_unavailable') printf '%s' 'Could not find the latest version (GitHub is unreachable). Try again later, or pass -Version.' ;;
 		'zh-TW:main_unverified') printf '%s' 'main 沒有檢查碼，只適合開發用。' ;;
 		'en:main_unverified') printf '%s' 'main has no checksum and is only meant for development.' ;;
 		'zh-TW:app_no_checksum') printf '%s' '%s 沒有檢查碼（較舊的版本沒有）。請改裝最新版，或用該版本自己的安裝程式。' ;;
@@ -262,8 +258,8 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:summary_manual') printf '%s' '  Start manually: cd "%s" && "%s" --experimental-strip-types --no-warnings src/main.ts' ;;
 		'zh-TW:summary_receipt') printf '%s' '  這次的改動記在 %s/install.json' ;;
 		'en:summary_receipt') printf '%s' '  Changes are recorded in %s/install.json' ;;
-		'zh-TW:summary_remove') printf '%s' '  移除：sh %s/uninstall.sh' ;;
-		'en:summary_remove') printf '%s' '  Uninstall: sh %s/uninstall.sh' ;;
+		'zh-TW:summary_remove') printf '%s' '  移除：sh %s/scripts/dev/uninstall.sh' ;;
+		'en:summary_remove') printf '%s' '  Uninstall: sh %s/scripts/dev/uninstall.sh' ;;
 		'zh-TW:summary_privacy') printf '%s' '  專案管家不會傳送任何使用資料。手機 App 的推播（你在手機上允許才會有）會加密後經過推播中繼，中繼看不到內容。' ;;
 		'en:summary_privacy') printf '%s' '  agent-steward does not send usage data. Phone notifications (only if you allow them in the mobile app) are encrypted and pass through a push relay that cannot read them.' ;;
 		'zh-TW:first_use') printf '%s' '第一次使用：在瀏覽器裡設定管理密碼、AI 接口和要接上的 agent。' ;;
@@ -282,8 +278,6 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:uninstall_kept') printf '%s' 'App removed; data remains in %s. To delete everything: rm -rf %s' ;;
 		'zh-TW:herdr_key_removed') printf '%s' '你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。要加回來：再跑一次安裝並加上 --readd-herdr-key。' ;;
 		'en:herdr_key_removed') printf '%s' 'You removed the herdr folder-navigation shortcut, so it was not added back. To restore it, run the installer again with --readd-herdr-key.' ;;
-		'zh-TW:win_herdr_key_removed') printf '%s' '你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。要加回來：再跑一次安裝並加上 -ReaddHerdrKey（用 irm | iex 時先執行 $env:STEWARD_READD_HERDR_KEY=1）。' ;;
-		'en:win_herdr_key_removed') printf '%s' 'You removed the herdr folder-navigation shortcut, so it was not added back. To restore it, run the installer again with -ReaddHerdrKey (with irm | iex, run $env:STEWARD_READD_HERDR_KEY=1 first).' ;;
 		'zh-TW:herdr_folder_description') printf '%s' '資料夾導覽' ;;
 		'en:herdr_folder_description') printf '%s' 'Folder navigation' ;;
 		'zh-TW:herdr_config_removed') printf '%s' 'herdr 設定：已拿掉資料夾導覽' ;;
@@ -320,83 +314,11 @@ Example: sh install.sh --from . --yes --without=autostart,open' ;;
 		'en:receipt_usage') printf '%s' 'Usage: install-receipt.ts set '\''<json>'\'' | set-file <path> | change <type> <path> [note] | backup <path> | get <key> | summary <lang> [header-key]' ;;
 		'zh-TW:receipt_change_scheduled-task') printf '%s' '  工作排程器：%s%s' ;;
 		'en:receipt_change_scheduled-task') printf '%s' '  Scheduled task: %s%s' ;;
-		'zh-TW:win_installer_help') printf '%s' '用法：powershell -ExecutionPolicy Bypass -File install.ps1 [選項]
-  -From DIR          從本機原始碼安裝
-  -Version TAG       安裝指定版本
-  -Yes               不再詢問是否開始安裝
-  -DryRun            只列出計畫，不做改動
-  -Without a,b       不安裝指定元件（herdr、terminal、herdr-config、autostart、open、path）
-  -Lang zh-TW|en     指定訊息語言
-  -ReaddHerdrKey     把你之前拿掉的 herdr 資料夾導覽快捷鍵加回來
-  -SkipHerdr         不下載 herdr，沿用你自己編的版本
-  -NoOpen            等同 -Without open
-  -NoService         等同 -Without autostart,open
-用 irm | iex 時改用環境變數 STEWARD_YES、STEWARD_DRY_RUN、STEWARD_WITHOUT、STEWARD_LANG、STEWARD_READD_HERDR_KEY。
-範例：powershell -ExecutionPolicy Bypass -File install.ps1 -From . -Yes -Without autostart,open' ;;
-		'en:win_installer_help') printf '%s' 'Usage: powershell -ExecutionPolicy Bypass -File install.ps1 [options]
-  -From DIR          Install local source
-  -Version TAG       Install a specific version
-  -Yes               Skip installation confirmation
-  -DryRun            Show the plan without making changes
-  -Without a,b       Omit components (herdr, terminal, herdr-config, autostart, open, path)
-  -Lang zh-TW|en     Set the message language
-  -ReaddHerdrKey     Restore the herdr folder-navigation shortcut you removed
-  -SkipHerdr         Don'\''t download herdr; use your own build
-  -NoOpen            Same as -Without open
-  -NoService         Same as -Without autostart,open
-With irm | iex, use environment variables STEWARD_YES, STEWARD_DRY_RUN, STEWARD_WITHOUT, STEWARD_LANG, STEWARD_READD_HERDR_KEY instead.
-Example: powershell -ExecutionPolicy Bypass -File install.ps1 -From . -Yes -Without autostart,open' ;;
-		'zh-TW:win_plan_path') printf '%s' '  使用者 PATH：加入 %s，並把專案管家的 herdr 資料夾 %s 排在最前面' ;;
-		'en:win_plan_path') printf '%s' '  User PATH: add %s, and put agent-steward'\''s herdr folder %s first' ;;
-		'zh-TW:win_plan_autostart') printf '%s' '登入時自動在背景執行（掛掉會自動重開，不開視窗）：' ;;
-		'en:win_plan_autostart') printf '%s' 'Run in the background at login (restarts on failure, no window):' ;;
-		'zh-TW:win_plan_task') printf '%s' '  工作排程器：%s' ;;
-		'en:win_plan_task') printf '%s' '  Task Scheduler: %s' ;;
-		'zh-TW:win_plan_wont') printf '%s' '不會做：不改 AI agent 的設定（之後在「設定 → Agent」自己選）、不傳送任何使用資料、不需要系統管理員。' ;;
-		'en:win_plan_wont') printf '%s' 'Will not change AI agent settings (choose integrations later in Settings → Agent), send usage data, or require administrator rights.' ;;
-		'zh-TW:win_plan_remove') printf '%s' '移除：powershell -ExecutionPolicy Bypass -File %s\uninstall.ps1' ;;
-		'en:win_plan_remove') printf '%s' 'Uninstall: powershell -ExecutionPolicy Bypass -File %s\uninstall.ps1' ;;
-		'zh-TW:win_component_path') printf '%s' '把 steward 和 herdr 加進 PATH' ;;
-		'en:win_component_path') printf '%s' 'Add steward and herdr to PATH' ;;
-		'zh-TW:win_consequence_path') printf '%s' '關掉後，在終端機打 steward、herdr 找不到專案管家的版本。' ;;
-		'en:win_consequence_path') printf '%s' 'Without it, typing steward or herdr in a terminal won'\''t find agent-steward'\''s versions.' ;;
-		'zh-TW:win_no_tty') printf '%s' '這個視窗不能互動，尚未做任何改動。要直接安裝：先執行 $env:STEWARD_YES=1 再跑一次安裝指令，或用 -Yes 參數。' ;;
-		'en:win_no_tty') printf '%s' 'This window is not interactive; nothing has changed. To install anyway, run $env:STEWARD_YES=1 and then the install command again, or pass -Yes.' ;;
-		'zh-TW:win_summary_service') printf '%s' '  背景服務：工作排程器 %s；停止：Stop-ScheduledTask -TaskName %s' ;;
-		'en:win_summary_service') printf '%s' '  Background service: Task Scheduler %s; stop: Stop-ScheduledTask -TaskName %s' ;;
-		'zh-TW:win_path_removed') printf '%s' '已從使用者 PATH 拿掉：%s' ;;
-		'en:win_path_removed') printf '%s' 'Removed from the user PATH: %s' ;;
-		'zh-TW:win_plan_root') printf '%s' '  %s\   程式、Node、設定與資料' ;;
-		'en:win_plan_root') printf '%s' '  %s\   App, Node, settings, and data' ;;
-		'zh-TW:win_plan_plugins') printf '%s' '  %s\   兩個 herdr 外掛' ;;
-		'en:win_plan_plugins') printf '%s' '  %s\   Two herdr plugins' ;;
-		'zh-TW:win_plan_herdr') printf '%s' '  herdr %s（Windows 版 zip）   %s   github.com/hao-github-0216/herdr（Apache-2.0，修改版）' ;;
-		'en:win_plan_herdr') printf '%s' '  herdr %s (Windows zip)   %s   github.com/hao-github-0216/herdr (Apache-2.0, modified build)' ;;
-		'zh-TW:win_plan_ttyd') printf '%s' '  ttyd（網頁終端機，ttyd.win32.exe）   %s   github.com/tsl0922/ttyd（MIT）' ;;
-		'en:win_plan_ttyd') printf '%s' '  ttyd (web terminal, ttyd.win32.exe)   %s   github.com/tsl0922/ttyd (MIT)' ;;
-		'zh-TW:win_node_download') printf '%s' '下載 Node.js（放在 %s\node，不需要管理員權限）' ;;
-		'en:win_node_download') printf '%s' 'Downloading Node.js (to %s\node, no administrator privileges needed)' ;;
-		'zh-TW:win_git_archive_failed') printf '%s' '無法從本機原始碼建立安裝檔。' ;;
-		'en:win_git_archive_failed') printf '%s' 'Could not archive the local source.' ;;
-		'zh-TW:win_herdr_busy') printf '%s' 'herdr 正在執行，沒辦法換新版；關掉所有 herdr 視窗後再跑一次安裝。' ;;
-		'en:win_herdr_busy') printf '%s' 'herdr is running and could not be replaced. Close all herdr windows and rerun the installer.' ;;
-		'zh-TW:win_path_added') printf '%s' '已把 steward 和專案管家的 herdr 資料夾加進使用者 PATH（新開的終端機才會生效）。' ;;
-		'en:win_path_added') printf '%s' 'Added steward and agent-steward'\''s herdr folder to the user PATH (takes effect in new terminals).' ;;
-		'zh-TW:win_service_failed') printf '%s' '專案管家沒有啟動起來，請看 %s\steward.log。' ;;
-		'en:win_service_failed') printf '%s' 'agent-steward did not start. See %s\steward.log.' ;;
-		'zh-TW:win_summary_manual') printf '%s' '  手動啟動：Set-Location "%s"; & "%s" --experimental-strip-types --no-warnings src/main.ts' ;;
-		'en:win_summary_manual') printf '%s' '  Start manually: Set-Location "%s"; & "%s" --experimental-strip-types --no-warnings src/main.ts' ;;
-		'zh-TW:win_summary_receipt') printf '%s' '  這次的改動記在 %s\install.json' ;;
-		'en:win_summary_receipt') printf '%s' '  Changes are recorded in %s\install.json' ;;
-		'zh-TW:win_uninstall_kept') printf '%s' '已移除程式；資料留在 %s。要全部刪掉：Remove-Item -Recurse -Force "%s"' ;;
-		'en:win_uninstall_kept') printf '%s' 'App removed; data remains in %s. To delete everything: Remove-Item -Recurse -Force "%s"' ;;
 		*) printf '%s' "$1" ;;
 	esac
 }
 t() { _key=$1; shift; printf "$(msg "$_key")" "$@"; }
 tl() { t "$@"; printf '\n'; }
-APP_PIN_VERSION=''
-APP_PIN_SHA256=''
 APP_LICENSE='MIT'
 APP_HOME='https://github.com/hao-github-0216/agent-steward'
 NODE_VERSION='24.22.2'

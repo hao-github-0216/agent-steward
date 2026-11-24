@@ -12,7 +12,8 @@ import { listDevices, pushAll, pushMode, registerDevice, unregisterDevice } from
 import { desktopSignal, expandHome, findTailscale, onSettingsChange, providerLabel, publicSettings, settings, stripMasked, updateSettings } from "./settings.ts";
 import { hermesSecret, notify } from "./notify.ts";
 import { APP_DIR, agentIdOf, chooseCardAgent, dispatchableAgents, listAgents, setAgent } from "./agents.ts";
-import { applyUpdate, checkUpdate, updateLog, updateRequestError } from "./update.ts";
+import { checkUpdate } from "./update.ts";
+import { checkIntegrity, integrityStatus } from "./integrity.ts";
 import { serveOff, serveOn } from "./tailscale.ts";
 import { cancelLogin, loginStatus, startLogin, submitCode } from "./oauth-login.ts";
 import { stewardAuth } from "./auth-store.ts";
@@ -675,7 +676,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					steward.resetModels();
 					return send(res, 200, { ok: true });
 				}
-				// 更新:檢查 GitHub 最新版、一鍵更新、看進度
+				// 檢查 GitHub 上的最新版本
 				if (req.method === "GET" && path === "/api/settings/update") {
 					const manifest = JSON.parse(readFileSync(new URL("../components.json", import.meta.url), "utf8")) as { components: { id: string; name: Record<string, string>; version?: string; tag?: string; packages?: Record<string, string>; license: string; home: string }[] };
 					const lang = settings().ui.lang || "zh-TW";
@@ -688,15 +689,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 					}));
 					return send(res, 200, { ...await checkUpdate(url.searchParams.has("force")), components });
 				}
-				if (req.method === "GET" && path === "/api/settings/update/log") return send(res, 200, { log: updateLog() });
-				if (req.method === "POST" && path === "/api/settings/update") {
-					const tag = (await body(req)).tag;
-					const info = await checkUpdate(true);
-					const err = updateRequestError(info, tag);
-					if (err) return send(res, 400, { error: err });
-					try { await applyUpdate(info.latest!); } catch (e) { return send(res, 400, { error: (e as Error).message }); }
-					return send(res, 200, { ok: true, tag: info.latest });
-				}
+				// 舊版手機 App 還會送一鍵更新的請求,回一段看得懂的錯誤
+				if (req.method === "POST" && path === "/api/settings/update") return send(res, 400, { error: tr("這個安裝方式不支援自動更新，請改裝桌面 App") });
 				// Agent:偵測與接上 / 拿掉專案管家
 				if (req.method === "GET" && path === "/api/settings/agents") return send(res, 200, { agents: listAgents() });
 				const ma = path.match(/^\/api\/settings\/agents\/([a-z0-9-]+)$/);
@@ -1410,7 +1404,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const usage = await steward.usage().catch(() => undefined);
 				const watchedCards = await steward.watchedCards().catch(() => undefined);
 				const patrol = await steward.patrolStatus().catch(() => undefined);
-				return send(res, 200, { ok: true, mode, usage, watchedCards, patrol, watcher: watcher.status() });
+				return send(res, 200, { ok: true, mode, usage, watchedCards, patrol, watcher: watcher.status(), integrity: integrityStatus() });
 			}
 			// 手動觸發:立刻整理某個窗格的新內容(除錯、或使用者想馬上更新時用)
 			if (req.method === "POST" && path === "/api/ingest") {
@@ -1503,6 +1497,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 	const lan = settings().access.lan.enabled;
 	const hosts = lan && !process.env.STEWARD_HOSTS ? ["0.0.0.0"] : HOSTS;
 	const listening = new Map<string, Server>();
+	let integrityTimer: ReturnType<typeof setTimeout> | undefined;
 	for (const host of hosts) {
 		const server = createServer((req, res) => (req.url === "/terminal" || req.url?.startsWith("/terminal/") ? proxyHttp(req, res) : handler(req, res).catch((e) => {
 			// handler 外漏的錯誤只記錄並回 500,服務繼續跑
@@ -1513,7 +1508,13 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 		listening.set(host, server);
 		server.on("upgrade", proxyUpgrade);
 		server.on("error", (e) => console.error(`[server] 綁定 ${host}:${PORT} 失敗:${e.message}`));
-		server.listen(PORT, host, () => console.log(`[server] http://${host}:${PORT}`));
+		server.listen(PORT, host, () => {
+			console.log(`[server] http://${host}:${PORT}`);
+			if (!integrityTimer) integrityTimer = setTimeout(async () => {
+				const result = await checkIntegrity();
+				if (result.status === "modified") console.warn(`[integrity] Program files differ: changed=${result.counts.changed}, missing=${result.counts.missing}, added=${result.counts.added}`);
+			}, 5000).unref();
+		});
 	}
 	if (!lan && !process.env.STEWARD_HOSTS) onSettingsChange((s) => {
 		if (s.access.lan.enabled) return;
@@ -1526,6 +1527,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 		}
 	});
 	return async () => {
+		clearTimeout(integrityTimer);
 		for (const client of clients) client.end();
 		await Promise.all([...listening.values()].map((server) => new Promise<void>((done) => server.close(() => done()))));
 	};

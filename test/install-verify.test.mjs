@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-const installer = fileURLToPath(new URL("../install.sh", import.meta.url));
+const installer = fileURLToPath(new URL("../scripts/dev/install.sh", import.meta.url));
 const strings = JSON.parse(readFileSync(new URL("../i18n/installer.json", import.meta.url), "utf8"));
 const unix = { skip: process.platform === "win32" };
 const hash = (content) => createHash("sha256").update(content).digest("hex");

@@ -59,16 +59,8 @@ test("Python direct packages have the approved Python 3.12 version pins", () => 
 test("generated installer pins and messages are current", () => {
 	const result = spawnSync(process.execPath, ["scripts/gen-install.mjs", "--check"], { cwd: root, encoding: "utf8", timeout: 10_000 });
 	assert.equal(result.status, 0, result.stdout + result.stderr);
-	for (const file of ["install.sh", "uninstall.sh", "scripts/install-windows.ps1", "uninstall.ps1"]) {
+	for (const file of ["scripts/dev/install.sh", "scripts/dev/uninstall.sh"]) {
 		const text = readFileSync(new URL("../" + file, import.meta.url), "utf8");
 		for (const c of components.filter((c) => c.files)) for (const asset of Object.values(c.files)) assert.ok(text.includes(asset.sha256), file + ": " + asset.name);
-		if (file.endsWith(".sh")) {
-			assert.ok(text.includes("APP_PIN_VERSION=''"));
-			assert.ok(text.includes("APP_PIN_SHA256=''"));
-		} else {
-			assert.ok(text.includes("$AppPinVersion = ''"));
-			assert.ok(text.includes("$AppPinSha256 = ''"));
-			assert.ok(text.includes("$AppPinZipSha256 = ''"));
-		}
 	}
 });

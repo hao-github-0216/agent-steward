@@ -1929,25 +1929,23 @@ function desktopPane(s) {
 async function loadSetUpdate(force) { setUpdate = await fetch(`/api/settings/update${force ? "?force=1" : ""}`).then((r) => r.json()).catch(() => ({ error: tr("連不上管家") })); }
 function aboutPane() {
 	const u = setUpdate;
-	const win = setState.platform === "win32";
 	const desktop = u?.desktop ?? setState.desktop;
 	const st = !u ? tr("檢查中…")
-		: u.running ? tr("正在更新…(完成後管家會自動重啟,這頁重新整理即可)")
 		: u.hasUpdate ? `<b>${tr("有新版本 {version}", { version: esc(u.latest) })}</b>${u.url ? `(<a href="${esc(u.url)}" target="_blank" rel="noopener">${tr("更新內容")}</a>)` : ""}`
 		: u.error ? esc(u.error)
 		: u.dev ? tr("這是開發版,不會自動更新{value}", { value: u.latest ? tr("(最新發布版 {version})", { version: esc(u.latest) }) : "" })
 		: tr("已經是最新版");
 	return `<label class="field">${tr("目前版本")}<input type="text" readonly value="${esc(u?.current ?? "")}"></label>
 		<div class="hint">${st}</div>
+		${u?.integrity?.status === "modified" ? `<div class="hint">${tr("程式檔案和官方 {version} 版不同(共 {count} 個檔案)。如果不是你自己改的，請重新下載安裝。", { version: esc(u.current), count: u.integrity.counts.changed + u.integrity.counts.missing + u.integrity.counts.added })} <button class="small" id="updInstaller">${tr("下載 {version} 安裝檔", { version: esc(u.current) })}</button></div>` : ""}
 		${u?.notes && u.hasUpdate ? `<pre class="upd-notes">${esc(u.notes)}</pre>` : ""}
-		<div><button class="small" id="updCheck">${tr("檢查更新")}</button> ${desktop ? `<button class="small primary" id="updDesktop">${u?.hasUpdate ? tr("更新 App 到 {version}", { version: esc(u.latest) }) : tr("用 App 檢查更新")}</button>` : u?.hasUpdate && !u.running ? `<button class="small primary" id="updApply">${tr("更新到 {version}", { version: esc(u.latest) })}</button>` : ""}</div>
-		<pre class="upd-log" id="updLog" ${u?.running ? "" : "hidden"}></pre>
+		<div><button class="small" id="updCheck">${tr("檢查更新")}</button> ${desktop ? `<button class="small primary" id="updDesktop">${u?.hasUpdate ? tr("更新 App 到 {version}", { version: esc(u.latest) }) : tr("用 App 檢查更新")}</button>` : u?.hasUpdate ? `<button class="small primary" id="updGetApp">${tr("下載桌面 App")}</button>` : ""}</div>
 		<h4>${tr("第三方元件")}</h4>
 		<div class="hint">${tr("安裝程式會從各元件的官方來源下載這些軟體，並驗證 SHA-256。")}</div>
 		${u?.components ? u.components.map((c) => `<div>${esc(c.name)} ${esc(c.version)} · ${esc(c.license)} · ${(/^https?:\/\//i).test(c.home) ? `<a href="${esc(c.home)}" target="_blank" rel="noopener">${tr("首頁連結")}</a>` : esc(c.home)}</div>`).join("") : `<div class="hint">${u ? tr("無法載入第三方元件") : tr("讀取中…")}</div>`}
 		<h4>${tr("移除專案管家")}</h4>
-		${desktop ? `<div class="hint">${tr("在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除")}</div>` : `<div class="hint">${tr("在這台電腦的終端機執行(資料會保留;加 {value} 連資料一起刪除):", { value: win ? "<code>-Purge</code>" : "<code>--purge</code>" })}</div>
-		<pre class="upd-cmd">${win ? "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1" : "sh ~/.agent-steward/app/uninstall.sh"}</pre>`}`;
+		${desktop ? `<div class="hint">${tr("在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除")}</div>` : `<div class="hint">${tr("在這台電腦的終端機執行(資料會保留;加 {value} 連資料一起刪除):", { value: "<code>--purge</code>" })}</div>
+		<pre class="upd-cmd">sh ~/.agent-steward/app/scripts/dev/uninstall.sh</pre>`}`;
 }
 // ---- 訂閱登入 ----
 let loginTimer = null;
@@ -2006,19 +2004,6 @@ async function startProviderLogin(provider) {
 		else if (!$("loginCode")) render(st);
 		else if (st.url && !b.dataset.url) { b.dataset.url = "1"; render(st); if (keep) $("loginCode").value = keep; }
 	}, 1500);
-}
-let updTimer = null;
-function pollUpdateLog() {
-	clearInterval(updTimer);
-	updTimer = setInterval(async () => {
-		const box = $("updLog");
-		if (!box || !setState) return clearInterval(updTimer);
-		const r = await fetch("/api/settings/update/log").then((x) => x.json()).catch(() => null);
-		if (r) { box.hidden = false; box.textContent = r.log; box.scrollTop = box.scrollHeight; }
-		const finished = /已經裝好|is installed\.|錯誤[:：]|Error: /; // i18n-ok: 比對安裝程式的中英文紀錄,不是介面文字
-		const succeeded = /已經裝好|is installed\./; // i18n-ok: 比對安裝程式的中英文成功紀錄,不是介面文字
-		if (r && finished.test(r.log.split("=====").pop())) { clearInterval(updTimer); if (succeeded.test(r.log.split("=====").pop())) toast(tr("更新完成,重新整理頁面就是新版")); }
-	}, 2000);
 }
 async function loadSetAgents() { setAgents = (await fetch("/api/settings/agents").then((r) => r.json()).catch(() => null))?.agents ?? []; }
 const PART_LABEL = { brief: tr("開工簡報"), mcp: tr("MCP 工具"), instructions: tr("工作說明") };
@@ -2313,18 +2298,15 @@ function renderSettings() {
 		window.codeMode?.refreshPlugins?.();
 	}));
 	if (tab === "about" && !setUpdate) loadSetUpdate().then(() => setState && setState.tab === "about" && renderSettings());
-	if (tab === "about" && setUpdate?.running) pollUpdateLog();
 	$("updCheck")?.addEventListener("click", () => { setUpdate = null; renderSettings(); loadSetUpdate(true).then(() => setState && renderSettings()); });
+	$("updInstaller")?.addEventListener("click", () => window.open(setUpdate.releaseUrl, "_blank", "noopener"));
 	$("updDesktop")?.addEventListener("click", async () => {
 		const r = await post("/api/desktop/update", {}).catch(() => ({ error: tr("連不上管家") }));
 		toast(r.error || tr("已請 App 檢查更新，請看 App 跳出的視窗"));
 	});
-	$("updApply")?.addEventListener("click", async () => {
-		if (!(await window.confirmBox(tr("更新專案管家"), tr("從 {current} 更新到 {version}。\n會從 GitHub 下載 {version} 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。", { current: setUpdate.current, version: setUpdate.latest }), tr("更新")))) return;
-		$("updApply").disabled = true;
-		const r = await post("/api/settings/update", { tag: setUpdate.latest }).catch(() => ({ error: tr("連不上管家") }));
-		if (r.error) return toast(r.error);
-		setUpdate = { ...setUpdate, running: true }; renderSettings();
+	$("updGetApp")?.addEventListener("click", () => {
+		const u = setUpdate;
+		window.open(u.downloadUrl, "_blank", "noopener");
 	});
 	if (tab === "agents" && !setAgents) loadSetAgents().then(() => setState && setState.tab === "agents" && renderSettings());
 	$("agentsRescan")?.addEventListener("click", () => { setAgents = null; renderSettings(); });
