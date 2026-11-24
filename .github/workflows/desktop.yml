@@ -405,12 +405,13 @@ jobs:
           $installer = (Resolve-Path (Join-Path dist $env:SETUP_NAME)).Path
           $installed = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
           if ($installed.ExitCode -ne 0) { throw "Installer failed: $($installed.ExitCode)" }
-          $expected = Join-Path $env:LOCALAPPDATA 'Agent Steward'
+          $expected = Join-Path $env:ProgramFiles 'Agent Steward'
           $executables = @(Get-ChildItem $expected -Filter 'agent-steward-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue)
           if ($executables.Count -ne 1) {
-            Get-ChildItem $env:LOCALAPPDATA -Force | Format-Table -AutoSize
-            throw 'Cannot find the installed agent-steward-desktop.exe under LOCALAPPDATA/Agent Steward'
+            Get-ChildItem $env:ProgramFiles -Force | Format-Table -AutoSize
+            throw 'Cannot find the installed agent-steward-desktop.exe under ProgramFiles/Agent Steward'
           }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'Agent Steward')) { throw 'The per-machine installer also wrote to LOCALAPPDATA/Agent Steward' }
           $installDir = $executables[0].Directory.FullName
           try {
             node desktop/scripts/smoke.mjs --exe $executables[0].FullName

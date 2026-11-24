@@ -278,6 +278,8 @@ Example: sh scripts/dev/install.sh --from . --yes --without=autostart,open' ;;
 		'en:uninstall_kept') printf '%s' 'App removed; data remains in %s. To delete everything: rm -rf %s' ;;
 		'zh-TW:herdr_key_removed') printf '%s' '你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。要加回來：再跑一次安裝並加上 --readd-herdr-key。' ;;
 		'en:herdr_key_removed') printf '%s' 'You removed the herdr folder-navigation shortcut, so it was not added back. To restore it, run the installer again with --readd-herdr-key.' ;;
+		'zh-TW:win_herdr_key_removed') printf '%s' '你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。' ;;
+		'en:win_herdr_key_removed') printf '%s' 'You removed the herdr folder-navigation shortcut, so it was not added back.' ;;
 		'zh-TW:herdr_folder_description') printf '%s' '資料夾導覽' ;;
 		'en:herdr_folder_description') printf '%s' 'Folder navigation' ;;
 		'zh-TW:herdr_config_removed') printf '%s' 'herdr 設定：已拿掉資料夾導覽' ;;

@@ -171,8 +171,9 @@ test("aboutPane renders only modified integrity as a hint with a manual installe
 
 test("writeIntegrityManifest keeps integer-looking names in dictionary order and escapes unusual paths", async (t) => {
 	const app = await fixture(t);
-	const names = ["2", "10", 'nested/引號".txt', "nested/INTEGRITY.json", "nested/deeper/__pycache__"];
-	if (process.platform !== "win32") names.push("nested/back\\slash");
+	const names = ["2", "10", "nested/引號.txt", "nested/INTEGRITY.json", "nested/deeper/__pycache__"];
+	// Windows 檔名不能含雙引號和反斜線
+	if (process.platform !== "win32") names.push('nested/引號".txt', "nested/back\\slash");
 	for (const name of names) await writeFile(join(app, name), name);
 	await writeIntegrityManifest(app);
 	const text = await readFile(join(app, "INTEGRITY.json"), "utf8");

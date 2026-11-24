@@ -125,6 +125,7 @@
   "uninstall_purged": { "zh-TW": "已刪除 {0}（含所有資料）", "en": "Deleted {0}, including all data" },
   "uninstall_kept": { "zh-TW": "已移除程式；資料留在 {0}。要全部刪掉：rm -rf {1}", "en": "App removed; data remains in {0}. To delete everything: rm -rf {1}" },
   "herdr_key_removed": { "zh-TW": "你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。要加回來：再跑一次安裝並加上 --readd-herdr-key。", "en": "You removed the herdr folder-navigation shortcut, so it was not added back. To restore it, run the installer again with --readd-herdr-key." },
+  "win_herdr_key_removed": { "zh-TW": "你自己拿掉了 herdr 的資料夾導覽快捷鍵，這次不加回去。", "en": "You removed the herdr folder-navigation shortcut, so it was not added back." },
   "herdr_folder_description": { "zh-TW": "資料夾導覽", "en": "Folder navigation" },
   "herdr_config_removed": { "zh-TW": "herdr 設定：已拿掉資料夾導覽", "en": "herdr configuration: removed folder navigation" },
   "herdr_config_absent": { "zh-TW": "herdr 設定：沒有資料夾導覽", "en": "herdr configuration: no folder navigation" },
