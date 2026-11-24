@@ -4,6 +4,7 @@
 //   steward ask "問題" [--project 名稱]           問管家;指定別的專案時問答記在目前專案
 //   steward projects                              列出所有專案
 //   steward report "做了什麼" [--agent X] 主動回報
+//   steward patrol [--cwd DIR]         唯讀巡檢目前專案,發現問題開提案卡
 //   steward board                      開啟看板
 //   steward branch [--here] [窗格]     從 agent 窗格開一條支線(分叉主線的對話,在新 tab 另外問);
 //                                      預設開在獨立的 git worktree,--here 開在跟主線同一個資料夾
@@ -193,6 +194,12 @@ async function main() {
 			process.stdout.write(`[${r.project}] ${r.answer}\n`);
 			break;
 		}
+		case "patrol": {
+			const cwd = flag("cwd", process.cwd());
+			const r = JSON.parse(await post("/api/patrol/run", { cwd }, 660_000));
+			process.stdout.write(r.skipped ? `沒有巡檢:${r.skipped}\n` : `${r.summary}\n開了 ${r.proposed} 張提案卡\n`);
+			break;
+		}
 		case "report": {
 			const cwd = flag("cwd", process.cwd());
 			const agent = flag("agent", process.env.STEWARD_AGENT ?? "cli");
@@ -222,7 +229,7 @@ async function main() {
 			break;
 		}
 		default:
-			process.stdout.write("用法:steward brief | ask \"問題\" | report \"做了什麼\" | board | branch [窗格|back|close] | hook <agent> | mcp\n");
+			process.stdout.write("用法:steward brief | ask \"問題\" | report \"做了什麼\" | patrol [--cwd DIR] | board | branch [窗格|back|close] | hook <agent> | mcp\n");
 			process.exitCode = cmd ? 1 : 0;
 	}
 }

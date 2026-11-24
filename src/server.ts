@@ -528,7 +528,7 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 			if (path === "/api/desktop/update" && process.env.STEWARD_DESKTOP !== "1") return send(res, 404, { error: "not found" });
 			// 所有 /api 都要登入;例外:健康檢查、網頁回報錯誤、本機 agent 整合(開工簡報、提問、回報)
 			const OPEN = new Set(["/api/health", "/api/clientlog"]);
-			const LOCAL_INTEGRATION = new Set(["/api/brief", "/api/ask", "/api/report", "/api/projects"]);
+			const LOCAL_INTEGRATION = new Set(["/api/brief", "/api/ask", "/api/report", "/api/projects", "/api/patrol/run"]);
 			// 支線也給本機的 steward 指令用(只限本機直連,和 ask/report 一樣)
 			const localApi = LOCAL_INTEGRATION.has(path) || path === "/api/branch" || path.startsWith("/api/branch/");
 			if (path.startsWith("/api/") && !OPEN.has(path) && !(localApi && isPureLocal(req))) {
@@ -864,6 +864,12 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				const who = b.agent ? `(提問者:${b.agent})` : "";
 				const answer = await steward.send(p, `【提問】${who}${b.question}`);
 				return send(res, 200, { project: displayProject(p).name, answer });
+			}
+			if (req.method === "POST" && path === "/api/patrol/run") {
+				const b = await body(req);
+				const p = b.projectId ? store.project(String(b.projectId)) : b.cwd ? resolveProject(store, String(b.cwd), { remember: false }) : ensureSpecial(store, OVERVIEW_ROOT);
+				if (!p) return send(res, 404, { error: "unknown project" });
+				return send(res, 200, await steward.patrol(p, { force: true }));
 			}
 			if (req.method === "POST" && path === "/api/report") {
 				const b = await body(req);
@@ -1403,7 +1409,8 @@ export function startServer(store: Store, steward: Steward, watcher: Watcher): (
 				if (!(await authorize(req)).ok) return send(res, 200, { ok: true, mode });
 				const usage = await steward.usage().catch(() => undefined);
 				const watchedCards = await steward.watchedCards().catch(() => undefined);
-				return send(res, 200, { ok: true, mode, usage, watchedCards, watcher: watcher.status() });
+				const patrol = await steward.patrolStatus().catch(() => undefined);
+				return send(res, 200, { ok: true, mode, usage, watchedCards, patrol, watcher: watcher.status() });
 			}
 			// 手動觸發:立刻整理某個窗格的新內容(除錯、或使用者想馬上更新時用)
 			if (req.method === "POST" && path === "/api/ingest") {

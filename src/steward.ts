@@ -1,10 +1,11 @@
 // 管家主體:一個 pi durable Harness,每個專案一條對話(加上「雜務」與「總覽」)。
-// 管家只有「改專案狀態 / 提工作卡 / 更新工作卡」三類工具,不能碰檔案或跑指令。
+// 巡檢時能唯讀查證 repo;管家只更新狀態與工作卡,不改檔案。
 import { isEn, tr } from "./i18n.ts";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { AssistantEntry, CompactionTask, createRegistry, defineExtension, defineTask, defineTool, GenerationTask, Harness, hook, section } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR, DB_PATH } from "./config.ts";
 import { createCompactHook } from "./compaction.ts";
@@ -19,12 +20,14 @@ import { recentChat } from "./chat-log.ts";
 import { notify } from "./notify.ts";
 import { pushText, routeForProject } from "./privacy.ts";
 import { ensureSpecial, OVERVIEW_ROOT } from "./projects.ts";
+import { collectSignals, patrolDue, patrolMessage, repoGit, repoList, repoRead } from "./patrol.ts";
 import type { Card, Project, Store } from "./store.ts";
 
 // 派工超時提醒的節奏(可用環境變數調,測試用)
 const WATCH_EVERY_MS = Number(process.env.STEWARD_WATCH_EVERY_MS ?? 15 * 60_000); // 多久醒來檢查一次
 const IDLE_LIMIT_MS = Number(process.env.STEWARD_WATCH_IDLE_MS ?? 30 * 60_000); // agent 停下多久還沒完成就算卡住
 const HARD_LIMIT_MS = Number(process.env.STEWARD_WATCH_HARD_MS ?? 8 * 3_600_000); // 最長允許做多久
+const PATROL_TICK_MS = Number(process.env.STEWARD_PATROL_TICK_MS ?? 30 * 60_000);
 
 type WatchInput = { cardId: string; paneId: string; startedAt: number; terminalId?: string };
 type WatchState = { phase: "check"; idleSince: number | null; askedUser: boolean };
@@ -34,7 +37,7 @@ const MAX_RECENT = 12;
 const PERSONA = () => `你是「專案管家」,負責追蹤使用者${settings().user.name ? `(${settings().user.name})` : ""}所有專案的進度,讓任何 AI agent(pi、Claude Code、Codex、opencode、Hermes…)換了 session 也能馬上接手。
 ${isEn() ? "Always write in English." : "全程使用繁體中文。"}
 
-你會收到三種訊息:
+你會收到六種訊息:
 1. 【回報】某個 agent 在這個專案剛做完一段工作的對話節錄。請判斷這段工作改變了什麼,然後呼叫 update_project_state 更新專案狀態:
    - progress 寫「現在做到哪」的完整現況(會覆蓋舊值),不是只寫這次做了什麼。
    - nextSteps、decisions、blockers 給完整的新清單(會覆蓋舊值);已完成的下一步要拿掉,過時的卡點要移除。
@@ -48,11 +51,12 @@ ${isEn() ? "Always write in English." : "全程使用繁體中文。"}
    - 背景、前提、限制過時了就改寫 instructions(要完整、讓沒背景的 agent 也能開工),必要時改標題與完成條件;
    - 卡片已經完成、被取代、或做了會跟最新決定衝突,就 withdraw=true 並說明原因;
    - 還是完全正確就只帶 id 和 reason 說「不用改」。
+6. 【巡檢】定期檢查專案的 repo。照訊息裡的規則查證、提案,不要改任何檔案。
 
-提案前必須逐條核對專案狀態的「卡點」與「重要決定」:只要工作會碰到任何還在等人放行的事(例如寫檔、改程式、commit、花算力),就不能提案,不管檔案在不在 repo 裡。
+提案前逐條核對專案狀態的「卡點」與「重要決定」:只有卡點或決定裡明確寫著要等使用者同意的事,才不能提案。一般的改程式、改文件、補測試不算等放行,因為提案本來就要使用者核准才會派工。
 
 提案規則(propose_card):
-- 只有在出現「明確、可以獨立交給一個 agent 完成」的下一步時才提案,一次最多一張,並先看 list_cards 避免重複。
+- 只有在出現「明確、可以獨立交給一個 agent 完成」的下一步時才提案,一次最多一張(【巡檢】依訊息裡的張數上限),並先看 list_cards 避免重複。
 - 提案只是建議,使用者核准後才會被派出去;你自己絕對不執行工作。
 - instructions 要讓一個完全沒背景的 agent 也能開工;done_criteria 要可驗證。
 - agent 只能從【提案檢查】訊息列出的可派工 agent 裡選;設定固定交給某個 agent 時就用它。
@@ -60,8 +64,8 @@ ${isEn() ? "Always write in English." : "全程使用繁體中文。"}
 
 回答要精簡,不要客套。`;
 
-/** 管家對話裡的工作:digest=整理回報、judge=提案檢查/agent 提問(唯一能開卡)、chat=聊天室問答。用哪個模型看設定頁的「路由」 */
-export type Role = "digest" | "judge" | "chat";
+/** 管家對話裡的工作:digest=整理回報、judge=提案檢查/agent 提問、chat=聊天室問答、patrol=唯讀巡檢(沿用 judge 路由)。 */
+export type Role = "digest" | "judge" | "chat" | "patrol";
 
 export class StewardUnanswered extends Error {
 	constructor(why: string) {
@@ -78,6 +82,14 @@ export class Steward {
 	harness!: Harness;
 	private proposeTool: unknown;
 	private cardWatch: unknown;
+	private repoTools: unknown[] = [];
+	private patrolClock: unknown;
+	private patrolBudget = new Map<string, number>();
+	/** 正在回答【巡檢】這一題的專案:這段期間工具只能做巡檢允許的事 */
+	private patrolActive = new Set<string>();
+	private patrolRunning = false;
+	private patrolLastTickAt?: string;
+	private patrolLastError?: string;
 	private models?: Awaited<ReturnType<typeof buildModels>>;
 	private configured = new Map<string, string>(); // 對話目前的模型設定,避免每次重設
 	private configuredRef = new Map<string, { provider: string; modelId: string }>();
@@ -115,6 +127,10 @@ export class Steward {
 			execute: async (args, api) => {
 				const p = projectOf(api.conversationId);
 				const { session_summary, agent, ...patch } = args;
+				if (this.patrolActive.has(p.id)) {
+					store.updateState(p.id, { ...(patch.nextSteps ? { nextSteps: patch.nextSteps } : {}), ...(patch.blockers ? { blockers: patch.blockers } : {}) });
+					return { output: [{ type: "text", text: tr("已更新巡檢的卡點與下一步") }] };
+				}
 				const recent = session_summary
 					? [{ at: new Date().toISOString(), agent: agent ?? "?", summary: session_summary }, ...p.state.recent].slice(0, MAX_RECENT)
 					: p.state.recent;
@@ -150,6 +166,11 @@ export class Steward {
 			}),
 			execute: async (args, api) => {
 				const p = projectOf(api.conversationId);
+				const budget = this.patrolActive.has(p.id) ? this.patrolBudget.get(p.id) : undefined;
+				if (budget !== undefined) {
+					if (budget <= 0) return { output: [{ type: "text", text: tr("這次巡檢的提案已達上限") }] };
+					this.patrolBudget.set(p.id, budget - 1);
+				}
 				if (p.kind !== "project") return { output: [{ type: "text", text: "雜務/總覽不提案" }] };
 				const pick = chooseCardAgent(args.agent, { available: dispatchableAgents(), defaultAgent: settings().cards.defaultAgent });
 				const card = store.addCard({ projectId: p.id, title: args.title, agent: pick.agent, instructions: args.instructions, doneCriteria: args.done_criteria });
@@ -159,6 +180,29 @@ export class Steward {
 		});
 
 		this.proposeTool = proposeCard;
+
+		const repoListTool = defineTool({
+			name: "repo_list",
+			description: "唯讀列出專案資料夾的一層內容,路徑相對於專案根目錄。",
+			parameters: Type.Object({ dir: Type.Optional(Type.String()) }),
+			replay: "safe",
+			execute: async (args, api) => ({ output: [{ type: "text", text: repoList(projectOf(api.conversationId).root, args.dir) }] }),
+		});
+		const repoReadTool = defineTool({
+			name: "repo_read",
+			description: "唯讀查閱專案內的文字檔,offset 從第 0 行起算,limit 最多 800 行。",
+			parameters: Type.Object({ path: Type.String(), offset: Type.Optional(Type.Number({ minimum: 0 })), limit: Type.Optional(Type.Number({ minimum: 1, maximum: 800 })) }),
+			replay: "safe",
+			execute: async (args, api) => ({ output: [{ type: "text", text: repoRead(projectOf(api.conversationId).root, args.path, args.offset, args.limit) }] }),
+		});
+		const repoGitTool = defineTool({
+			name: "repo_git",
+			description: "唯讀查閱專案 git 歷史與差異。args 第一項是 log、show、diff、status、ls-files、blame 或 shortlog。",
+			parameters: Type.Object({ args: Type.Array(Type.String()) }),
+			replay: "safe",
+			execute: async (args, api) => ({ output: [{ type: "text", text: repoGit(projectOf(api.conversationId).root, args.args) }] }),
+		});
+		this.repoTools = [repoListTool, repoReadTool, repoGitTool];
 
 		/**
 		 * 派工超時提醒:每張派出去的卡一個 pi durable 任務,睡到時間才醒來檢查,管家重啟後接著等。
@@ -211,6 +255,20 @@ export class Steward {
 		});
 		this.cardWatch = CardWatch;
 
+		const PatrolClock = defineTask<{}, { phase: "tick" }, null>({
+			name: "steward.patrolClock",
+			version: 1,
+			initial: () => ({ phase: "tick" }),
+			phases: {
+				tick: (task, runtime, context) => {
+					void this.onPatrolTick();
+					return runtime.sleepUntil(runtime.now() + PATROL_TICK_MS, { phase: "tick" }, context);
+				},
+			},
+			abort: (_task, runtime, context) => runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context),
+		});
+		this.patrolClock = PatrolClock;
+
 		/** 派工前更新:管家依專案最新狀態改寫舊卡(只能改「正在派工前更新」的卡) */
 		const reviseCard = defineTool({
 			name: "revise_card",
@@ -226,6 +284,7 @@ export class Steward {
 			replay: "safe",
 			execute: async (args, api) => {
 				const p = projectOf(api.conversationId);
+				if (this.patrolActive.has(p.id)) return { output: [{ type: "text", text: tr("巡檢不能改寫既有工作卡") }] };
 				const card = store.card(args.id);
 				if (!card || card.projectId !== p.id) return { output: [{ type: "text", text: "找不到這張卡" }] };
 				if (!card.refreshing) return { output: [{ type: "text", text: "這張卡不在派工前更新中,不能改寫" }] };
@@ -255,6 +314,7 @@ export class Steward {
 			replay: "safe",
 			execute: async (args, api) => {
 				const p = projectOf(api.conversationId);
+				if (this.patrolActive.has(p.id)) return { output: [{ type: "text", text: tr("巡檢不能更新既有工作卡") }] };
 				const card = store.card(args.id);
 				if (!card || card.projectId !== p.id) return { output: [{ type: "text", text: "找不到這張卡" }] };
 				if (card.column === "proposed" || card.column === "rejected") return { output: [{ type: "text", text: "未核准的卡不能更新" }] };
@@ -286,8 +346,8 @@ export class Steward {
 					return p ? `專案:${p.name}\n路徑:${p.root}\n類型:${p.kind}` : undefined;
 				}),
 			],
-			tools: [updateState, listCards, proposeCard, updateCard, reviseCard],
-			tasks: [CardWatch],
+			tools: [updateState, listCards, proposeCard, updateCard, reviseCard, repoListTool, repoReadTool, repoGitTool],
+			tasks: [CardWatch, PatrolClock],
 		});
 
 		const registry = createRegistry();
@@ -321,24 +381,27 @@ export class Steward {
 		} catch (e) {
 			console.error(new Date().toISOString(), "[recall] 啟動失敗", e);
 		}
+		await this.ensurePatrolClock();
 	}
 
 	/**
 	 * 每項工作用哪個模型:設定頁「路由」(主要/備用)。隱私專案只用「隱私專案」那個模型、不提案。
-	 * 只有提案檢查(judge)能開卡;聊天室是純問答。
+	 * 提案檢查與巡檢能開卡;只有巡檢能唯讀查證 repo。
 	 */
 	private modelFor(p: Project, role: Role = "judge", fallback = false) {
-		const canPropose = !p.private && role === "judge" && p.kind === "project";
+		const canPropose = !p.private && (role === "judge" || role === "patrol") && p.kind === "project";
+		const remove = [...(canPropose ? [] : [this.proposeTool]), ...(role === "patrol" ? [] : this.repoTools)] as never[];
 		return {
-			model: routeFor(role, { private: p.private, fallback }),
+			model: routeFor(role === "patrol" ? "judge" : role, { private: p.private, fallback }),
 			thinkingLevel: "medium" as const,
-			modelTools: canPropose ? null : { remove: [this.proposeTool as never] },
+			modelTools: remove.length ? { remove } : null,
 		};
 	}
 
 	private async ensureConfigured(p: Project, conv: { id: string; configure: (c: never, x: typeof ctx) => Promise<void> }, role: Role, fallback = false) {
 		const change = this.modelFor(p, role, fallback);
-		const key = `${change.model.provider}/${change.model.modelId}/${change.modelTools ? "noprop" : "prop"}`;
+		const removed = change.modelTools?.remove.map((t) => t === this.proposeTool ? "noprop" : `norepo${this.repoTools.indexOf(t)}`).join(",") ?? "all";
+		const key = `${change.model.provider}/${change.model.modelId}/${removed}`;
 		this.configuredRef.set(conv.id, { provider: change.model.provider, modelId: change.model.modelId });
 		if (this.configured.get(conv.id) === key) return;
 		await conv.configure(change as never, ctx);
@@ -383,7 +446,7 @@ export class Steward {
 			return await this.sendOnce(p, content, opts);
 		} catch (e) {
 			// 背景工作(整理回報、提案檢查):主要模型失敗就自動改用備用;聊天室由使用者決定(按「改用備用模型」)
-			if (role === "chat" || opts.fallback || p.private || !hasFallback(role)) throw e;
+			if (role === "chat" || opts.fallback || p.private || !hasFallback(role === "patrol" ? "judge" : role)) throw e;
 			console.error(new Date().toISOString(), "[steward] 主要模型失敗,改用備用", p.name, role, String((e as Error).message ?? e).slice(0, 200));
 			return this.sendOnce(p, content, { ...opts, fallback: true });
 		}
@@ -397,7 +460,7 @@ export class Steward {
 			const cli = this.cliOf(ref.provider);
 			if (cli) return runCli(cli, ref.modelId, this.chatSystem(p), content, timeoutMs ?? 180_000).catch((e) => { throw new StewardUnanswered(String((e as Error).message ?? e)); });
 		}
-		return this.serial(p.id, async () => {
+		const run = async () => {
 			const conv = await this.conversation(p);
 			await this.ensureConfigured(p, conv as never, role, fallback);
 			const submission = await conv.submit({ type: "input", content, ...(requestId ? { requestId } : {}) }, ctx);
@@ -419,6 +482,15 @@ export class Steward {
 			const answer = await conv.commit((tx) => tx.entry(AssistantEntry, settled.answer), ctx);
 			const msg = answer?.model?.[0] as { content?: { type: string; text?: string }[] } | undefined;
 			return (msg?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+		};
+		return this.serial(p.id, async () => {
+			// 巡檢的工具限制只在輪到巡檢這一題時生效,排在前面的其他題不受影響
+			if (role === "patrol") this.patrolActive.add(p.id);
+			try {
+				return await run();
+			} finally {
+				if (role === "patrol") this.patrolActive.delete(p.id);
+			}
 		});
 	}
 
@@ -580,6 +652,89 @@ ${brief(this.deps.store, p, { recent: 5 })}
 	async usage(): Promise<Record<string, { input: number; output: number; totalTokens: number }>> {
 		const u = (await this.harness.usage(ctx)) as { models: Record<string, { input: number; output: number; totalTokens: number }> };
 		return Object.fromEntries(Object.entries(u.models).map(([k, v]) => [k, { input: v.input, output: v.output, totalTokens: v.totalTokens }]));
+	}
+
+	/** 唯讀巡檢一個專案,發現問題只開提案卡。 */
+	async patrol(p: Project, opts: { force?: boolean } = {}) {
+		const cfg = settings().patrol;
+		const now = Date.now();
+		if (p.kind !== "project") return { skipped: tr("雜務與總覽不巡檢") };
+		if (p.private) return { skipped: tr("隱私專案不巡檢") };
+		const rootExists = existsSync(p.root);
+		if (!rootExists) return { skipped: tr("找不到專案資料夾") };
+		if (!opts.force && (!cfg.enabled || p.status !== "active")) return { skipped: patrolDue(p, undefined, cfg, now, rootExists).reason };
+		if (this.patrolBudget.has(p.id)) return { skipped: tr("這個專案正在巡檢") };
+		const signals = collectSignals(p.root, { since: p.lastPatrol?.at, checks: cfg.checks });
+		if (!opts.force) {
+			const due = patrolDue(p, signals.head, cfg, now, rootExists);
+			if (!due.due) return { skipped: due.reason };
+		}
+		const cards = this.deps.store.cards(p.id);
+		const rejectedTitles = cards.filter((c) => c.column === "rejected" && Date.parse(c.updatedAt) >= now - 30 * 24 * 3_600_000).map((c) => c.title);
+		const openProposed = cards.filter((c) => c.column === "proposed").length;
+		const budget = openProposed >= 3 ? 0 : cfg.maxCards;
+		this.patrolBudget.set(p.id, budget);
+		try {
+			const answer = await this.send(p, patrolMessage(p, signals, cfg, rejectedTitles, openProposed), { role: "patrol", timeoutMs: 600_000 });
+			const proposed = budget - (this.patrolBudget.get(p.id) ?? 0);
+			const summary = answer.match(/(?:^|\n)\**(?:總結|Summary)\**[:：]\s*([\s\S]*)/i)?.[1].trim() || answer.slice(0, 300);
+			this.deps.store.updateProject(p.id, { lastPatrol: { at: new Date(now).toISOString(), head: signals.head, summary, proposed } });
+			this.patrolLastError = undefined;
+			return { summary, proposed, answer };
+		} catch (e) {
+			this.patrolLastError = String((e as Error).message ?? e);
+			// 自動巡檢失敗也記下時間,等下一個巡檢週期再試,不會每次醒來都重送
+			if (!opts.force) this.deps.store.updateProject(p.id, { lastPatrol: { at: new Date(now).toISOString(), head: signals.head, summary: tr("巡檢失敗:{error}", { error: this.patrolLastError.slice(0, 200) }), proposed: 0 } });
+			throw e;
+		} finally {
+			this.patrolBudget.delete(p.id);
+		}
+	}
+
+	/** 確保總覽對話有一個持續喚醒巡檢的背景任務。 */
+	private async ensurePatrolClock(): Promise<void> {
+		try {
+			if ((await this.patrolStatus()).clock) return;
+			const conv = await this.conversation(ensureSpecial(this.deps.store, OVERVIEW_ROOT));
+			await conv.commit((tx) => tx.createTask(this.patrolClock as never, {} as never, { ownership: { kind: "conversation" }, background: true }), ctx);
+		} catch (e) {
+			console.error(new Date().toISOString(), "[patrol] 鬧鐘建立失敗", e);
+		}
+	}
+
+	/** 每次醒來只巡一個到期的專案,避免同時送出多個模型請求。 */
+	private async onPatrolTick(): Promise<void> {
+		this.patrolLastTickAt = new Date().toISOString();
+		if (this.patrolRunning || this.patrolBudget.size) return;
+		this.patrolRunning = true;
+		try {
+			const cfg = settings().patrol;
+			if (!cfg.enabled) return;
+			for (const p of this.deps.store.projects()) {
+				if (p.kind !== "project" || p.status !== "active" || p.private || !existsSync(p.root)) continue;
+				const { head } = collectSignals(p.root, { checks: { docs: false, untracked: false, ci: false, state: false } });
+				if (!patrolDue(p, head, cfg, Date.now(), true).due) continue;
+				await this.patrol(p);
+				break;
+			}
+		} catch (e) {
+			this.patrolLastError = String((e as Error).message ?? e);
+			console.error(new Date().toISOString(), "[patrol] 巡檢失敗", e);
+		} finally {
+			this.patrolRunning = false;
+		}
+	}
+
+	/** 巡檢鬧鐘與最近執行狀態,給 health 看。 */
+	async patrolStatus() {
+		const g = await this.harness.taskGraph(ctx);
+		try {
+			const value = (g as { value?: { tasks?: Record<string, { kind?: string }> } }).value ?? (g as unknown as { tasks?: Record<string, { kind?: string }> });
+			const clock = Object.values(value.tasks ?? {}).filter((t) => t.kind === "steward.patrolClock").length;
+			return { enabled: settings().patrol.enabled, lastTickAt: this.patrolLastTickAt, lastError: this.patrolLastError, running: this.patrolRunning || this.patrolBudget.size > 0, clock };
+		} finally {
+			(g as { dispose?: () => void }).dispose?.();
+		}
 	}
 
 	/** 派工成功後呼叫:建立一個超時提醒任務(掛在「總覽」對話,背景執行不佔住對話) */

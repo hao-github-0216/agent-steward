@@ -36,6 +36,7 @@ export interface Project {
 	/** 候選資料夾被自動略過的時間 */
 	autoIgnoredAt?: string;
 	lastProposalCheckAt?: string;
+	lastPatrol?: { at: string; head?: string; summary: string; proposed: number };
 	// 一對一綁定的 herdr space(ID 可能在 herdr 重啟後改變,所以也記名稱,用來找回)
 	spaceId?: string;
 	spaceLabel?: string;

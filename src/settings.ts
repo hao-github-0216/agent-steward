@@ -59,6 +59,17 @@ export interface Settings {
 	ui: { lang: "" | "zh-TW" | "en" };
 	desktop: { herdrCli: boolean; herdrConfig: boolean; autostart: boolean; autoUpdate: boolean; notify: boolean };
 	cards: { defaultAgent: string };
+	/** 定期巡檢:管家定時看專案 repo,發現該做的事就開提案卡 */
+	patrol: {
+		enabled: boolean;
+		/** 同一個專案最少隔幾小時巡一次 */
+		everyHours: number;
+		/** 一次巡檢最多開幾張提案卡 */
+		maxCards: number;
+		checks: { docs: boolean; untracked: boolean; ci: boolean; state: boolean };
+		/** 使用者另外想讓管家注意的事 */
+		extra: string;
+	};
 	code: {
 		/** 自動抓取遠端更新:ask = 先詢問,on = 開啟,off = 關閉 */
 		autoFetch: "ask" | "on" | "off";
@@ -115,6 +126,7 @@ export const DEFAULTS: Settings = {
 	ui: { lang: "" },
 	desktop: { herdrCli: true, herdrConfig: true, autostart: true, autoUpdate: true, notify: true },
 	cards: { defaultAgent: "" },
+	patrol: { enabled: true, everyHours: 24, maxCards: 2, checks: { docs: true, untracked: true, ci: true, state: true }, extra: "" },
 	code: { autoFetch: "ask", autoFetchMinutes: 3 },
 	server: { port: 8791, terminalPort: 8792, hosts: ["127.0.0.1"], tailnetBindReviewed: false, publicUrl: "" },
 	access: { passwordHash: "", tailscale: { enabled: false }, tailscaleUsers: [], lan: { enabled: false } },
