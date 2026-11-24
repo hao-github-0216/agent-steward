@@ -8,8 +8,11 @@ it is easy to lose track of where each project stands, who is doing what, and wh
 - **Records progress automatically**: when an agent finishes a chunk of work, the steward reads its terminal output and keeps each project's goal, progress, next steps and blockers up to date.
 - **Briefs agents on start**: an agent starting work in a project gets the latest state, so you don't have to repeat yourself.
 - **Dispatches from a kanban board**: the steward proposes work cards; drag one to "Approved" and it opens a terminal and hands the task to the chosen agent. Once a card is done (or stuck), you can **ask follow-up questions** right in the card; they go to the agent that did the work, and the questions and full replies stay as a thread.
+- **Periodic patrol**: the steward regularly looks through each project's repo for outdated docs, files that have stayed out of version control for a long time, failed CI runs and stale blockers, and turns what it finds into proposed cards. Nothing is dispatched until you approve a card. A patrol only reads; it never changes files, and private projects are skipped. Turn it on or off, set the interval and pick the checks in Settings → Agent. To patrol the current project right away, run `steward patrol` in a terminal.
 - **Answers questions**: a floating chat button lets you ask "where is this project at?" any time.
-- **Works in the browser**: board, code (editor, Git, diff) and terminal in one web page, usable from phones and tablets.
+- **Works in the browser**: board, code (editor, Git, diff, previews) and terminal in one web page, usable from phones and tablets. An HTML file can be previewed to the side. The preview loads CSS, images and fonts from the same project, but it does not run JavaScript.
+
+Periodic patrol and HTML preview were added after v0.4.0, so the released v0.4.0 doesn't have them yet.
 
 ![Board](docs/images/board.png)
 
