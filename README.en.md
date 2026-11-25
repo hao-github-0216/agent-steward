@@ -36,10 +36,11 @@ Download the file for your system from [Releases](https://github.com/hao-github-
 | Windows 10 or later (x64) | `agent-steward-desktop-vX.Y.Z-windows-x64-setup.exe` |
 
 - **Mac**: open the .dmg, drag Agent Steward into Applications, and open it from there. The App is signed with an Apple Developer ID and notarized by Apple, so macOS opens it without a warning.
-- **Windows**: run the setup .exe. The App installs to `C:\Program Files\Agent Steward` for every account on the computer, so Windows shows a User Account Control prompt. Click "Yes" to continue. The installer uses your system language.
-  - The installer isn't code-signed yet, so Windows shows "Windows protected your PC". Click "More info", then "Run anyway". The User Account Control prompt also shows the publisher as "Unknown".
+- **Windows**: run the setup .exe. The installer uses your system language.
+  - Starting with the next release after v0.4.0, the App installs to `C:\Program Files\Agent Steward` for every account on the computer, so Windows shows a User Account Control prompt. Click "Yes" to continue. The released v0.4.0 still installs in your user folder and doesn't show this prompt.
+  - The installer isn't code-signed yet, so Windows shows "Windows protected your PC". Click "More info", then "Run anyway". In the next release, the User Account Control prompt also shows the publisher as "Unknown".
   - Your browser may also warn that the file isn't commonly downloaded. Choose to keep it.
-  - If an older version is installed in your user folder, the installer removes it first. Your settings and data are kept.
+  - Starting with the next release, if an older version is installed in your user folder, the installer removes it first. Your settings and data are kept.
   - To check that the file hasn't been tampered with first, see [How downloads are verified](#how-downloads-are-verified) below.
 
 The App has no window and doesn't appear in the Dock or the taskbar. When it starts, an icon appears in the Mac menu bar (on Windows, in the system tray at the bottom right), and your default browser opens `http://127.0.0.1:8791/`. To open it again later, click the icon and choose "Open Agent Steward".
@@ -58,7 +59,7 @@ The first time, a setup wizard walks you through these steps:
 
 The App bundles Node.js, [herdr](https://github.com/hao-github-0216/herdr) (terminal multiplexer and agent status detection), and [ttyd](https://github.com/tsl0922/ttyd) (web terminal), so you don't need to install anything else. Settings and data live in `~/.agent-steward/`.
 
-**If you used the one-line install before**: the one-line install has been discontinued, and installations made with it no longer get updates. Please switch to the desktop App. The first time the App opens, it detects the old background services and asks whether the App should take over.
+**If you used the one-line install before**: the one-line install is discontinued starting with the next release, and installations made with it won't get later updates. Please switch to the desktop App. The first time the App opens, it detects the old background services and asks whether the App should take over.
 
 - "Let the App manage it": your settings and data are kept. The old background services are disabled and removed, and the old program files are left in place.
 - "Quit App": nothing changes, and the existing installation keeps running.
@@ -71,6 +72,8 @@ Agent Steward is open source under the MIT license. The code inside the App is r
 - **Checksums are compared after startup.** The steward compares the SHA-256 of every program file with the official release in the background. If anything differs, Settings → About shows a notice with a button to download the same version again. The steward keeps running and doesn't block you.
 
 When you report a problem, the diagnostics from `/api/health` include an `integrity` field that shows whether the program files were changed.
+
+Apart from the Mac signature, everything in this section arrives in the next release: the Windows install in `C:\Program Files`, the checksum comparison after startup, and the `integrity` field. The released v0.4.0 doesn't have them yet.
 
 ### How downloads are verified
 
@@ -110,7 +113,7 @@ The language also applies to what the steward writes from then on: progress note
 - **Update**: from v0.4.0, the App checks for new versions itself.
   - It checks a few minutes after it starts, then once a day. When a new version is out, it asks first, and it downloads and installs only after you click "Update".
   - Every update file must pass an update-signature check before it's installed. Only then does the App stop the services, install the new version, and restart itself. The web terminal disconnects once, and agents in herdr keep running.
-  - On Windows, updates need administrator rights, so a User Account Control prompt appears before installing. Click "Yes" to continue.
+  - Starting with the next release, updates on Windows need administrator rights, so a User Account Control prompt appears before installing. Click "Yes" to continue.
   - On Windows, if herdr is running, the update has to close all terminals and agents. The App explains this and asks first, so you can choose "Later" and update once your work is done.
   - You can also check by hand from "Check for updates…" in the menu or Settings → About. Settings → General turns off automatic checks.
   - v0.3.0 doesn't have this yet, so install v0.4.0 by hand once: quit Agent Steward from the menu, then install the new version with the steps above (on a Mac, replace the old copy in Applications). Your settings and data are kept.
