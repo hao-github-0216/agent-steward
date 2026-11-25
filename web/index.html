@@ -900,6 +900,7 @@ try {
 				<button type="button" data-hk="p" data-t>◀︎ 上一個分頁</button><button type="button" data-hk="n" data-t>下一個分頁 ▶︎</button>
 				<button type="button" data-hk="w" data-t>切換 space…</button><button type="button" data-hk="g" data-t>跳到…</button>
 				<button type="button" data-hk="z" data-t>放大/還原窗格</button><button type="button" data-hk="c" data-t>新分頁</button>
+				<button type="button" data-tclose data-t>關閉分頁</button><span></span>
 				<button type="button" data-tf="-1" data-t-title title="字體縮小">A−</button><button type="button" data-tf="1" data-t-title title="字體放大">A+</button>
 			</div>
 		</div>
@@ -1873,6 +1874,13 @@ function hookTermMods(t) {
 	bar.addEventListener("click", (e) => {
 		const hk = e.target.closest("button[data-hk]")?.dataset.hk;
 		if (hk) { panel.hidden = true; termSend(`\x02${hk}`); return; } // herdr 快捷鍵:Ctrl+B 再一個鍵(只動這個畫面)
+		// 關閉分頁:herdr 不會先問,分頁裡的 agent 會直接被關掉,所以這裡先確認(Ctrl+B 再 Shift+X)
+		if (e.target.closest("button[data-tclose]")) {
+			panel.hidden = true;
+			window.choiceBox?.(tr("關閉分頁"), tr("關掉 herdr 目前的分頁?裡面的 agent 和終端機會一起結束。"), [tr("關閉"), tr("取消")])
+				.then((i) => { if (i === 0) termSend("\x02X"); });
+			return;
+		}
 		// 字體大小(窄手機上方的 A−/A+ 放不下,改放這裡);面板不收,可以連按
 		const tf = Number(e.target.closest("button[data-tf]")?.dataset.tf);
 		if (tf) { $(tf > 0 ? "fontUp" : "fontDown").click(); toast(tr("字體 {n}", { n: fontSize })); return; }

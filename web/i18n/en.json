@@ -133,6 +133,8 @@
 	"跳到…": "Go to…",
 	"放大/還原窗格": "Zoom/restore pane",
 	"新分頁": "New tab",
+	"關閉分頁": "Close tab",
+	"關掉 herdr 目前的分頁?裡面的 agent 和終端機會一起結束。": "Close the current herdr tab? Its agents and terminals will end too.",
 	"收起": "Collapse",
 	"拖到「已核准」= 派工或重新派工 · 拖回「提案」= 退回 · 游標停在這裡看完整規則": "Drag to Approved to dispatch or redispatch · Drag to Proposal to return · Hover for all rules",
 	"收起看板": "Collapse board",
