@@ -1588,6 +1588,14 @@ struct ReaderTap: ViewModifier {
     }
 }
 
+/// PDF、圖片點一下切全螢幕前的檢查:手指放下時畫面還在捲(慣性滑動),那一下是要停住捲動。
+/// 單擊要等雙擊失敗才成立(約 0.3 秒),所以往回看 0.5 秒。
+enum ReaderScrollGuard {
+    static func justScrolled(_ lastScrollAt: CFTimeInterval) -> Bool {
+        CACurrentMediaTime() - lastScrollAt < 0.5
+    }
+}
+
 /// 圖片:系統的縮放(雙指在手指的位置放大、雙擊放大/還原);最小只能縮到圖片寬度剛好塞滿畫面;點一下切換全螢幕
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
@@ -1602,6 +1610,8 @@ final class ImageZoomView: UIScrollView, UIScrollViewDelegate {
     var onTap: () -> Void = {}
     /// 圖片寬度剛好塞滿畫面的縮放(最小只能縮到這裡)
     private var fitScale: CGFloat = 0
+    /// 最後一次捲動、縮放的時間:剛捲完時的點一下是要停住慣性捲動,不切全螢幕
+    private var lastScrollAt: CFTimeInterval = 0
 
     init(image: UIImage) {
         imageView = UIImageView(image: image)
@@ -1626,7 +1636,8 @@ final class ImageZoomView: UIScrollView, UIScrollViewDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { center(); report() }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { lastScrollAt = CACurrentMediaTime(); center(); report() }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { lastScrollAt = CACurrentMediaTime() }
 
     /// 縮放(塞滿寬度 = 100%):VoiceOver 和 UI 測試讀這個
     private func report() {
@@ -1670,7 +1681,10 @@ final class ImageZoomView: UIScrollView, UIScrollViewDelegate {
         }
     }
 
-    @objc private func singleTapped() { onTap() }
+    @objc private func singleTapped() {
+        guard !ReaderScrollGuard.justScrolled(lastScrollAt) else { return }
+        onTap()
+    }
 }
 
 /// PDF:最小只能縮到最寬的那一頁剛好塞滿寬度(不會無限縮小);點一下切換全螢幕
@@ -1704,6 +1718,7 @@ struct PDFKitView: UIViewRepresentable {
             if let page = document.page(at: min(index, document.pageCount - 1)) { v.go(to: page) }
         }
         context.coordinator.waitForDoubleTaps()
+        context.coordinator.watchScroll()
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
@@ -1711,6 +1726,23 @@ struct PDFKitView: UIViewRepresentable {
         weak var tap: UITapGestureRecognizer?
         var onTap: () -> Void = {}
         private var waited = Set<ObjectIdentifier>()
+        /// PDF 內部捲動畫面最後一次移動的時間(剛捲完時的點一下是要停住慣性捲動,不切全螢幕)
+        private var lastScrollAt: CFTimeInterval = 0
+        private var offsetWatch: NSKeyValueObservation?
+
+        /// 盯著 PDF 內部的捲動畫面;PDF 換文件時可能換一個新的,每次更新都檢查
+        func watchScroll() {
+            guard offsetWatch == nil, let v = pdfView else { return }
+            func find(_ view: UIView) -> UIScrollView? {
+                if let s = view as? UIScrollView { return s }
+                for sub in view.subviews { if let s = find(sub) { return s } }
+                return nil
+            }
+            guard let sv = find(v) else { return }
+            offsetWatch = sv.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+                MainActor.assumeIsolated { self?.lastScrollAt = CACurrentMediaTime() }
+            }
+        }
 
         @objc func tapped() { onTap() }
 
@@ -1731,6 +1763,7 @@ struct PDFKitView: UIViewRepresentable {
         func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
             waitForDoubleTaps()
             guard let v = pdfView else { return true }
+            if ReaderScrollGuard.justScrolled(lastScrollAt) { return false }
             // 有選取的文字:這一下是取消選取
             if v.currentSelection != nil { return false }
             // 點到連結:照常開連結

@@ -809,6 +809,7 @@ body.term #ballWrap[data-corner^="t"] #ballPanel { top: 158px; }
 #copyDlg span { font-size: 13px; color: var(--muted); }
 #copyDlg textarea { font: 13px Menlo, monospace; min-height: 120px; resize: vertical; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 #copyDlg button { align-self: flex-end; }
+#copyDlg .row { display: flex; gap: 8px; justify-content: flex-end; }
 kbd { font: 12px Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
 /* 管家側欄:預設從右邊浮出,不擠終端機;超寬螢幕才並排 */
 #drawer { position: absolute; top: 50px; right: 0; bottom: 0; width: 360px; max-width: 92vw; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.25); transform: translateX(100%); transition: transform .18s ease; overflow: auto; z-index: 20; padding: 12px 14px; }
@@ -1748,11 +1749,21 @@ document.addEventListener("focusout", () => setTimeout(() => {
 	const a = document.activeElement;
 	if (!a || a === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) resetViewport();
 }, 120));
-// 手機:不主動把游標放進 herdr(會跳鍵盤);使用者點了終端機畫面才聚焦、跳鍵盤
+// 手機:不主動把游標放進 herdr(會跳鍵盤);要打字按按鍵列的 ⌨︎
 const touchDevice = matchMedia("(pointer: coarse)").matches;
 function focusTerm() {
 	if (touchDevice) return;
 	xterm()?.focus();
+}
+// 觸控裝置的終端機輸入框平常設 inputmode=none:點到 herdr 不會跳出螢幕鍵盤(外接鍵盤照常能打字)。
+// 只有按 ⌨︎ 時才打開,收起鍵盤(失去焦點)後又關回去。
+const softKbdOpen = (ta) => !!ta && ta.ownerDocument.activeElement === ta && ta.inputMode !== "none";
+function showSoftKbd() {
+	const t = xterm(), ta = t?.textarea;
+	if (!ta) return;
+	if (ta.ownerDocument.activeElement === ta) ta.blur(); // 已經聚焦時改 inputmode 不會叫出鍵盤:先移開再聚焦
+	ta.inputMode = "text";
+	t.focus();
 }
 // ---------- 手機/平板:終端機按鍵列(參考 Moshi) ----------
 // iPhone 鍵盤沒有方向鍵、Esc、Tab、Ctrl:Claude 要你選選項時按 ↑↓ 再 ⏎;⌨︎ 叫出/收起鍵盤。
@@ -1820,7 +1831,7 @@ function hookTermMods(t) {
 (function setupTermKeys() {
 	const bar = $("tkeys"), panel = $("tpanel");
 	if (!bar) return;
-	const typingNow = () => { const ta = xterm()?.textarea; return !!ta && ta.ownerDocument.activeElement === ta; };
+	const typingNow = () => softKbdOpen(xterm()?.textarea);
 	let cur = null, kbdTyping = false;
 	const lastModTap = { ctrl: 0, alt: 0 };
 	const clear = () => { if (!cur) return; clearTimeout(cur.timer); clearInterval(cur.timer); cur.b.classList.remove("down"); cur = null; };
@@ -1856,7 +1867,7 @@ function hookTermMods(t) {
 			lastModTap[c.k] = now;
 			renderMods();
 		} else if (!c.repeating) sendTermKey(c.k);
-		if (c.typing && !typingNow()) xterm()?.focus(); // 按鍵前在打字:鍵盤保持開著
+		if (c.typing && !typingNow()) showSoftKbd(); // 按鍵前在打字:鍵盤保持開著
 	});
 	bar.addEventListener("click", (e) => {
 		const hk = e.target.closest("button[data-hk]")?.dataset.hk;
@@ -1864,7 +1875,7 @@ function hookTermMods(t) {
 		if (e.target.closest("button[data-k]")?.dataset.k !== "kbd") return;
 		const t = xterm(), ta = t?.textarea;
 		if (!ta) return;
-		if (kbdTyping) ta.blur(); else t.focus();
+		if (kbdTyping) ta.blur(); else showSoftKbd();
 	});
 	// 按鈕不搶焦點;點面板外面收起面板
 	bar.addEventListener("mousedown", (e) => e.preventDefault());
@@ -2455,6 +2466,21 @@ try {
 } catch {}
 addEventListener("error", (e) => clog("jserror", { msg: String(e.message).slice(0, 200), at: `${e.filename}:${e.lineno}` }));
 addEventListener("unhandledrejection", (e) => { const m = String(e.reason?.message ?? e.reason); if (m !== "Canceled") clog("jserror", { msg: m.slice(0, 200) }); });
+// 手機:瀏覽器只在手勢當下讓網頁寫剪貼簿,但 herdr 的 OSC 52 是放手之後才從網路送來。
+// 所以放手時先用「之後才給內容」的 ClipboardItem 要到剪貼簿,等文字送到再填進去;2 秒內沒送來就放棄。
+let touchCopy = null;
+function armTouchCopy(win) {
+	touchCopy = null;
+	if (!win.ClipboardItem || !win.navigator.clipboard?.write) return;
+	let give, fail;
+	const data = new Promise((res, rej) => { give = res; fail = rej; });
+	const written = win.navigator.clipboard.write([new win.ClipboardItem({ "text/plain": data })])
+		.then(() => { clog("touch-copy-ok"); return true; }, (e) => { clog("touch-copy-fail", { err: `${e?.name}: ${e?.message}` }); return false; });
+	let timer = 0;
+	const me = { take(text) { clearTimeout(timer); if (touchCopy === me) touchCopy = null; give(new Blob([text], { type: "text/plain" })); return written; } };
+	timer = setTimeout(() => { if (touchCopy === me) touchCopy = null; fail(new Error("no selection")); }, 2000);
+	touchCopy = me;
+}
 function copyText(win, text) {
 	// 安全來源(https / localhost)用 Clipboard API(從聚焦中的 iframe 呼叫);否則退回 execCommand
 	const fallback = (why) => {
@@ -2482,9 +2508,16 @@ function manualCopy(text) {
 	let d = $("copyDlg");
 	if (!d) {
 		d = document.createElement("div"); d.id = "copyDlg";
-		d.innerHTML = `<div class="box"><b>${tr("瀏覽器不讓網頁直接寫剪貼簿")}</b><span>${tr("文字已經選好了,按 <kbd>Ctrl</kbd>+<kbd>C</kbd>(Mac 用 <kbd>⌘</kbd>+<kbd>C</kbd>)複製後會自動關閉。")}</span><textarea id="copyText" readonly></textarea><button class="small" id="copyClose">${tr("關閉")}</button></div>`;
+		d.innerHTML = `<div class="box"><b>${tr("瀏覽器不讓網頁直接寫剪貼簿")}</b><span>${tr("文字已經選好了,按 <kbd>Ctrl</kbd>+<kbd>C</kbd>(Mac 用 <kbd>⌘</kbd>+<kbd>C</kbd>)複製後會自動關閉。")}</span><textarea id="copyText" readonly></textarea><div class="row"><button class="small" id="copyDo">${tr("複製")}</button><button class="small" id="copyClose">${tr("關閉")}</button></div></div>`;
 		document.body.appendChild(d);
 		$("copyClose").onclick = () => { d.hidden = true; focusTerm(); };
+		// 手機沒有 Ctrl+C:點按鈕當下就是手勢,可以直接寫剪貼簿
+		$("copyDo").onclick = () => {
+			const done = () => { d.hidden = true; toast(tr("已複製")); focusTerm(); };
+			const legacy = () => { const ta = $("copyText"); ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("copy")) toast(tr("瀏覽器不讓網頁直接寫剪貼簿")); }; // 成功時 copy 事件會關掉視窗
+			if (navigator.clipboard?.writeText && isSecureContext) navigator.clipboard.writeText($("copyText").value).then(done, legacy);
+			else legacy();
+		};
 		$("copyText").addEventListener("copy", () => setTimeout(() => { d.hidden = true; toast(tr("已複製")); focusTerm(); }, 0));
 		$("copyText").addEventListener("keydown", (e) => { if (e.key === "Escape") $("copyClose").click(); });
 	}
@@ -2525,7 +2558,7 @@ function hookClipboard() {
 		if (!win.document.getElementById("steward-no-scrollbar")) {
 			const st = win.document.createElement("style");
 			st.id = "steward-no-scrollbar";
-			st.textContent = ".xterm .xterm-viewport{scrollbar-width:none!important}.xterm .xterm-viewport::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}";
+			st.textContent = "@media (pointer:coarse){.xterm-screen{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}}.xterm .xterm-viewport{scrollbar-width:none!important}.xterm .xterm-viewport::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}";
 			win.document.head.appendChild(st);
 		}
 		// 只藏捲動條不夠:xterm 排欄數時只要有捲動緩衝區就會先扣掉捲動條的寬度,右邊會空一條。
@@ -2581,7 +2614,9 @@ function hookClipboard() {
 		let text = "";
 		try { text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch { clog("osc52-bad"); return true; }
 		clog("osc52", { len: text.length });
-		copyText(win, text).then((ok) => (ok ? toast(tr("已複製 {n} 字", { n: text.length })) : manualCopy(text)));
+		const pending = touchCopy;
+		(pending ? pending.take(text).then((ok) => ok || copyText(win, text)) : copyText(win, text))
+			.then((ok) => (ok ? toast(tr("已複製 {n} 字", { n: text.length })) : manualCopy(text)));
 		return true;
 	});
 }
@@ -2616,7 +2651,24 @@ function hookTouchScroll(win, t) {
 	const screen = el?.querySelector(".xterm-screen");
 	if (!el || !screen || el._stewardTouch) return;
 	el._stewardTouch = true;
+	const ta = t.textarea;
+	if (ta && touchDevice) {
+		ta.inputMode = "none";
+		ta.addEventListener("blur", () => { ta.inputMode = "none"; });
+	}
 	let lastY = null, startX = 0, startY = 0, acc = 0, vertical = null, x = 0, y = 0, velocity = 0, lastT = 0, fling = 0, t0 = 0;
+	// 長按不動約半秒後拖曳:當成滑鼠拖曳選取,放手後 herdr 用 OSC 52 送出選到的文字(見 armTouchCopy)
+	let pressTimer = 0, selecting = false;
+	const mouseOn = () => { const m = t.modes?.mouseTrackingMode; return !!m && m !== "none"; };
+	const mouse = (type, px, py, buttons) => screen.dispatchEvent(new win.MouseEvent(type, { clientX: px, clientY: py, button: 0, buttons, bubbles: true, cancelable: true, view: win }));
+	const endSelect = (px, py) => {
+		selecting = false;
+		const ta = t.textarea, typing = ta && ta.ownerDocument.activeElement === ta;
+		mouse("mouseup", px, py, 0);
+		try { armTouchCopy(win); } catch (e) { touchCopy = null; clog("touch-copy-arm-fail", { err: String(e) }); }
+		clog("touch-select-end");
+		if (!typing) ta?.blur();
+	};
 	const lineH = () => t._core?._renderService?.dimensions?.css?.cell?.height || 18;
 	const wheel = (dir) => screen.dispatchEvent(new win.WheelEvent("wheel", { deltaY: dir * lineH() * 3, deltaMode: 0, clientX: x, clientY: y, bubbles: true, cancelable: true }));
 	const step = (dy) => {
@@ -2629,14 +2681,28 @@ function hookTouchScroll(win, t) {
 		cancelAnimationFrame(fling);
 		const p = e.touches[0];
 		lastY = startY = y = p.clientY; startX = x = p.clientX; acc = 0; vertical = null; velocity = 0; lastT = t0 = performance.now();
+		clearTimeout(pressTimer);
+		pressTimer = setTimeout(() => {
+			if (lastY === null || vertical !== null || !mouseOn()) return;
+			selecting = true;
+			clog("touch-select-start");
+			mouse("mousedown", startX, startY, 1);
+		}, 450);
 	}, { passive: true, capture: true });
 	el.addEventListener("touchmove", (e) => {
 		if (lastY === null || e.touches.length !== 1) return;
 		const p = e.touches[0];
+		if (selecting) {
+			e.preventDefault(); e.stopPropagation();
+			x = p.clientX; y = p.clientY;
+			mouse("mousemove", x, y, 1);
+			return;
+		}
 		if (vertical === null) {
 			const dx = Math.abs(p.clientX - startX), dy = Math.abs(p.clientY - startY);
 			if (dx < 6 && dy < 6) return;
 			vertical = dy > dx; // 只處理上下滑,左右滑交給原本的行為
+			clearTimeout(pressTimer);
 		}
 		if (!vertical) return;
 		e.preventDefault(); e.stopPropagation();
@@ -2647,6 +2713,14 @@ function hookTouchScroll(win, t) {
 		step(dy);
 	}, { passive: false, capture: true });
 	el.addEventListener("touchend", (e) => {
+		clearTimeout(pressTimer);
+		if (selecting) {
+			e.preventDefault();
+			lastY = null;
+			const p = e.changedTouches[0];
+			endSelect(p?.clientX ?? x, p?.clientY ?? y);
+			return;
+		}
 		// 點一下(沒有滑動):herdr 開著滑鼠模式時當成滑鼠點一下(選 Claude 的選項、點窗格),不另外跳鍵盤(要打字按下面的 ⌨︎)
 		if (vertical === null && lastY !== null && e.changedTouches.length === 1 && performance.now() - lastT < 500) {
 			lastY = null;
@@ -2676,6 +2750,7 @@ function hookTouchScroll(win, t) {
 		const run = () => { if (Math.abs(v) < 0.5) return; step(v); v *= 0.92; fling = requestAnimationFrame(run); };
 		if (Math.abs(v) > 2) fling = requestAnimationFrame(run);
 	}, { passive: false, capture: true });
+	el.addEventListener("touchcancel", () => { clearTimeout(pressTimer); if (selecting) endSelect(x, y); lastY = null; }, { capture: true });
 	clog("touch-hooked", { touch: "ontouchstart" in win });
 }
 // ttyd 斷線重連時可能換一個新的終端機物件:定期檢查,新的就重新掛上
