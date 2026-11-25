@@ -2516,6 +2516,10 @@ function hookClipboard() {
 	t.parser.registerOscHandler(0, onTitle);
 	t.parser.registerOscHandler(2, onTitle);
 	hookTermMods(t);
+	// ttyd 每次連上(含重連)都會把伺服器端的 fontSize=15 套回終端機,蓋掉這裡選的大小。
+	// 套用後 ttyd 會重算欄數而觸發 resize:這時發現大小不對就改回來。
+	t.onResize(() => { if (t.options.fontSize !== fontSize) applyFont(); });
+	if (t.options.fontSize !== fontSize) applyFont();
 	// herdr 是全螢幕程式,xterm 沒有可捲的內容,右側捲動條拉了也沒用:藏起來(滾輪照常送給 herdr)
 	try {
 		if (!win.document.getElementById("steward-no-scrollbar")) {
@@ -2675,7 +2679,12 @@ function hookTouchScroll(win, t) {
 	clog("touch-hooked", { touch: "ontouchstart" in win });
 }
 // ttyd 斷線重連時可能換一個新的終端機物件:定期檢查,新的就重新掛上
-setInterval(() => { if ($("term").src) hookClipboard(); }, 2000);
+setInterval(() => {
+	if (!$("term").src) return;
+	hookClipboard();
+	const t = xterm();
+	if (t && t.options.fontSize !== fontSize) applyFont(); // 萬一 ttyd 改字體時欄數沒變、沒觸發 resize
+}, 2000);
 async function jumpTo(projectId) {
 	const r = await post("/api/terminal/focus", { project: projectId }).catch(() => ({ ok: false, reason: tr("連不上管家") }));
 	if (r.ok) { termCurrent = { project: projectId, via: "pane" }; herdrSeen = projectId; termNeedCreate = null; renderDrawer(); }
