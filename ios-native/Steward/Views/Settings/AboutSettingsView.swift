@@ -3,14 +3,12 @@ import SwiftUI
 struct AboutSettingsView: View {
     @Environment(SettingsStore.self) private var store
     @State private var loading = false
-    @State private var applying = false
     @State private var checkingDesktop = false
-    @State private var confirmUpdate = false
-    @State private var pendingUpdate: SettingsUpdate?
 
-    private var desktop: Bool { store.update?.desktop ?? store.response?.desktop ?? false }
-    private var windows: Bool { store.response?.platform == "win32" }
-    private var busy: Bool { loading || applying || checkingDesktop || store.update?.running == true }
+    private var plan: AboutPlan {
+        AboutPlan.make(update: store.update, responseDesktop: store.response?.desktop, platform: store.response?.platform)
+    }
+    private var busy: Bool { loading || checkingDesktop }
 
     var body: some View {
         SettingsForm(String(localized: "關於", bundle: AppLanguage.bundle)) {
@@ -21,6 +19,20 @@ struct AboutSettingsView: View {
                         .accessibilityIdentifier("settings-current-version")
                 }
                 updateStatus
+                if case .modified(let count, let installer) = plan.integrity {
+                    Group {
+                        if let count {
+                            Text("程式檔案和官方 \(store.update?.current ?? "") 版不同(共 \(count) 個檔案)。如果不是你自己改的，請重新下載安裝。")
+                        } else {
+                            Text("程式檔案和官方 \(store.update?.current ?? "") 版不同。如果不是你自己改的，請重新下載安裝。")
+                        }
+                    }
+                    .font(.footnote)
+                    if let installer {
+                        Link("下載 \(store.update?.current ?? "") 安裝檔", destination: installer)
+                            .accessibilityIdentifier("settings-integrity-installer")
+                    }
+                }
                 if let update = store.update, update.hasUpdate == true,
                    let notes = update.notes, !notes.isEmpty {
                     Text(notes).font(.footnote).textSelection(.enabled)
@@ -34,7 +46,8 @@ struct AboutSettingsView: View {
                     }
                 }
                 .disabled(busy)
-                if desktop {
+                switch plan.update {
+                case .desktopCheck:
                     Button {
                         Task { await requestDesktopUpdate() }
                     } label: {
@@ -44,27 +57,21 @@ struct AboutSettingsView: View {
                         }
                     }
                     .disabled(busy)
-                } else if store.update?.hasUpdate == true {
-                    Button {
-                        pendingUpdate = store.update
-                        confirmUpdate = true
-                    } label: {
-                        HStack {
-                            Text("更新到 \(store.update?.latest ?? "")")
-                            if applying { Spacer(); ProgressView() }
-                        }
-                    }
-                    .disabled(busy || store.update?.latest?.isEmpty != false)
-                }
-            }
-            if store.update?.running == true || !store.updateLog.isEmpty {
-                Section("更新紀錄") {
-                    if store.update?.running == true { ProgressView("正在更新…") }
-                    ScrollView(.horizontal) {
-                        Text(store.updateLog)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
+                case .downloadApp(let url):
+                    Text("這個安裝方式不能在 App 裡更新。請在電腦上下載並安裝桌面 App。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Link("下載桌面 App", destination: url)
+                        .accessibilityIdentifier("settings-download-app")
+                case .downloadUnavailable:
+                    Text("這個安裝方式不能在 App 裡更新，管家也沒有提供可用的下載連結。請在電腦上打開專案管家網頁的「設定 → 關於」查看。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-update-guide")
+                case .legacyGuide:
+                    Text("這台電腦上的管家版本較舊，App 不會替它更新。請在電腦上打開專案管家網頁的「設定 → 關於」查看更新方式。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-update-guide")
+                case .none:
+                    EmptyView()
                 }
             }
             Section("第三方元件") {
@@ -88,13 +95,20 @@ struct AboutSettingsView: View {
                 }
             }
             Section("移除專案管家") {
-                if desktop {
+                switch plan.uninstall {
+                case .desktop:
                     Text("在 Mac 把 App 拖到垃圾桶；Windows 到『設定 → 應用程式』移除")
-                } else {
-                    Text("在這台電腦的終端機執行(資料會保留;加 \(windows ? "-Purge" : "--purge") 連資料一起刪除):")
-                    Text(windows ? "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1" : "sh ~/.agent-steward/app/uninstall.sh")
+                        .accessibilityIdentifier("settings-uninstall-guide")
+                case .devScript:
+                    Text("如果這是用 scripts/deploy.sh 部署的開發版，在這台電腦的終端機執行(資料會保留;加 --purge 連資料一起刪除):")
+                        .accessibilityIdentifier("settings-uninstall-guide")
+                    Text(verbatim: "sh ~/.agent-steward/app/scripts/dev/uninstall.sh")
                         .font(.system(.footnote, design: .monospaced))
                         .textSelection(.enabled)
+                        .accessibilityIdentifier("settings-uninstall-command")
+                case .unknown:
+                    Text("App 無法確認這台電腦的安裝方式，所以不提供移除指令。請在電腦上打開專案管家網頁的「設定 → 關於」，照那裡的說明移除。")
+                        .accessibilityIdentifier("settings-uninstall-guide")
                 }
             }
             if let error = store.error {
@@ -102,12 +116,6 @@ struct AboutSettingsView: View {
             }
         }
         .task { await loadUpdate(force: false) }
-        .confirmationDialog("更新專案管家", isPresented: $confirmUpdate, titleVisibility: .visible, presenting: pendingUpdate) { update in
-            Button("更新") { Task { await applyUpdate(update) } }
-            Button("取消", role: .cancel) {}
-        } message: { update in
-            Text("從 \(update.current ?? "") 更新到 \(update.latest ?? "")。\n會從 GitHub 下載 \(update.latest ?? "") 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。")
-        }
     }
 
     @ViewBuilder
@@ -147,16 +155,6 @@ struct AboutSettingsView: View {
         store.error = nil
         if await store.action("api/desktop/update") != nil {
             store.message = String(localized: "已請 App 檢查更新，請看 App 跳出的視窗", bundle: AppLanguage.bundle)
-        }
-    }
-
-    private func applyUpdate(_ update: SettingsUpdate) async {
-        guard !busy, !desktop, let tag = update.latest, !tag.isEmpty else { return }
-        applying = true
-        defer { applying = false }
-        store.error = nil
-        if await store.action("api/settings/update", body: ["tag": .string(tag)]) != nil {
-            store.monitorUpdate()
         }
     }
 }

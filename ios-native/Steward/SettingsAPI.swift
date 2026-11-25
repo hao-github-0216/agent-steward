@@ -146,7 +146,7 @@ struct SettingsPluginJob: Codable {
     var log: [String]?
     var error: String?
 }
-struct SettingsUpdate: Codable {
+struct SettingsUpdate: Decodable {
     var current: String?
     var latest: String?
     var hasUpdate: Bool?
@@ -157,6 +157,104 @@ struct SettingsUpdate: Codable {
     var url: String?
     var notes: String?
     var components: [SettingsComponent]?
+    var downloadUrl: String?
+    var releaseUrl: String?
+    var integrity: SettingsIntegrity?
+    let supportsDesktopDownload: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case current, latest, hasUpdate, running, desktop, dev, error, url, notes, components
+        case downloadUrl, releaseUrl, integrity
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        current = try? c.decodeIfPresent(String.self, forKey: .current)
+        latest = try? c.decodeIfPresent(String.self, forKey: .latest)
+        hasUpdate = try? c.decodeIfPresent(Bool.self, forKey: .hasUpdate)
+        running = try? c.decodeIfPresent(Bool.self, forKey: .running)
+        desktop = try? c.decodeIfPresent(Bool.self, forKey: .desktop)
+        dev = try? c.decodeIfPresent(Bool.self, forKey: .dev)
+        error = try? c.decodeIfPresent(String.self, forKey: .error)
+        url = try? c.decodeIfPresent(String.self, forKey: .url)
+        notes = try? c.decodeIfPresent(String.self, forKey: .notes)
+        components = try? c.decodeIfPresent([SettingsComponent].self, forKey: .components)
+        downloadUrl = try? c.decodeIfPresent(String.self, forKey: .downloadUrl)
+        releaseUrl = try? c.decodeIfPresent(String.self, forKey: .releaseUrl)
+        integrity = try? c.decodeIfPresent(SettingsIntegrity.self, forKey: .integrity)
+        supportsDesktopDownload = c.contains(.releaseUrl) || c.contains(.integrity)
+    }
+}
+
+struct SettingsIntegrity: Decodable, Equatable {
+    var status: String?
+    var counts: Counts?
+
+    struct Counts: Decodable, Equatable {
+        var changed: Int?
+        var missing: Int?
+        var added: Int?
+
+        private enum CodingKeys: String, CodingKey { case changed, missing, added }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            changed = try? c.decodeIfPresent(Int.self, forKey: .changed)
+            missing = try? c.decodeIfPresent(Int.self, forKey: .missing)
+            added = try? c.decodeIfPresent(Int.self, forKey: .added)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case status, counts }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try? c.decodeIfPresent(String.self, forKey: .status)
+        counts = try? c.decodeIfPresent(Counts.self, forKey: .counts)
+    }
+}
+
+struct AboutPlan: Equatable {
+    enum Update: Equatable { case desktopCheck, downloadApp(URL), downloadUnavailable, legacyGuide, none }
+    enum Uninstall: Equatable { case desktop, devScript, unknown }
+    enum Integrity: Equatable { case none, modified(count: Int?, installer: URL?) }
+    var update: Update
+    var uninstall: Uninstall
+    var integrity: Integrity
+
+    static func make(update: SettingsUpdate?, responseDesktop: Bool?, platform: String?) -> AboutPlan {
+        let desktop = update?.desktop ?? responseDesktop ?? false
+        let updatePlan: Update
+        if desktop {
+            updatePlan = .desktopCheck
+        } else if update?.hasUpdate != true {
+            updatePlan = .none
+        } else if update?.supportsDesktopDownload == true {
+            if let url = settingsWebURL(update?.downloadUrl) { updatePlan = .downloadApp(url) }
+            else { updatePlan = .downloadUnavailable }
+        } else {
+            updatePlan = .legacyGuide
+        }
+
+        let uninstall: Uninstall
+        if desktop {
+            uninstall = .desktop
+        } else if update?.supportsDesktopDownload == true, update?.dev == true,
+                  platform == "darwin" || platform == "linux" {
+            uninstall = .devScript
+        } else {
+            uninstall = .unknown
+        }
+
+        let integrity: Integrity
+        if update?.supportsDesktopDownload == true, update?.integrity?.status == "modified" {
+            let count = update?.integrity?.counts.map { ($0.changed ?? 0) + ($0.missing ?? 0) + ($0.added ?? 0) }
+            integrity = .modified(count: count, installer: settingsWebURL(update?.releaseUrl))
+        } else {
+            integrity = .none
+        }
+        return AboutPlan(update: updatePlan, uninstall: uninstall, integrity: integrity)
+    }
 }
 struct SettingsComponent: Codable, Identifiable {
     var id: String

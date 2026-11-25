@@ -12,7 +12,6 @@ final class SettingsStore {
     var plugins: [SettingsPlugin] = []
     var update: SettingsUpdate?
     var pushStatus: SettingsPushStatus?
-    var updateLog = ""
     var loading = false
     var saving = false
     var error: String?
@@ -20,7 +19,6 @@ final class SettingsStore {
     private(set) var api: API?
     @ObservationIgnored private var writeTail: Task<Bool, Never>?
     @ObservationIgnored private var pluginTask: Task<Void, Never>?
-    @ObservationIgnored private var updateTask: Task<Void, Never>?
 
     var providers: [SettingsProvider] {
         guard let value = settings["providers"], let data = try? JSONEncoder().encode(value) else { return [] }
@@ -140,7 +138,7 @@ final class SettingsStore {
         catch { self.error = error.localizedDescription }
     }
     func loadUpdate(force: Bool = false) async {
-        do { update = try await api?.getSettingsUpdate(force: force); if update?.running == true { monitorUpdate() } }
+        do { update = try await api?.getSettingsUpdate(force: force) }
         catch { self.error = error.localizedDescription }
     }
     func loadPushStatus() async {
@@ -162,34 +160,6 @@ final class SettingsStore {
                     plugins = try await api?.getSettingsPlugins() ?? []
                 } catch { self.error = error.localizedDescription; return }
             }
-        }
-    }
-
-    func monitorUpdate() {
-        guard updateTask == nil else { return }
-        update?.running = true
-        updateTask = Task { [self] in
-            defer { updateTask = nil }
-            for _ in 0..<900 {
-                do {
-                    try await Task.sleep(for: .seconds(2))
-                    let result = try await api?.settingsAction("api/settings/update/log", method: "GET")
-                    updateLog = result?.log ?? updateLog
-                    let last = updateLog.components(separatedBy: "=====").last ?? ""
-                    if last.contains("已經裝好") || last.contains("is installed.") { // i18n-ok: 比對管家更新紀錄中的原始訊息，不是介面文字。
-                        message = String(localized: "更新完成,重新整理頁面就是新版", bundle: AppLanguage.bundle)
-                        update = try await api?.getSettingsUpdate()
-                        return
-                    }
-                    if last.contains("錯誤:") || last.contains("錯誤：") || last.contains("Error: ") { // i18n-ok: 比對管家更新紀錄中的錯誤標記，不能隨介面語言改變。
-                        update?.running = false
-                        error = last
-                        return
-                    }
-                } catch { self.message = String(localized: "正在更新…(完成後管家會自動重啟,這頁重新整理即可)", bundle: AppLanguage.bundle) }
-            }
-            update?.running = false
-            error = String(localized: "更新仍未完成，請重新整理查看進度。", bundle: AppLanguage.bundle)
         }
     }
 }

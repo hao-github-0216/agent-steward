@@ -5,9 +5,9 @@ final class SettingsTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launch(failingWrites: Bool = false) -> XCUIApplication {
+    private func launch(failingWrites: Bool = false, updateScenario: String = "currentDesktop") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-settingsFixture", "YES", "-noPush", "YES", "-mode", "board", "-settingsFixtureFailure", failingWrites ? "YES" : "NO"]
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-settingsFixture", "YES", "-noPush", "YES", "-mode", "board", "-settingsFixtureFailure", failingWrites ? "YES" : "NO", "-settingsFixtureUpdate", updateScenario]
         app.launch()
         let title = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "選專案")).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 20), "未經 fixture 登入進入 App")
@@ -98,6 +98,53 @@ final class SettingsTests: XCTestCase {
                 if tab == "plugins" { XCTAssertTrue(app.staticTexts["LaTeX 編譯"].firstMatch.waitForExistence(timeout: 5)) }
                 screenshot(app, "settings-\(tab == "agents" ? "agents" : tab)")
                 backToSettings(app)
+            }
+        }
+    }
+
+    func testAboutUpdateModes() {
+        for scenario in ["currentService", "currentServiceBadURL", "legacy", "currentDesktop", "currentServiceDev", "currentServiceModified"] {
+            XCTContext.runActivity(named: scenario) { _ in
+                let app = launch(updateScenario: scenario)
+                defer { app.terminate() }
+                open("about", in: app)
+                let version = element(app, "settings-current-version")
+                XCTAssertTrue(version.waitForExistence(timeout: 10))
+
+                switch scenario {
+                case "currentService", "currentServiceDev", "currentServiceModified":
+                    XCTAssertTrue(element(app, "settings-download-app").waitForExistence(timeout: 5))
+                    if scenario == "currentServiceModified" {
+                        XCTAssertTrue(element(app, "settings-integrity-installer").exists)
+                        XCTAssertTrue(app.staticTexts["程式檔案和官方 0.4.0 版不同(共 3 個檔案)。如果不是你自己改的，請重新下載安裝。"].exists)
+                    }
+                case "currentServiceBadURL", "legacy":
+                    XCTAssertTrue(element(app, "settings-update-guide").waitForExistence(timeout: 5))
+                    XCTAssertFalse(element(app, "settings-download-app").exists)
+                case "currentDesktop":
+                    let check = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "用 App 檢查更新", "更新 App 到")).firstMatch
+                    reveal(check, in: app)
+                    check.tap()
+                    let message = app.staticTexts["已請 App 檢查更新，請看 App 跳出的視窗"]
+                    reveal(message, in: app)
+                    XCTAssertTrue(message.waitForExistence(timeout: 5))
+                default:
+                    XCTFail("未定義的情境：\(scenario)")
+                }
+
+                XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "更新到")).count, 0)
+                let uninstall = element(app, "settings-uninstall-guide")
+                reveal(uninstall, in: app)
+                let command = element(app, "settings-uninstall-command")
+                if scenario == "currentServiceDev" {
+                    reveal(command, in: app)
+                    XCTAssertTrue(command.label.contains("scripts/dev/uninstall.sh"))
+                } else {
+                    XCTAssertFalse(command.exists)
+                }
+                let retiredCalls = element(app, "fixture-retired-update-calls")
+                XCTAssertTrue(retiredCalls.waitForExistence(timeout: 5))
+                XCTAssertEqual(retiredCalls.label, "0", "\(scenario) 不得呼叫淘汰的更新端點")
             }
         }
     }

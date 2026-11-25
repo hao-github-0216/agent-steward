@@ -2,6 +2,10 @@ import Foundation
 
 /// 設定範例只保存在記憶體，重新啟動 App 後還原。
 final class SettingsSample {
+    enum UpdateScenario: String {
+        case currentDesktop, currentService, currentServiceBadURL, currentServiceModified, currentServiceDev, legacy
+    }
+
     // 示範內容跟隨系統首選語言，不使用介面字串目錄。
     private static func text(_ chinese: String, _ english: String) -> String {
         (Locale.preferredLanguages.first ?? "").hasPrefix("zh") ? chinese : english
@@ -11,18 +15,18 @@ final class SettingsSample {
     private let demo: Bool
     private let desktop: Bool
     private let failingWrites: Bool
+    private let updateScenario: UpdateScenario
     private var values = SettingsSample.initialSettings
     private var pluginPolls = 0
-    private var updating = false
-    private var updatePolls = 0
     private var loginActive = false
     private var loginPolls = 0
     private var passwordSet = true
 
-    init(demo: Bool = false, desktop: Bool = true, failingWrites: Bool = false) {
+    init(demo: Bool = false, desktop: Bool = true, failingWrites: Bool = false, updateScenario: UpdateScenario = .currentDesktop) {
         self.demo = demo
-        self.desktop = desktop
+        self.desktop = updateScenario == .currentDesktop ? desktop : false
         self.failingWrites = failingWrites
+        self.updateScenario = updateScenario
     }
 
     private static let initialSettings: [String: Any] = [
@@ -104,11 +108,16 @@ final class SettingsSample {
             if pluginPolls > 0 && pluginPolls < 3 { pluginPolls += 1 }
             return (200, ["plugins": plugins])
         case ("GET", "/api/settings/update"):
-            return (200, ["current": "0.4.0", "latest": "0.4.1", "hasUpdate": true, "running": updating, "desktop": desktop, "dev": false, "url": "https://example.invalid/release", "notes": SettingsSample.text("範例版本更新說明", "Sample release notes"), "components": [["id": "herdr", "name": "herdr", "version": "1.0", "license": "MIT", "home": "https://example.invalid/herdr"]]]) // i18n-ok: 依系統語言選擇的示範資料
-        case ("GET", "/api/settings/update/log"):
-            updatePolls += 1
-            if updatePolls > 1 { updating = false }
-            return (200, ["log": updating ? SettingsSample.text("正在下載…", "Downloading…") : SettingsSample.text("已經裝好", "Installed")]) // i18n-ok: 依系統語言選擇的示範資料
+            var update: [String: Any] = ["current": "0.4.0", "latest": "0.4.1", "hasUpdate": true, "desktop": desktop, "dev": updateScenario == .currentServiceDev, "url": "https://example.invalid/release", "notes": SettingsSample.text("範例版本更新說明", "Sample release notes"), "downloadUrl": "https://example.invalid/download", "components": [["id": "herdr", "name": "herdr", "version": "1.0", "license": "MIT", "home": "https://example.invalid/herdr"]]] // i18n-ok: 依系統語言選擇的示範資料
+            if updateScenario == .legacy {
+                update["running"] = false
+            } else {
+                update["releaseUrl"] = "https://example.invalid/releases/0.4.0"
+                let modified = updateScenario == .currentServiceModified
+                update["integrity"] = ["status": modified ? "modified" : "ok", "counts": ["changed": modified ? 1 : 0, "missing": modified ? 1 : 0, "added": modified ? 1 : 0]]
+                if updateScenario == .currentServiceBadURL { update["downloadUrl"] = "javascript:alert(1)" }
+            }
+            return (200, update)
         case ("GET", "/api/push/status"):
             if demo { return (200, ["configured": false, "mode": "none", "devices": [[String: Any]]()]) }
             return (200, ["configured": true, "mode": "relay", "devices": [["name": SettingsSample.text("測試 iPhone", "Test iPhone"), "platform": "ios", "encrypted": true], ["name": SettingsSample.text("舊版裝置", "Legacy device"), "platform": "ios", "encrypted": false]]]) // i18n-ok: 依系統語言選擇的示範資料
@@ -127,8 +136,7 @@ final class SettingsSample {
             values = merged(values, ["access": ["tailscale": ["enabled": enabled]], "server": ["publicUrl": enabled ? base : ""]])
             return (200, ["ok": true, "url": enabled ? base : "", "settings": values])
         case ("POST", "/api/settings/update"):
-            if !demo { updating = true; updatePolls = 0 }
-            return (200, ["ok": true])
+            return (400, ["error": SettingsSample.text("這個安裝方式不支援自動更新，請改裝桌面 App", "This installation can't update itself. Please switch to the desktop app.")]) // i18n-ok: 依系統語言選擇的示範資料
         case ("POST", "/api/settings/login"):
             if !demo { loginActive = true; loginPolls = 0 }
             return (200, ["session": "0123456789abcdef01234567"])

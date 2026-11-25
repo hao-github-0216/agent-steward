@@ -1,6 +1,69 @@
 {
   "sourceLanguage": "zh-Hant",
   "strings": {
+    "下載桌面 App": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Download the desktop app" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "下載桌面 App" } }
+      }
+    },
+    "這個安裝方式不能在 App 裡更新。請在電腦上下載並安裝桌面 App。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This installation can't be updated from the app. Download and install the desktop app on your computer." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "這個安裝方式不能在 App 裡更新。請在電腦上下載並安裝桌面 App。" } }
+      }
+    },
+    "這個安裝方式不能在 App 裡更新，管家也沒有提供可用的下載連結。請在電腦上打開專案管家網頁的「設定 → 關於」查看。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This installation can't be updated from the app, and the steward didn't provide a usable download link. Open Settings → About in the steward's web page on your computer." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "這個安裝方式不能在 App 裡更新，管家也沒有提供可用的下載連結。請在電腦上打開專案管家網頁的「設定 → 關於」查看。" } }
+      }
+    },
+    "這台電腦上的管家版本較舊，App 不會替它更新。請在電腦上打開專案管家網頁的「設定 → 關於」查看更新方式。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The steward on this computer is an older version, so the app won't update it. Open Settings → About in the steward's web page on your computer to see how to update." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "這台電腦上的管家版本較舊，App 不會替它更新。請在電腦上打開專案管家網頁的「設定 → 關於」查看更新方式。" } }
+      }
+    },
+    "程式檔案和官方 %@ 版不同(共 %lld 個檔案)。如果不是你自己改的，請重新下載安裝。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Program files differ from the official %@ release (%lld files). If you didn't change them yourself, download and reinstall." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "程式檔案和官方 %@ 版不同(共 %lld 個檔案)。如果不是你自己改的，請重新下載安裝。" } }
+      }
+    },
+    "程式檔案和官方 %@ 版不同。如果不是你自己改的，請重新下載安裝。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Program files differ from the official %@ release. If you didn't change them yourself, download and reinstall." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "程式檔案和官方 %@ 版不同。如果不是你自己改的，請重新下載安裝。" } }
+      }
+    },
+    "下載 %@ 安裝檔": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Download the %@ installer" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "下載 %@ 安裝檔" } }
+      }
+    },
+    "如果這是用 scripts/deploy.sh 部署的開發版，在這台電腦的終端機執行(資料會保留;加 --purge 連資料一起刪除):": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "If this is a development build deployed with scripts/deploy.sh, run this in a terminal on that computer (your data is kept; add --purge to delete it too):" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "如果這是用 scripts/deploy.sh 部署的開發版，在這台電腦的終端機執行(資料會保留;加 --purge 連資料一起刪除):" } }
+      }
+    },
+    "App 無法確認這台電腦的安裝方式，所以不提供移除指令。請在電腦上打開專案管家網頁的「設定 → 關於」，照那裡的說明移除。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The app can't tell how the steward was installed on this computer, so it doesn't show an uninstall command. Open Settings → About in the steward's web page on your computer and follow the steps there." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "App 無法確認這台電腦的安裝方式，所以不提供移除指令。請在電腦上打開專案管家網頁的「設定 → 關於」，照那裡的說明移除。" } }
+      }
+    },
     "問管家 · %@": {
       "extractionState": "manual",
       "localizations": {
@@ -1859,40 +1922,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "iPhone 沒有給推播憑證:%@"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "powershell -ExecutionPolicy Bypass -File $HOME\\.agent-steward\\app\\uninstall.ps1"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "sh ~/.agent-steward/app/uninstall.sh": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "sh ~/.agent-steward/app/uninstall.sh"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "sh ~/.agent-steward/app/uninstall.sh"
           }
         }
       },
@@ -4890,23 +4919,6 @@
       },
       "extractionState": "manual"
     },
-    "在這台電腦的終端機執行(資料會保留;加 %@ 連資料一起刪除):": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run in this computer's terminal (keeps your data; add %@ to delete it too):"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在這台電腦的終端機執行(資料會保留;加 %@ 連資料一起刪除):"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "在這裡新增檔案": {
       "localizations": {
         "en": {
@@ -6602,23 +6614,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "待核准"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "從 %@ 更新到 %@。\n會從 GitHub 下載 %@ 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。": {
-      "localizations": {
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "new",
-            "value": "從 %1$@ 更新到 %2$@。\n會從 GitHub 下載 %3$@ 的安裝程式和專案管家程式(含相依套件),再依新版的設定更新 herdr、herdr 外掛和你已經接上的 agent。\n更新時背景服務會重新啟動,開著的網頁終端機會斷線一次。"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Update from %@ to %@.\nThe installer and Agent Steward %@ (including dependencies) will be downloaded from GitHub. The new installer will update herdr, its plugins, and connected agents according to the new version's settings.\nBackground services will restart, and open web terminals will disconnect once."
           }
         }
       },
@@ -8443,23 +8438,6 @@
       },
       "extractionState": "manual"
     },
-    "更新": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Update"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "更新 App 到 %@": {
       "localizations": {
         "en": {
@@ -8477,23 +8455,6 @@
       },
       "extractionState": "manual"
     },
-    "更新仍未完成，請重新整理查看進度。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Update is still in progress. Refresh to check its status."
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新仍未完成，請重新整理查看進度。"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "更新內容": {
       "localizations": {
         "en": {
@@ -8506,74 +8467,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "更新內容"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "更新到 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Updating to %@"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新到 %@"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "更新完成,重新整理頁面就是新版": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Update complete. Reload the page to use the new version."
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新完成,重新整理頁面就是新版"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "更新專案管家": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Update Agent Steward"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新專案管家"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "更新紀錄": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Update log"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新紀錄"
           }
         }
       },
