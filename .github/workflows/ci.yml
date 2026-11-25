@@ -157,13 +157,12 @@ jobs:
           node --experimental-strip-types --no-warnings scripts/ci-plugins.mjs "$RUNNER_TEMP/work"
 
   unit:
-    # 單元測試(test/*.test.mjs);Windows 先跑看看,失敗不擋
+    # 單元測試(test/*.test.mjs);三個平台都要通過
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
