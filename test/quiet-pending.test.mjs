@@ -11,7 +11,7 @@ const moduleURL = (name) => JSON.stringify(new URL(`../src/${name}.ts`, import.m
 
 function isolated(code) {
 	// HOME 與專案資料都放在隔離的暫存目錄,子程序只使用這個 HOME。
-	const home = realpathSync(mkdtempSync(join(tmpdir(), "steward-quiet-pending-home-")));
+	const home = realpathSync.native(mkdtempSync(join(tmpdir(), "steward-quiet-pending-home-")));
 	const data = join(home, "data");
 	mkdirSync(data);
 	writeFileSync(join(data, "settings.json"), JSON.stringify({

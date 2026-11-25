@@ -2,8 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const workflow = readFileSync(new URL("../.github/workflows/ios.yml", import.meta.url), "utf8");
-const exportOptions = readFileSync(new URL("../ios-native/ExportOptions.plist", import.meta.url), "utf8");
+function readText(file) {
+	return readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+}
+
+const workflow = readText(new URL("../.github/workflows/ios.yml", import.meta.url));
+const exportOptions = readText(new URL("../ios-native/ExportOptions.plist", import.meta.url));
 const steps = [...workflow.matchAll(/^      - ([^\n]+)\n([\s\S]*?)(?=^      - |$(?![\s\S]))/gm)]
 	.map((match) => ({ name: match[1].replace(/^name: /, ""), text: match[0] }));
 
@@ -25,7 +29,7 @@ test("iOS workflow only accepts manual dispatch with ref and upload inputs", () 
 test("iOS workflow limits permissions and serializes builds of the same ref", () => {
 	assert.match(workflow, /^permissions:\n  contents: read\n\n/m);
 	assert.match(workflow, /^concurrency:\n  group: ios-\$\{\{ inputs\.ref \}\}\n  cancel-in-progress: false$/m);
-	const desktop = readFileSync(new URL("../.github/workflows/desktop.yml", import.meta.url), "utf8");
+	const desktop = readText(new URL("../.github/workflows/desktop.yml", import.meta.url));
 	const runner = /^  macos:\n[\s\S]*?^    runs-on: (\S+)$/m.exec(desktop)?.[1];
 	assert.ok(runner);
 	assert.match(workflow, new RegExp(`^    runs-on: ${runner}$`, "m"));

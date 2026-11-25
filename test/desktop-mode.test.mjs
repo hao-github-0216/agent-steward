@@ -142,7 +142,7 @@ test("service main reports service mode, emits no desktop signals, and ignores s
 	assert.doesNotMatch(f.output(), /@@desktop /);
 	assert.equal(existsSync(join(f.data, "logs", "desktop-setup.log")), false);
 	f.child.kill("SIGTERM");
-	assert.deepEqual(await within(f.exited, 5000), { code: 0, signal: null });
+	assert.deepEqual(await within(f.exited, 5000), WIN ? { code: null, signal: "SIGTERM" } : { code: 0, signal: null });
 });
 
 test("health exposes only ok and mode when not authenticated", { timeout: 30_000 }, async (t) => {

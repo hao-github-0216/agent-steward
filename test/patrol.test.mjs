@@ -11,7 +11,13 @@ const DATA = mkdtempSync(join(tmpdir(), "steward-patrol-"));
 process.env.HOME = DATA;
 process.env.USERPROFILE = DATA;
 process.env.STEWARD_DATA_DIR = DATA;
-after(() => rmSync(DATA, { recursive: true, force: true }));
+after(() => {
+	try {
+		rmSync(DATA, { recursive: true, force: true });
+	} catch (error) {
+		if (process.platform !== "win32" || error.code !== "EBUSY") throw error;
+	}
+});
 writeFileSync(join(DATA, "settings.json"), JSON.stringify({ version: 1, ui: { lang: "zh-TW" }, aiDetected: true, setupDone: true, plugins: { notebook: { pythons: [] } } }));
 const { DEFAULTS, settings } = await import("../src/settings.ts");
 const { Store } = await import("../src/store.ts");

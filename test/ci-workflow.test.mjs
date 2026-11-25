@@ -5,11 +5,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
+function readText(file) {
+	return readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+}
+
 test("Windows PowerShell 5.1 steps in CI workflows contain only ASCII", () => {
 	const bad = [];
 	for (const file of [".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/desktop.yml"]) {
 		let shell = null;
-		readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+		readText(file).split("\n").forEach((line, i) => {
 			if (/^\s+- (name|uses):/.test(line)) shell = null;
 			const m = /^\s+shell:\s*(\S+)/.exec(line);
 			if (m) shell = m[1];
@@ -24,7 +28,7 @@ function workflowJobs(text) {
 }
 
 function workflowJob(file, name) {
-	const job = workflowJobs(readFileSync(file, "utf8")).find((job) => job.name === name);
+	const job = workflowJobs(readText(file)).find((job) => job.name === name);
 	assert.ok(job, `${file}: ${name}`);
 	return job;
 }
@@ -47,7 +51,7 @@ function inlineNode(step) {
 }
 
 test("release delegates desktop builds and inherits signing secrets", () => {
-	const release = readFileSync(".github/workflows/release.yml", "utf8");
+	const release = readText(".github/workflows/release.yml");
 	const desktop = workflowJobs(release).find((job) => job.name === "desktop");
 	assert.ok(desktop);
 	assert.match(desktop.text, /^    uses: \.\/\.github\/workflows\/desktop\.yml$/m);
@@ -55,7 +59,7 @@ test("release delegates desktop builds and inherits signing secrets", () => {
 });
 
 test("only the publish job generates release checksums and provenance", () => {
-	const jobs = workflowJobs(readFileSync(".github/workflows/release.yml", "utf8"));
+	const jobs = workflowJobs(readText(".github/workflows/release.yml"));
 	const generating = jobs.filter((job) => /sha256sum[^\n]*>\s*SHA256SUMS/.test(job.text));
 	const attesting = jobs.filter((job) => /uses: actions\/attest-build-provenance@/.test(job.text));
 	assert.deepEqual(generating.map((job) => job.name), ["publish"]);
@@ -65,13 +69,13 @@ test("only the publish job generates release checksums and provenance", () => {
 
 test("desktop and release workflows never enable shell tracing", () => {
 	for (const file of [".github/workflows/desktop.yml", ".github/workflows/release.yml"]) {
-		assert.doesNotMatch(readFileSync(file, "utf8"), /set\s+-[a-zA-Z]*x/, file);
+		assert.doesNotMatch(readText(file), /set\s+-[a-zA-Z]*x/, file);
 	}
 });
 
 test("desktop and release workflows only use official actions or the local desktop workflow", () => {
 	for (const file of [".github/workflows/desktop.yml", ".github/workflows/release.yml"]) {
-		const text = readFileSync(file, "utf8");
+		const text = readText(file);
 		const uses = [...text.matchAll(/^\s+(?:-\s+)?uses:\s*(\S+)/gm)].map((match) => match[1]);
 		assert.ok(uses.length > 0, file);
 		for (const action of uses) assert.ok(action.startsWith("actions/") || action === "./.github/workflows/desktop.yml", `${file}: ${action}`);
@@ -79,7 +83,7 @@ test("desktop and release workflows only use official actions or the local deskt
 });
 
 test("desktop Tauri builds run inside desktop and Windows uses pwsh", () => {
-	const text = readFileSync(".github/workflows/desktop.yml", "utf8");
+	const text = readText(".github/workflows/desktop.yml");
 	assert.doesNotMatch(text, /shell:\s*powershell\b/);
 	const builds = workflowJobs(text).flatMap(workflowSteps).filter((step) => /npx tauri build/.test(step.text));
 	assert.equal(builds.length, 5);
@@ -118,7 +122,7 @@ test("both workflows check all seven signing secrets and releases cannot omit th
 	assert.match(signing.text, /Every future release needs App updater artifacts or installed Apps cannot find updates/);
 	assert.doesNotMatch(signing.text, /::warning::|ready=false/);
 	for (const file of [".github/workflows/desktop.yml", ".github/workflows/release.yml"]) {
-		assert.doesNotMatch(readFileSync(file, "utf8"), /^\s+if:.*secrets\./m);
+		assert.doesNotMatch(readText(file), /^\s+if:.*secrets\./m);
 	}
 });
 
@@ -127,7 +131,7 @@ test("production updater endpoints are written only into tag-build configs", () 
 	const endpoint = "https://github.com/hao-github-0216/agent-steward/releases/latest/download/latest.json";
 	const base = JSON.parse(readFileSync("desktop/src-tauri/tauri.conf.json", "utf8"));
 	assert.equal(base.plugins.updater.endpoints, undefined);
-	const endpointSteps = workflowJobs(readFileSync(file, "utf8")).flatMap((job) => workflowSteps(job).filter((step) => step.text.includes(endpoint)).map((step) => `${job.name}:${step.name}`));
+	const endpointSteps = workflowJobs(readText(file)).flatMap((job) => workflowSteps(job).filter((step) => step.text.includes(endpoint)).map((step) => `${job.name}:${step.name}`));
 	assert.deepEqual(endpointSteps, [
 		"macos:Build, sign, and notarize the App bundle", "macos:Check the embedded production updater endpoint",
 		"windows:Build the unsigned NSIS installer", "windows:Check the embedded production updater endpoint",
@@ -180,7 +184,7 @@ test("both main executables must contain the production endpoint exactly for tag
 
 test("only dedicated signed updater steps receive the private signing secrets", () => {
 	for (const file of [".github/workflows/desktop.yml", ".github/workflows/release.yml"]) {
-		const text = readFileSync(file, "utf8");
+		const text = readText(file);
 		const signing = workflowJobs(text).flatMap((job) => workflowSteps(job).filter((step) => /updater-artifacts\.mjs sign --file/.test(step.text)).map((step) => ({ job: job.name, ...step })));
 		assert.deepEqual(signing.map((step) => step.job), file.endsWith("desktop.yml") ? ["macos", "windows"] : []);
 		const declarations = [...text.matchAll(/^\s+TAURI_SIGNING_PRIVATE_KEY(?:_PASSWORD)?:/gm)];
