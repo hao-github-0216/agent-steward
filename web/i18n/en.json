@@ -100,6 +100,7 @@
 	"開合專案欄": "Toggle project sidebar",
 	"字體縮小": "Decrease font size",
 	"字體放大": "Increase font size",
+	"字體 {n}": "Font size {n}",
 	"從 herdr 目前的 agent 開一條支線:新 tab 接著它的對話,另外問問題或做事,不打擾它": "Start a side branch from the current herdr agent in a new tab, without interrupting its work",
 	"其他開法": "Other ways to open",
 	"把這條支線的結論整理好,確認後送回主線": "Summarize this side branch, review it, and send it back to the main conversation",
