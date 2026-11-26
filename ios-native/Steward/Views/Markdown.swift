@@ -1,6 +1,6 @@
 // 管家的回答是 Markdown(管家提問時會告訴模型這個對話框支援哪些格式)。
-// 支援:段落裡的粗體/斜體/行內程式/連結、小標題、引用、程式區塊、表格、數學式
-// (行內 $…$、\(…\);獨立一行 $$…$$、\[…\],用 SwiftMath 在手機上直接排版,不經網頁)。
+// 支援:段落裡的粗體/斜體/行內程式/連結、小標題、引用、程式區塊、表格、數學式(行內 $…$、\(…\);獨立一行 $$…$$、\[…\])。
+// 數學式先用 SwiftMath;排不出的改用與網頁同版本的 KaTeX 0.16.11,從 cdn.jsdelivr.net 載入,載不到就顯示原文。
 import SwiftMath
 import SwiftUI
 import UIKit
@@ -173,6 +173,8 @@ enum Markdown {
 
     /// SwiftMath 不認得的常見寫法,換成它認得的等價寫法(實際查過它的指令表)
     private static let rewrites: [(NSRegularExpression, String)] = [
+        (#"\\iiint(?![a-zA-Z])"#, #"\\int\\!\\!\\int\\!\\!\\int "#),
+        (#"\\iint(?![a-zA-Z])"#, #"\\int\\!\\!\\int "#),
         (#"\\dots[cbmio]?(?![a-zA-Z])"#, #"\\ldots "#),
         (#"\\[dt]frac(?![a-zA-Z])"#, #"\\frac"#),
         (#"\\boldsymbol(?![a-zA-Z])"#, #"\\mathbf"#),
@@ -192,14 +194,18 @@ enum Markdown {
         return s
     }
 
-    /// 把一個數學式排成圖;排不出來(不支援的指令)回 nil,呼叫的人改顯示原文
-    static func render(_ latex: String, size: CGFloat, display: Bool, dark: Bool) -> MathRender? {
+    @MainActor static var mathFallback: @MainActor (String, CGFloat, Bool, Bool) -> MathRender? = { latex, size, display, dark in
+        KaTeXMath.shared.image(latex, size: size, display: display, dark: dark)
+    }
+
+    /// 把數學式排成圖;SwiftMath 排不出的交給 KaTeX,還沒排好或失敗時回 nil。
+    @MainActor static func render(_ latex: String, size: CGFloat, display: Bool, dark: Bool) -> MathRender? {
         let key = "\(display ? "D" : "T")|\(size)|\(dark ? "d" : "l")|\(latex)" as NSString
         if let hit = cache.object(forKey: key) { return hit }
         let color = UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
         var m = MathImage(latex: normalize(latex), fontSize: size, textColor: color, labelMode: display ? .display : .text, textAlignment: .left)
         let (err, img, layout) = m.asImage()
-        guard err == nil, let img, img.size.width > 0 else { return nil }
+        guard err == nil, let img, img.size.width > 0 else { return mathFallback(latex, size, display, dark) }
         let r = MathRender(image: img, descent: layout?.descent ?? 0)
         cache.setObject(r, forKey: key)
         return r
@@ -207,7 +213,7 @@ enum Markdown {
 
     /// 一段文字(可能夾著數學式)→ 一個 Text:先把數學式換成佔位字元再解析 Markdown,
     /// 「**$x_i$ 的角色**」這種粗體裡夾數學式的才不會壞掉
-    static func text(_ s: String, size: CGFloat, dark: Bool) -> Text {
+    @MainActor static func text(_ s: String, size: CGFloat, dark: Bool) -> Text {
         let (masked, formulas) = extractMath(s)
         let attr = inline(masked)
         guard !formulas.isEmpty else { return Text(attr) }
@@ -250,6 +256,7 @@ struct MarkdownText: View {
     init(_ source: String, fixEscapes: Bool = false) { self.source = source; self.fixEscapes = fixEscapes }
 
     var body: some View {
+        let _ = KaTeXMath.shared.version
         let dark = scheme == .dark
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(Markdown.blocks(source, fixEscapes: fixEscapes).enumerated()), id: \.offset) { _, b in

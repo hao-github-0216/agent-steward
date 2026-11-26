@@ -194,6 +194,6 @@ xcodebuild -scheme StewardWatch \
 
 自己編 App(換了 bundle id 或 Team)的人,中繼送不到你的 App,要改成管家直接送:developer.apple.com → Keys → 「+」勾 Apple Push Notifications service,下載 `AuthKey_<KEY ID>.p8`,放進管家電腦的 `~/.agent-steward/apns/`,同資料夾加 `config.json`:`{"teamId": "<Team ID>", "bundleId": "<你的 bundle id>"}`。有這個資料夾時管家就不經過中繼。
 
-## 還沒做的
+## 數學式
 
-- SwiftMath 不支援的數學指令(例如 `\underbrace`)照原文顯示
+問管家、圈選、工作卡追問的回覆裡,數學式先用 SwiftMath 在手機上直接排版。SwiftMath 排不出的式子(例如 `\underbrace`、式子裡的中文)改用 KaTeX 排成圖片,版本跟網頁聊天一樣,從 cdn.jsdelivr.net 載入。排好之前、或 KaTeX 載不到時,先顯示原文。
