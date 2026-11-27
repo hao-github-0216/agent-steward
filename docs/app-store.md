@@ -45,7 +45,7 @@
 
 終端機
 • 在手機上看電腦裡的終端機和每個 agent 的窗格，下方有方向鍵、Ctrl、Esc 等按鍵列
-• 點終端機只會點選，不會跳出鍵盤，要打字時再按 ⌨︎；按住再拖曳可以選取並複製文字
+• 點終端機只會點選，不會跳出鍵盤，要打字時再按 ⌨；按住再拖曳可以選取並複製文字
 • 一個按鈕就能關閉分頁，關之前會先請你確認
 
 Apple Watch
@@ -92,7 +92,7 @@ Code
 
 Terminal
 • See your computer's terminal and each agent's pane, with a key bar for arrows, Ctrl, Esc, and more
-• Tapping the terminal selects without popping up the keyboard; tap ⌨︎ when you want to type. Touch and hold, then drag to select and copy text
+• Tapping the terminal selects without popping up the keyboard; tap ⌨ when you want to type. Touch and hold, then drag to select and copy text
 • Close a tab with one button, after a confirmation
 
 Apple Watch
