@@ -239,7 +239,9 @@
         "zh-TW": "Fandol 中文字型",
         "en": "Fandol Chinese fonts"
       },
-      "version": "0.4",
+      "repo": "hao-github-0216/agent-steward",
+      "tag": "deps-fandol-0.3-1",
+      "version": "0.3",
       "license": "GPL-3.0 with font exception",
       "home": "https://ctan.org/pkg/fandol",
       "size": {
@@ -249,7 +251,7 @@
       "files": {
         "all": {
           "name": "fandol.tar.xz",
-          "url": "https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2025/tlnet-final/archive/fandol.tar.xz",
+          "url": "https://github.com/hao-github-0216/agent-steward/releases/download/deps-fandol-0.3-1/fandol.tar.xz",
           "sha256": "0b71eebb1c9b9fbd1eb4281f8af3f6c1a556a394ba2b6eae69ed9bb76c5fa56a"
         }
       }

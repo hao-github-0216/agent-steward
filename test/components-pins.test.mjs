@@ -40,7 +40,7 @@ test("Node and GitHub assets use their pinned release versions", () => {
 		assert.ok(file.name.startsWith("node-v" + node.version + "-"));
 		assert.ok(file.url.includes("/dist/v" + node.version + "/"));
 	}
-	for (const id of ["herdr", "ttyd", "uv", "tinytex"]) {
+	for (const id of ["herdr", "ttyd", "uv", "tinytex", "fandol"]) {
 		const c = component(id);
 		for (const [platform, file] of Object.entries(c.files)) {
 			const tag = id === "ttyd" && platform === "macos-universal" ? "deps-ttyd-1.7.7-1" : (c.tag ?? c.version);

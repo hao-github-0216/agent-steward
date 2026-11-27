@@ -129,7 +129,7 @@ async function installLatex(log: Log): Promise<void> {
 	log(tr("安裝中文支援(xeCJK、Fandol 字型)…"));
 	const found = (file: string) => run(join(b, IS_WIN ? "kpsewhich.exe" : "kpsewhich"), [file]).then((x) => !!x.trim(), () => false);
 	let err = await run(tl, ["install", "xecjk", "ctex", "zhnumber"]).then(() => null, (e) => e as Error);
-	// TeX Live 2026 已移除 fandol,改用 TeX Live 2025 封存的套件檔安裝。
+	// TeX Live 2026 已移除 fandol,改用 TeX Live 2025 的 fandol 套件檔(放在本專案的 GitHub Release)安裝
 	if (!(await found("FandolSong-Regular.otf"))) {
 		try {
 			const asset = manifestFile("fandol", "all");

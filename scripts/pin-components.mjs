@@ -59,6 +59,7 @@ function filenames(component) {
 			["windows-x86_64", "x86_64-pc-windows-msvc.zip"],
 		].map(([platform, suffix]) => [platform, `uv-${suffix}`]));
 		case "tinytex": return Object.fromEntries(["darwin", "linux-arm64", "linux-x86_64", "windows"].map((platform) => [platform, `TinyTeX-1-${platform}-${version}${platform === "windows" ? ".exe" : ".tar.xz"}`]));
+		case "fandol": return { all: "fandol.tar.xz" };
 		default: return undefined;
 	}
 }
