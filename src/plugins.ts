@@ -89,6 +89,7 @@ function tarExe(): string {
 
 // ---------- LaTeX:TinyTeX ----------
 const TINYTEX = join(TOOLS, "TinyTeX");
+const CTAN_TLNET = "https://mirror.ctan.org/systems/texlive/tlnet";
 /** 專案管家裝的 TinyTeX 的 bin 資料夾(裡面有 latexmk、xelatex、tlmgr) */
 export function tinytexBin(): string | undefined {
 	const base = join(TINYTEX, "bin");
@@ -127,9 +128,15 @@ async function installLatex(log: Log): Promise<void> {
 	log(tr("更新 TeX 套件管理工具…"));
 	await run(tl, ["update", "--self"]).catch((e) => log(tr("更新 tlmgr 失敗:{error}", { error: e.message })));
 	log(tr("安裝中文支援(xeCJK、Fandol 字型)…"));
-	const err = await run(tl, ["install", "xecjk", "fandol", "ctex", "zhnumber"]).then(() => null, (e) => e as Error);
+	const found = (file: string) => run(join(b, IS_WIN ? "kpsewhich.exe" : "kpsewhich"), [file]).then((x) => !!x.trim(), () => false);
+	let err = await run(tl, ["install", "xecjk", "ctex", "zhnumber"]).then(() => null, (e) => e as Error);
+	// TinyTeX 預設的套件庫(tlnet.yihui.org)沒有 fandol,先試預設的,沒裝上再從 CTAN 官方套件庫裝
+	await run(tl, ["install", "fandol"]).catch(() => null);
+	if (!(await found("FandolSong-Regular.otf"))) {
+		err = await run(tl, ["install", "--repository", CTAN_TLNET, "fandol"]).then(() => err, (e) => e as Error);
+	}
 	// tlmgr 最後重建格式檔時常報錯,但套件其實裝好了:用 kpsewhich 確認
-	const ok = await run(join(b, IS_WIN ? "kpsewhich.exe" : "kpsewhich"), ["xeCJK.sty"]).then((x) => !!x.trim(), () => false);
+	const ok = (await found("xeCJK.sty")) && (await found("FandolSong-Regular.otf"));
 	log(ok ? tr("中文支援已安裝") : tr("中文支援沒裝成功(編譯時會再自動補):{error}", { error: err?.message ?? "" }));
 }
 
