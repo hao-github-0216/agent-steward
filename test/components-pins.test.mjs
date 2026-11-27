@@ -13,6 +13,7 @@ const platforms = {
 	ttyd: ["linux-x86_64", "linux-aarch64", "windows-x86_64", "macos-universal"],
 	uv: ["macos-aarch64", "macos-x86_64", "linux-aarch64", "linux-x86_64", "windows-x86_64"],
 	tinytex: ["darwin", "linux-arm64", "linux-x86_64", "windows"],
+	fandol: ["all"],
 };
 
 test("each binary component pins all supported platforms to HTTPS and SHA-256", () => {

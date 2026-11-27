@@ -89,7 +89,6 @@ function tarExe(): string {
 
 // ---------- LaTeX:TinyTeX ----------
 const TINYTEX = join(TOOLS, "TinyTeX");
-const CTAN_TLNET = "https://mirror.ctan.org/systems/texlive/tlnet";
 /** 專案管家裝的 TinyTeX 的 bin 資料夾(裡面有 latexmk、xelatex、tlmgr) */
 export function tinytexBin(): string | undefined {
 	const base = join(TINYTEX, "bin");
@@ -130,10 +129,17 @@ async function installLatex(log: Log): Promise<void> {
 	log(tr("安裝中文支援(xeCJK、Fandol 字型)…"));
 	const found = (file: string) => run(join(b, IS_WIN ? "kpsewhich.exe" : "kpsewhich"), [file]).then((x) => !!x.trim(), () => false);
 	let err = await run(tl, ["install", "xecjk", "ctex", "zhnumber"]).then(() => null, (e) => e as Error);
-	// TinyTeX 預設的套件庫(tlnet.yihui.org)沒有 fandol,先試預設的,沒裝上再從 CTAN 官方套件庫裝
-	await run(tl, ["install", "fandol"]).catch(() => null);
+	// TeX Live 2026 已移除 fandol,改用 TeX Live 2025 封存的套件檔安裝。
 	if (!(await found("FandolSong-Regular.otf"))) {
-		err = await run(tl, ["install", "--repository", CTAN_TLNET, "fandol"]).then(() => err, (e) => e as Error);
+		try {
+			const asset = manifestFile("fandol", "all");
+			const file = join(TOOLS, ".downloads", asset.name);
+			await download(asset.url, file, asset.sha256, log, " Fandol");
+			await run(tl, ["install", "--file", file]);
+			rmSync(file, { force: true });
+		} catch (e) {
+			err = e as Error;
+		}
 	}
 	// tlmgr 最後重建格式檔時常報錯,但套件其實裝好了:用 kpsewhich 確認
 	const ok = (await found("xeCJK.sty")) && (await found("FandolSong-Regular.otf"));

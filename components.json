@@ -234,6 +234,27 @@
       }
     },
     {
+      "id": "fandol",
+      "name": {
+        "zh-TW": "Fandol 中文字型",
+        "en": "Fandol Chinese fonts"
+      },
+      "version": "0.4",
+      "license": "GPL-3.0 with font exception",
+      "home": "https://ctan.org/pkg/fandol",
+      "size": {
+        "zh-TW": "約 21 MB",
+        "en": "~21 MB"
+      },
+      "files": {
+        "all": {
+          "name": "fandol.tar.xz",
+          "url": "https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2025/tlnet-final/archive/fandol.tar.xz",
+          "sha256": "0b71eebb1c9b9fbd1eb4281f8af3f6c1a556a394ba2b6eae69ed9bb76c5fa56a"
+        }
+      }
+    },
+    {
       "id": "python-packages",
       "name": {
         "zh-TW": "Python 套件",

@@ -418,6 +418,12 @@ TINYTEX_LINUX_X86_64_SHA256='5b75befa848deae702ae6fa12ff0eef3f110d7e4e2a979ae99f
 TINYTEX_WINDOWS_NAME='TinyTeX-1-windows-v2026.11.exe'
 TINYTEX_WINDOWS_URL='https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-windows-v2026.11.exe'
 TINYTEX_WINDOWS_SHA256='375e8adec0177cd9ec6a1f8c76efe0c22b1a0c260e76a00386bcea52d88e5354'
+FANDOL_VERSION='0.4'
+FANDOL_LICENSE='GPL-3.0 with font exception'
+FANDOL_HOME='https://ctan.org/pkg/fandol'
+FANDOL_ALL_NAME='fandol.tar.xz'
+FANDOL_ALL_URL='https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2025/tlnet-final/archive/fandol.tar.xz'
+FANDOL_ALL_SHA256='0b71eebb1c9b9fbd1eb4281f8af3f6c1a556a394ba2b6eae69ed9bb76c5fa56a'
 PYTHON_PACKAGES_LICENSE='BSD-3-Clause (ipykernel, numpy, pandas); PSF (matplotlib)'
 PYTHON_PACKAGES_HOME='https://pypi.org/'
 component_data() {
@@ -437,6 +443,8 @@ component_data() {
 			SIZE_UV='約 20 MB'
 			TINYTEX_NAME='TinyTeX'
 			SIZE_TINYTEX='約 250 MB'
+			FANDOL_NAME='Fandol 中文字型'
+			SIZE_FANDOL='約 21 MB'
 			PYTHON_PACKAGES_NAME='Python 套件'
 			SIZE_PYTHON_PACKAGES='約 300 MB（含 Python）'
 			;;
@@ -455,6 +463,8 @@ component_data() {
 			SIZE_UV='~20 MB'
 			TINYTEX_NAME='TinyTeX'
 			SIZE_TINYTEX='~250 MB'
+			FANDOL_NAME='Fandol Chinese fonts'
+			SIZE_FANDOL='~21 MB'
 			PYTHON_PACKAGES_NAME='Python packages'
 			SIZE_PYTHON_PACKAGES='~300 MB (including Python)'
 			;;
